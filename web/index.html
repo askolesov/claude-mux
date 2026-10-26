@@ -8,6 +8,8 @@
 <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-web-links@0.11.0/lib/addon-web-links.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
 <style>
   :root {
     --bg: #0f1115;
@@ -98,10 +100,30 @@
   .placeholder { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); text-align: center; }
   .placeholder p { margin: 6px 0; }
 
-  .transcript { position: absolute; inset: 0; overflow-y: auto; padding: 16px 22px 40px; display: none; }
+  .transcript { position: absolute; inset: 0 0 64px 0; overflow-y: auto; padding: 16px 22px 24px; display: none; }
   .transcript.shown { display: block; }
   .transcript .note { color: var(--muted); margin-bottom: 14px; }
-  .msg { margin: 0 0 12px; white-space: pre-wrap; word-break: break-word; max-width: 900px; }
+  .msg { margin: 0 0 14px; word-break: break-word; max-width: 900px; }
+  .msg.user .body { white-space: pre-wrap; }
+  .md > :first-child { margin-top: 0; }
+  .md > :last-child { margin-bottom: 0; }
+  .md p, .md ul, .md ol, .md pre, .md table, .md blockquote { margin: 0 0 8px; }
+  .md ul, .md ol { padding-left: 22px; }
+  .md li { margin: 2px 0; }
+  .md li > ul, .md li > ol { margin: 2px 0; }
+  .md h1, .md h2, .md h3, .md h4 { font-size: 14px; margin: 12px 0 6px; }
+  .md code { font: 12px var(--mono); background: var(--panel-2); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+  .md pre { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; overflow-x: auto; }
+  .md pre code { background: none; border: 0; padding: 0; }
+  .md a { color: var(--accent); }
+  .md table { border-collapse: collapse; }
+  .md th, .md td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; }
+  .md blockquote { border-left: 3px solid var(--line); padding-left: 10px; color: var(--muted); }
+  .composer { position: absolute; left: 0; right: 0; bottom: 0; display: none; gap: 8px; padding: 12px 22px; border-top: 1px solid var(--line); background: var(--panel); }
+  .composer.shown { display: flex; }
+  .composer input { flex: 1; font: 13px var(--mono); color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
+  .composer input:focus { outline: none; border-color: var(--accent); }
+  .composer .hint { color: var(--muted); font-size: 12px; align-self: center; white-space: nowrap; }
   .msg .who { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 2px; }
   .msg.user .body { background: var(--panel-2); border-radius: 8px; padding: 8px 10px; }
   .msg.tool { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 4px; }
@@ -143,6 +165,11 @@
       <div><p>No session selected.</p><p><button class="primary" id="new2">+ New session</button></p></div>
     </div>
     <div class="transcript" id="transcript"></div>
+    <form class="composer" id="composer">
+      <input id="cText" placeholder="Message this session — typed into its terminal window" autocomplete="off">
+      <span class="hint" id="cHint"></span>
+      <button class="primary">Send</button>
+    </form>
   </div>
 </main>
 
@@ -271,7 +298,7 @@ function renderBar() {
     const name = x ? x.title || x.name : "ended";
     bar.innerHTML = `
       <span class="title">${esc(name)}</span>
-      <span class="pill">${x ? esc(x.status) : "not running"} · read-only</span>
+      <span class="pill">${x ? esc(x.status) : "not running"} · other terminal</span>
       <span class="cwd">${esc(x?.cwd || selected.cwd || "")}</span>
       <span class="actions"><button data-act="takeover" ${x ? 'title="Quit it in its own terminal first"' : ""}>Take over</button></span>`;
   }
@@ -349,6 +376,12 @@ function fitSelected() {
   if (t) { t.fit.fit(); }
 }
 
+// Assistant text is Markdown; DOMPurify strips anything a transcript could smuggle in.
+function markdown(text) {
+  if (typeof marked === "undefined" || typeof DOMPurify === "undefined") return `<div style="white-space:pre-wrap">${esc(text)}</div>`;
+  return DOMPurify.sanitize(marked.parse(text, { gfm: true, breaks: false }));
+}
+
 // ---------- selection ----------
 function select(kind, id, extra = {}) {
   selected = { kind, id, ...extra };
@@ -356,6 +389,8 @@ function select(kind, id, extra = {}) {
   for (const [tid, t] of terms) t.el.classList.toggle("shown", kind === "s" && tid === id);
   $("placeholder").style.display = "none";
   $("transcript").classList.toggle("shown", kind === "x");
+  $("composer").classList.toggle("shown", kind === "x");
+  $("cHint").textContent = "";
   clearInterval(transcriptTimer);
 
   if (kind === "s") {
@@ -365,6 +400,7 @@ function select(kind, id, extra = {}) {
     markSeen(id);
   } else {
     loadTranscript(id);
+    $("cText").focus();
     transcriptTimer = setInterval(() => loadTranscript(id), 4000);
   }
   render();
@@ -380,10 +416,11 @@ async function loadTranscript(sid) {
   try {
     const entries = await api("GET", `/api/transcript/${encodeURIComponent(sid)}`);
     const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
-    box.innerHTML = `<div class="note">Running in another terminal — last ${entries.length} messages, refreshed every few seconds. Quit it there and press <b>Take over</b> to continue it here.</div>` +
+    box.innerHTML = `<div class="note">Running in another terminal — last ${entries.length} messages, refreshed every few seconds. Messages you send below are typed into that window. <b>Take over</b> moves it here once you quit it there.</div>` +
       entries.map((e) => e.role === "tool"
         ? `<div class="msg tool">→ ${esc(e.text)}</div>`
-        : `<div class="msg ${e.role}"><div class="who">${e.role === "user" ? "you" : "claude"}</div><div class="body">${esc(e.text)}</div></div>`).join("");
+        : `<div class="msg ${e.role}"><div class="who">${e.role === "user" ? "you" : "claude"}</div>${
+            e.role === "user" ? `<div class="body">${esc(e.text)}</div>` : `<div class="body md">${markdown(e.text)}</div>`}</div>`).join("");
     if (atBottom) box.scrollTop = box.scrollHeight;
   } catch (err) {
     box.innerHTML = `<div class="note">No transcript: ${esc(err.message)}</div>`;
@@ -485,6 +522,22 @@ $("dlgForm").addEventListener("submit", async (e) => {
     select("s", s.id);
   } catch (err) {
     $("dlgErr").textContent = err.message;
+  }
+});
+$("composer").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (selected?.kind !== "x") return;
+  const text = $("cText").value.trim();
+  if (!text) return;
+  const sid = selected.id;
+  $("cHint").textContent = "sending…";
+  try {
+    await api("POST", `/api/external/${encodeURIComponent(sid)}/send`, { text });
+    $("cText").value = "";
+    $("cHint").textContent = "sent";
+    setTimeout(() => loadTranscript(sid), 1500);
+  } catch (err) {
+    $("cHint").textContent = err.message;
   }
 });
 $("dlgCancel").onclick = () => $("dlg").close();

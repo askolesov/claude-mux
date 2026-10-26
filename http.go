@@ -49,6 +49,7 @@ func NewHandler(m *Manager, ext *Externals, defaultCwd string) http.Handler {
 	api.POST("/sessions/:id/seen", h.seen)
 	api.GET("/sessions/:id/term", h.term)
 	api.POST("/external/:sid/takeover", h.takeover)
+	api.POST("/external/:sid/send", h.send)
 	api.GET("/transcript/:sid", h.transcript)
 
 	r.POST("/hook/:id", h.hook)
@@ -195,6 +196,25 @@ func (h *Handler) takeover(c *gin.Context) {
 		return
 	}
 	respond(c, s.View(), nil)
+}
+
+// send types a message into the terminal window of a session claude-mux
+// doesn't own.
+func (h *Handler) send(c *gin.Context) {
+	var req struct {
+		Text string `json:"text" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respond(c, nil, err)
+		return
+	}
+	for _, x := range h.ext.List() {
+		if x.SessionID == c.Param("sid") {
+			respond(c, nil, TypeInto(x.PID, req.Text))
+			return
+		}
+	}
+	respond(c, nil, errNotFound)
 }
 
 func (h *Handler) transcript(c *gin.Context) {

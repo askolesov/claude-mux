@@ -25,9 +25,11 @@ works, because the server strips the session markers from its children's env.
 - **Notifications** when a session becomes ready or needs you and you aren't
   looking at it (press "Enable notifications" once).
 - **Other terminals**: the claude sessions running outside it (from
-  `claude agents --json`) are listed read-only, with their last 40 messages
-  from the transcript. **Take over** continues one here after you quit it
-  in its own terminal.
+  `claude agents --json`) are listed with their last 40 messages from the
+  transcript, Markdown rendered. The box at the bottom sends a message: it
+  is typed into that session's Terminal.app or iTerm2 window over
+  AppleScript, as one line (line breaks become spaces). **Take over**
+  continues the session here after you quit it in its own terminal.
 - **Kill / Resume**: kill ends the process and keeps the tab. Resume runs
   `claude --resume <id>` in it. After a server restart every session shows
   as stopped and can be resumed.
@@ -53,4 +55,7 @@ works, because the server strips the session markers from its children's env.
   Resume brings back the conversations, but not what was running.
 - For a moment, claude's status line shows "running … hook" while a hook
   `curl`s.
-- The xterm.js scripts load from jsdelivr, so the page needs internet.
+- The xterm.js, marked and DOMPurify scripts load from jsdelivr, so the page
+  needs internet.
+- Sending to other terminals: the first send makes macOS ask whether
+  claude-mux may control Terminal. The iTerm2 path is written but untested.
