@@ -46,6 +46,7 @@ func NewHandler(m *Manager, ext *Externals, defaultCwd string) http.Handler {
 	api.DELETE("/sessions/:id", h.remove)
 	api.POST("/sessions/:id/kill", h.kill)
 	api.POST("/sessions/:id/resume", h.resume)
+	api.POST("/sessions/:id/handoff", h.handoff)
 	api.POST("/sessions/:id/seen", h.seen)
 	api.GET("/sessions/:id/term", h.term)
 	api.POST("/external/:sid/takeover", h.takeover)
@@ -169,10 +170,11 @@ func (h *Handler) rename(c *gin.Context) {
 	respond(c, nil, h.m.Rename(c.Param("id"), strings.TrimSpace(req.Name)))
 }
 
-func (h *Handler) remove(c *gin.Context) { respond(c, nil, h.m.Remove(c.Param("id"))) }
-func (h *Handler) kill(c *gin.Context)   { respond(c, nil, h.m.Kill(c.Param("id"))) }
-func (h *Handler) resume(c *gin.Context) { respond(c, nil, h.m.Resume(c.Param("id"))) }
-func (h *Handler) seen(c *gin.Context)   { respond(c, nil, h.m.MarkSeen(c.Param("id"))) }
+func (h *Handler) remove(c *gin.Context)  { respond(c, nil, h.m.Remove(c.Param("id"))) }
+func (h *Handler) kill(c *gin.Context)    { respond(c, nil, h.m.Kill(c.Param("id"))) }
+func (h *Handler) handoff(c *gin.Context) { respond(c, nil, h.m.Handoff(c.Param("id"))) }
+func (h *Handler) resume(c *gin.Context)  { respond(c, nil, h.m.Resume(c.Param("id"))) }
+func (h *Handler) seen(c *gin.Context)    { respond(c, nil, h.m.MarkSeen(c.Param("id"))) }
 
 func (h *Handler) takeover(c *gin.Context) {
 	sid := c.Param("sid")

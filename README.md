@@ -30,6 +30,10 @@ works, because the server strips the session markers from its children's env.
   is typed into that session's Terminal.app or iTerm2 window over
   AppleScript, as one line (line breaks become spaces). **Take over**
   continues the session here after you quit it in its own terminal.
+- **Open in Terminal** is Take over in reverse: it ends the session here,
+  waits for the process to exit, opens a Terminal.app window running
+  `claude --resume <id>` in the same directory, and removes the tab. The
+  window then appears under Other terminals.
 - **Kill / Resume**: kill ends the process and keeps the tab. Resume runs
   `claude --resume <id>` in it. After a server restart every session shows
   as stopped and can be resumed.

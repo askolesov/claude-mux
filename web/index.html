@@ -290,6 +290,7 @@ function renderBar() {
       <span class="cwd" title="${esc(s.cwd)}">${esc(s.cwd)}</span>
       <span class="actions">
         <button data-act="rename">Rename</button>
+        ${s.claudeSessionId ? `<button data-act="handoff" title="End it here and continue it in a Terminal.app window">Open in Terminal</button>` : ""}
         ${dead && s.claudeSessionId ? `<button class="primary" data-act="resume">Resume</button>` : ""}
         ${dead ? `<button class="danger" data-act="remove">Remove</button>` : `<button class="danger" data-act="kill">Kill</button>`}
       </span>`;
@@ -563,6 +564,8 @@ async function act(what) {
       const s = state.sessions.find((x) => x.id === id);
       const name = prompt("Rename session", s?.name || "");
       if (name && name.trim()) await api("PATCH", `/api/sessions/${id}`, { name: name.trim() });
+    } else if (what === "handoff") {
+      if (confirm("Move this session to a Terminal window? It ends here and continues there.")) await api("POST", `/api/sessions/${id}/handoff`);
     } else if (what === "resume") {
       await api("POST", `/api/sessions/${id}/resume`);
       terms.get(id)?.term.focus();

@@ -95,3 +95,31 @@ func terminalApp(pid int) (string, error) {
 	}
 	return "", errNoTerminal
 }
+
+// OpenTerminal opens a new Terminal.app window and runs args there, in dir,
+// in your login shell. The command reaches AppleScript as an argument, and
+// every word is quoted for the shell.
+func OpenTerminal(dir string, args []string) error {
+	words := []string{"cd", shellQuote(dir), "&&"}
+	for _, a := range args {
+		words = append(words, shellQuote(a))
+	}
+	cmd := exec.Command("osascript", "-", strings.Join(words, " "))
+	cmd.Stdin = strings.NewReader(`on run argv
+	tell application "Terminal"
+		do script (item 1 of argv)
+		activate
+	end tell
+end run`)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("open Terminal: %s", strings.TrimSpace(stderr.String()))
+	}
+	return nil
+}
+
+// shellQuote wraps s in single quotes; 'a'\”b' reads as a'b in sh, zsh and fish.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}

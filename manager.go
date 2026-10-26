@@ -272,6 +272,33 @@ func (m *Manager) Kill(id string) error {
 	return nil
 }
 
+// Handoff moves a session out to a Terminal.app window: it ends the process
+// here, waits for it to exit so the two never write one transcript, resumes
+// the conversation in a new window, and forgets the tab.
+func (m *Manager) Handoff(id string) error {
+	s, err := m.Get(id)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	sid, name, cwd, args := s.ClaudeSessionID, s.Name, s.Cwd, s.Args
+	s.mu.Unlock()
+	if _, err := transcriptPath(sid); sid == "" || err != nil {
+		return errors.New("nothing to hand off yet: the conversation has no messages")
+	}
+	s.kill()
+	for deadline := time.Now().Add(6 * time.Second); s.running(); {
+		if time.Now().After(deadline) {
+			return errors.New("the session didn't exit; try again")
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if err := OpenTerminal(cwd, append([]string{"claude", "--resume", sid, "--name", name}, args...)); err != nil {
+		return err
+	}
+	return m.Remove(id)
+}
+
 // Remove kills the session if it runs and forgets it.
 func (m *Manager) Remove(id string) error {
 	s, err := m.Get(id)
