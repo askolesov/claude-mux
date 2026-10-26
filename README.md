@@ -35,6 +35,11 @@ The sidebar has three sections, by where a conversation is:
   nowhere at the moment. **Open here** or **Open in Terminal** continues
   one. Saved conversations live in `~/.claude-mux/favourites.json`; while
   one runs, its row shows ★. Unsave forgets it.
+  A saved conversation can have a **restore message** (right-click →
+  Restore message…, marked ↻): the first prompt whenever it starts in a new
+  process (Open here, Open in Terminal, Move, Resume, a claude-mux
+  restart), passed as `claude --resume <id> -- "<message>"`. Use it to bring
+  back what dies with the old process, like a watcher.
 
 Also:
 

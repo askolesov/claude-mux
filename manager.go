@@ -160,7 +160,7 @@ func (m *Manager) Create(name, cwd string, args []string) (*Session, error) {
 // Takeover continues a claude conversation that ran somewhere else, here.
 func (m *Manager) Takeover(claudeSessionID, name, cwd string, args []string) (*Session, error) {
 	s := &Session{ID: newID(), Name: name, Cwd: cwd, Args: args, ClaudeSessionID: claudeSessionID, CreatedAt: time.Now()}
-	return s, m.add(s, append([]string{"--resume", claudeSessionID}, args...))
+	return s, m.add(s, append(append([]string{"--resume", claudeSessionID}, args...), m.restorePrompt(claudeSessionID)...))
 }
 
 func (m *Manager) add(s *Session, args []string) error {
@@ -194,7 +194,7 @@ func (m *Manager) Resume(id string) error {
 	if s.ClaudeSessionID == "" {
 		return errNoResume
 	}
-	if err := m.run(s, append([]string{"--resume", s.ClaudeSessionID}, s.Args...)); err != nil {
+	if err := m.run(s, append(append([]string{"--resume", s.ClaudeSessionID}, s.Args...), m.restorePrompt(s.ClaudeSessionID)...)); err != nil {
 		return err
 	}
 	m.notify()
@@ -348,7 +348,7 @@ func (m *Manager) Handoff(id string) error {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	if err := OpenTerminal(cwd, append([]string{"claude", "--resume", sid, "--name", name}, args...)); err != nil {
+	if err := OpenTerminal(cwd, append(append([]string{"claude", "--resume", sid, "--name", name}, args...), m.restorePrompt(sid)...)); err != nil {
 		return err
 	}
 	return m.Close(id)

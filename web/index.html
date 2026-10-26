@@ -201,6 +201,11 @@
   dialog .checks { display: flex; gap: 18px; margin-top: 12px; }
   dialog .checks label { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--text); font: 12px var(--mono); cursor: pointer; }
   dialog .checks input { width: auto; margin: 0; accent-color: var(--accent); }
+  dialog textarea {
+    width: 100%; font: 13px/1.4 var(--mono); color: var(--text); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; resize: vertical;
+  }
+  dialog textarea:focus { outline: none; border-color: var(--accent); }
   dialog .err { color: var(--danger); font-size: 12px; margin-top: 8px; min-height: 1em; }
 </style>
 </head>
@@ -236,6 +241,15 @@
 </main>
 
 <div class="menu" id="menu"></div>
+
+<dialog id="restoreDlg">
+  <form method="dialog" id="restoreForm">
+    <h3>Restore message</h3>
+    <label for="rText">Sent as the first prompt whenever this conversation starts in a new process: Open here, Open in Terminal, Move, Resume, and after a claude-mux restart. Empty means none.</label>
+    <textarea id="rText" rows="5" placeholder="e.g. restart the ops watch"></textarea>
+    <div class="row"><button type="button" id="rCancel">Cancel</button><button class="primary">Save</button></div>
+  </form>
+</dialog>
 
 <dialog id="dlg">
   <form method="dialog" id="dlgForm">
@@ -301,7 +315,9 @@ const base = (p) => p.split("/").filter(Boolean).pop() || p;
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const waiting = (s) => s.status === "needs-you" || (s.status === "ready" && s.unseen);
 const isSaved = (sid) => !!sid && state.favourites.some((f) => f.claudeSessionId === sid);
-const star = (sid) => isSaved(sid) ? `<span class="star" title="Saved">★</span> ` : "";
+const favourite = (sid) => state.favourites.find((f) => f.claudeSessionId === sid);
+const star = (sid) => !isSaved(sid) ? "" : `<span class="star" title="Saved">★</span>${
+  favourite(sid).onRestore ? `<span class="star" title="Restore message: ${esc(favourite(sid).onRestore)}">↻</span>` : ""} `;
 // Saved conversations that run nowhere: no tab holds them and no terminal runs them.
 const idleSaved = () => state.favourites.filter((f) =>
   !state.sessions.some((s) => s.claudeSessionId === f.claudeSessionId) &&
@@ -372,7 +388,7 @@ function render() {
     const active = selected?.kind === "f" && selected.id === f.claudeSessionId;
     html += `<div class="tab ${active ? "active" : ""}" data-kind="f" data-id="${esc(f.claudeSessionId)}" title="${esc(f.cwd)}">
       <span class="dot saved"></span>
-      <span class="name">${esc(f.name)}</span>
+      <span class="name">${f.onRestore ? `<span class="star" title="Restore message: ${esc(f.onRestore)}">↻</span> ` : ""}${esc(f.name)}</span>
       <span class="key"></span>
       <span class="sub">not running · ${esc(base(f.cwd))}</span>
     </div>`;
@@ -381,10 +397,10 @@ function render() {
   renderBar();
 }
 
-// The top bar's buttons are the context menu's actions, minus the copy ones,
-// so the two never disagree.
+// The top bar's buttons are the context menu's actions, minus copying and
+// the restore message, so the two never disagree.
 function barActions(kind, id) {
-  const items = menuItems(kind, id).filter((it) => it && !it[0].startsWith("copy-"));
+  const items = menuItems(kind, id).filter((it) => it && !it[0].startsWith("copy-") && it[0] !== "restore-msg");
   return `<span class="actions">${items.map(([act, label, cls]) =>
     `<button data-act="${act}" class="${cls || ""}">${esc(label)}</button>`).join("")}</span>`;
 }
@@ -800,12 +816,13 @@ $("list").addEventListener("dragend", () => {
 // Right-click a tab for its actions.
 function menuItems(kind, id) {
   const save = (sid) => sid && (isSaved(sid) ? ["unsave", "Unsave"] : ["save", "★ Save"]);
+  const restore = (sid) => isSaved(sid) && ["restore-msg", "Restore message…"];
   const copy = (sid) => [sid && ["copy-id", "Copy session id"], ["copy-cwd", "Copy directory"]];
   let items;
   if (kind === "f") {
-    items = [["open-here", "Open here"], ["open-terminal", "Open in Terminal"], null, ...copy(id), null, ["unsave", "Remove from saved", "danger"]];
+    items = [["open-here", "Open here"], ["open-terminal", "Open in Terminal"], restore(id), null, ...copy(id), null, ["unsave", "Remove from saved", "danger"]];
   } else if (kind === "x") {
-    items = [["rename", "Rename…"], ["takeover", "Move here"], save(id), null, ...copy(id), null, ["close-ext", "Close", "danger"]];
+    items = [["rename", "Rename…"], ["takeover", "Move here"], save(id), restore(id), null, ...copy(id), null, ["close-ext", "Close", "danger"]];
   } else {
     const s = state.sessions.find((x) => x.id === id);
     if (!s) return [];
@@ -815,6 +832,7 @@ function menuItems(kind, id) {
       dead && s.claudeSessionId && ["resume", "Resume"],
       s.claudeSessionId && ["handoff", "Move to Terminal"],
       save(s.claudeSessionId),
+      restore(s.claudeSessionId),
       null,
       ...copy(s.claudeSessionId),
       null,
@@ -885,6 +903,19 @@ async function act(what, target = selected) {
       else await api("PUT", `/api/favourites/${encodeURIComponent(sid)}`, s
         ? { name: s.name, cwd: s.cwd, args: s.args || [] }
         : { name: x?.title || x?.name || "", cwd: x?.cwd || "", args: [] });
+    } else if (what === "restore-msg") {
+      const sid = target.kind === "s" ? state.sessions.find((x) => x.id === id)?.claudeSessionId : id;
+      const f = favourite(sid);
+      if (!f) return;
+      $("rText").value = f.onRestore || "";
+      $("restoreForm").onsubmit = async (e) => {
+        e.preventDefault();
+        $("restoreDlg").close();
+        await api("PUT", `/api/favourites/${encodeURIComponent(sid)}`, { ...f, onRestore: $("rText").value.trim() }).catch((err) => alert(err.message));
+      };
+      $("rCancel").onclick = () => $("restoreDlg").close();
+      $("restoreDlg").showModal();
+      $("rText").focus();
     } else if (what === "open-here") {
       const s = await api("POST", `/api/favourites/${encodeURIComponent(id)}/start`);
       state.sessions = [...state.sessions, s];

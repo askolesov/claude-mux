@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strings"
 )
 
 // Favourite is a saved conversation: what it takes to start it again, here
@@ -15,6 +16,7 @@ type Favourite struct {
 	Name            string   `json:"name"`
 	Cwd             string   `json:"cwd"`
 	Args            []string `json:"args"`
+	OnRestore       string   `json:"onRestore,omitempty"` // first prompt whenever it starts in a new process
 }
 
 func (m *Manager) loadFavourites() error {
@@ -101,6 +103,19 @@ func (m *Manager) Unfavourite(sid string) {
 	m.notify()
 }
 
+// restorePrompt is the saved conversation's restore message as claude's
+// first-prompt argument, sent whenever the conversation starts in a new
+// process: background tasks of the old one (a watcher) are gone and the
+// message can bring them back. After "--", so a message starting with "-"
+// stays a prompt.
+func (m *Manager) restorePrompt(sid string) []string {
+	f, err := m.Favourite(sid)
+	if err != nil || strings.TrimSpace(f.OnRestore) == "" {
+		return nil
+	}
+	return []string{"--", f.OnRestore}
+}
+
 // StartFavourite continues a saved conversation in a new tab.
 func (m *Manager) StartFavourite(sid string) (*Session, error) {
 	f, err := m.Favourite(sid)
@@ -116,5 +131,6 @@ func (m *Manager) FavouriteInTerminal(sid string) error {
 	if err != nil {
 		return err
 	}
-	return OpenTerminal(f.Cwd, append([]string{"claude", "--resume", f.ClaudeSessionID, "--name", f.Name}, f.Args...))
+	args := append([]string{"claude", "--resume", f.ClaudeSessionID, "--name", f.Name}, f.Args...)
+	return OpenTerminal(f.Cwd, append(args, m.restorePrompt(f.ClaudeSessionID)...))
 }
