@@ -107,7 +107,7 @@
   .placeholder { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); text-align: center; }
   .placeholder p { margin: 6px 0; }
 
-  .transcript { position: absolute; inset: 0 0 64px 0; overflow-y: auto; padding: 16px 22px 24px; display: none; }
+  .transcript { position: absolute; inset: 0 0 var(--composer-h, 64px) 0; overflow-y: auto; padding: 16px 22px 24px; display: none; }
   .transcript.shown { display: block; }
   .transcript .note { color: var(--muted); margin-bottom: 14px; }
   .msg { margin: 0 0 14px; word-break: break-word; max-width: 900px; }
@@ -128,8 +128,9 @@
   .md blockquote { border-left: 3px solid var(--line); padding-left: 10px; color: var(--muted); }
   .composer { position: absolute; left: 0; right: 0; bottom: 0; display: none; gap: 8px; padding: 12px 22px; border-top: 1px solid var(--line); background: var(--panel); }
   .composer.shown { display: flex; }
-  .composer input { flex: 1; font: 13px var(--mono); color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
-  .composer input:focus { outline: none; border-color: var(--accent); }
+  .composer textarea { flex: 1; font: 13px/1.4 var(--mono); color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; resize: none; max-height: 160px; }
+  .composer textarea:focus { outline: none; border-color: var(--accent); }
+  .composer { align-items: flex-end; }
   .composer .hint { color: var(--muted); font-size: 12px; align-self: center; white-space: nowrap; }
   .msg .who { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 2px; }
   .msg.user .body { background: var(--panel-2); border-radius: 8px; padding: 8px 10px; }
@@ -184,7 +185,7 @@
     </div>
     <div class="transcript" id="transcript"></div>
     <form class="composer" id="composer">
-      <input id="cText" placeholder="Message this session — typed into its terminal window" autocomplete="off">
+      <textarea id="cText" rows="1" placeholder="Message this session — typed into its terminal window (⇧↵ new line)"></textarea>
       <span class="hint" id="cHint"></span>
       <button class="primary">Send</button>
     </form>
@@ -566,16 +567,32 @@ $("dlgForm").addEventListener("submit", async (e) => {
     $("dlgErr").textContent = err.message;
   }
 });
+// The message box grows with its text; Enter sends, Shift+Enter breaks the line.
+function sizeComposer() {
+  const t = $("cText");
+  t.style.height = "auto";
+  t.style.height = Math.min(t.scrollHeight, 160) + "px";
+  document.body.style.setProperty("--composer-h", $("composer").offsetHeight + "px");
+}
+$("cText").addEventListener("input", sizeComposer);
+$("cText").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+    e.preventDefault();
+    $("composer").requestSubmit();
+  }
+});
+
 $("composer").addEventListener("submit", async (e) => {
   e.preventDefault();
   if (selected?.kind !== "x") return;
-  const text = $("cText").value.trim();
+  const text = $("cText").value.replace(/\s+$/, "");
   if (!text) return;
   const sid = selected.id;
   $("cHint").textContent = "sending…";
   try {
     await api("POST", `/api/external/${encodeURIComponent(sid)}/send`, { text });
     $("cText").value = "";
+    sizeComposer();
     $("cHint").textContent = "sent";
     setTimeout(() => loadTranscript(sid), 1500);
   } catch (err) {

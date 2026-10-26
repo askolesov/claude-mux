@@ -32,7 +32,10 @@ works, because the server strips the session markers from its children's env.
   `claude agents --json`) are listed with their last 40 messages from the
   transcript, Markdown rendered. The box at the bottom sends a message: it
   is typed into that session's Terminal.app or iTerm2 window over
-  AppleScript, as one line (line breaks become spaces). **Take over**
+  AppleScript, line breaks included. Claude reads a write of 64 bytes or
+  more as a paste, where Enter turns into a newline, so the text goes in
+  chunks of at most 48 bytes, joined with Alt+Enter and Backspace (see
+  `keystrokeChunks`). The window doesn't come to the front. **Take over**
   hangs up that session's claude process (SIGHUP to its pid only, so the
   window and its shell stay open), waits for it to exit, and continues the
   session here.

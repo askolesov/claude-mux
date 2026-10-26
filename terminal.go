@@ -7,24 +7,25 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 var errNoTerminal = errors.New("its terminal app can't be scripted; only Terminal and iTerm2 can")
 
-// typeScripts type a line into the tab or pane that owns a tty and press
-// Return, as if you typed it there. They take the tty and the text as
-// arguments, so neither is ever spliced into the script.
-//
-// Terminal's do script ends the text with a line feed, which a program in
-// raw mode (claude) reads as Ctrl+J, a newline in the prompt. The explicit
-// return (CR) before it is the Enter key.
+// typeScripts type keystroke chunks (arguments 2…) into the tab or pane that
+// owns a tty (argument 1), each as its own write followed by a line feed,
+// with a pause between them. Taking everything as arguments means no text is
+// ever spliced into the script.
 var typeScripts = map[string]string{
 	"Terminal": `on run argv
 	tell application "Terminal"
 		repeat with w in windows
 			repeat with t in tabs of w
 				if tty of t is item 1 of argv then
-					do script (item 2 of argv) & return in t
+					repeat with i from 2 to count of argv
+						do script (item i of argv) in t
+						delay 0.15
+					end repeat
 					return
 				end if
 			end repeat
@@ -38,7 +39,10 @@ end run`,
 			repeat with t in tabs of w
 				repeat with s in sessions of t
 					if tty of s is item 1 of argv then
-						tell s to write text (item 2 of argv)
+						repeat with i from 2 to count of argv
+							tell s to write text ((item i of argv) & linefeed) newline no
+							delay 0.15
+						end repeat
 						return
 					end if
 				end repeat
@@ -50,10 +54,8 @@ end run`,
 }
 
 // TypeInto types text into the terminal window running pid and submits it.
-// Line breaks become spaces: each would submit a prompt of its own.
 func TypeInto(pid int, text string) error {
-	text = strings.Join(strings.Fields(text), " ")
-	if text == "" {
+	if strings.TrimSpace(text) == "" {
 		return errors.New("empty message")
 	}
 	out, err := exec.Command("ps", "-o", "tty=", "-p", strconv.Itoa(pid)).Output()
@@ -65,7 +67,7 @@ func TypeInto(pid int, text string) error {
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command("osascript", "-", "/dev/"+tty, text)
+	cmd := exec.Command("osascript", append([]string{"-", "/dev/" + tty}, keystrokeChunks(text)...)...)
 	cmd.Stdin = strings.NewReader(typeScripts[app])
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -73,6 +75,47 @@ func TypeInto(pid int, text string) error {
 		return fmt.Errorf("%s: %s", app, strings.TrimSpace(stderr.String()))
 	}
 	return nil
+}
+
+// chunkBytes keeps every write well under 64 bytes: claude reads a longer
+// burst as a paste, where the closing Return becomes a newline instead of
+// submitting.
+const chunkBytes = 48
+
+// keystrokeChunks splits text into writes that claude reads as typing. The
+// scripts end every write with a line feed, which on its own submits the
+// prompt, so each chunk but the last ends with ESC: ESC + LF is Alt+Enter, a
+// newline in the prompt. A chunk that continues the same line starts with
+// DEL (Backspace) to take that newline back; a chunk that starts a new line
+// keeps it. The last chunk ends with CR, the Enter key.
+func keystrokeChunks(text string) []string {
+	var chunks []string
+	for _, line := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n") {
+		for i, piece := range splitBytes(line, chunkBytes) {
+			if i > 0 {
+				piece = "\x7f" + piece
+			}
+			chunks = append(chunks, piece+"\x1b")
+		}
+	}
+	last := chunks[len(chunks)-1]
+	chunks[len(chunks)-1] = strings.TrimSuffix(last, "\x1b") + "\r"
+	return chunks
+}
+
+// splitBytes cuts s into pieces of at most n bytes, never inside a
+// character. An empty s is one empty piece: a blank line still takes a write.
+func splitBytes(s string, n int) []string {
+	pieces := []string{}
+	for len(s) > n {
+		cut := n
+		for !utf8.RuneStart(s[cut]) {
+			cut--
+		}
+		pieces = append(pieces, s[:cut])
+		s = s[cut:]
+	}
+	return append(pieces, s)
 }
 
 // terminalApp walks up from pid to the terminal app that owns it.
