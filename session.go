@@ -39,7 +39,7 @@ type Session struct {
 	status      Status
 	statusSince time.Time
 	unseen      bool
-	claudeName  string // the name claude reported last; /rename changes it
+	pendingName string // a rename waiting for claude to be ready
 	cmd         *exec.Cmd
 	ptmx        *os.File
 	scrollback  []byte
@@ -187,6 +187,21 @@ func (s *Session) write(p []byte) {
 	if ptmx != nil {
 		_, _ = ptmx.Write(p)
 	}
+}
+
+// typeRename types the rename keys into the pty, a few at a time so claude
+// never reads them as a paste, with Enter as a write of its own.
+func (s *Session) typeRename(name string) {
+	clear, command := renameKeys(name)
+	go func() {
+		for i := 0; i < len(clear); i += chunkBytes {
+			s.write([]byte(clear[i:min(i+chunkBytes, len(clear))]))
+			time.Sleep(60 * time.Millisecond)
+		}
+		s.write([]byte(command))
+		time.Sleep(150 * time.Millisecond)
+		s.write([]byte("\r"))
+	}()
 }
 
 func (s *Session) resize(cols, rows uint16) {

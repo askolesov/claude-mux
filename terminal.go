@@ -77,6 +77,15 @@ func TypeInto(pid int, text string) error {
 	return nil
 }
 
+// renameKeys asks claude to rename the session: Ctrl+U clears whatever is
+// typed in its prompt (one Ctrl+U per line end and per line, so 160 clear a
+// draft of up to about 80 lines; an unsent draft is lost), then /rename.
+// Claude's own name is the one the sidebar shows; it reports it in
+// claude agents --json, and the tabs follow that.
+func renameKeys(name string) (clear, command string) {
+	return strings.Repeat("\x15", 160), "/rename " + strings.Join(strings.Fields(name), " ")
+}
+
 // chunkBytes keeps every write well under 64 bytes: claude reads a longer
 // burst as a paste, where the closing Return becomes a newline instead of
 // submitting.

@@ -63,5 +63,14 @@ func (m *Manager) ApplyHook(id string, p HookPayload) error {
 	if st != "" && s.setStatus(st) {
 		m.notify()
 	}
+	if st == StatusReady {
+		s.mu.Lock()
+		name := s.pendingName
+		s.pendingName = ""
+		s.mu.Unlock()
+		if name != "" {
+			s.typeRename(name)
+		}
+	}
 	return nil
 }

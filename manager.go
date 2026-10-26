@@ -256,45 +256,58 @@ func (m *Manager) WatchStartup(ctx context.Context) {
 	}
 }
 
+// Rename renames the session through claude: /rename typed into it, now if
+// it waits for a prompt, else when it next does (typed into a turn or a
+// permission prompt it would land in the wrong place). The tab follows the
+// name claude then reports. A session that doesn't run keeps the name for
+// its next start, which passes it as --name.
 func (m *Manager) Rename(id, name string) error {
+	if strings.TrimSpace(name) == "" {
+		return errors.New("empty name")
+	}
 	s, err := m.Get(id)
 	if err != nil {
 		return err
 	}
 	s.mu.Lock()
-	s.Name = name
+	running, ready := s.ptmx != nil, s.status == StatusReady
+	if running && !ready {
+		s.pendingName = name
+	}
+	if !running {
+		s.Name = name
+	}
 	sid := s.ClaudeSessionID
 	s.mu.Unlock()
-	m.renameFavourite(sid, name)
-	m.save()
-	m.notify()
+	switch {
+	case running && ready:
+		s.typeRename(name)
+	case !running:
+		m.renameFavourite(sid, name)
+		m.save()
+		m.notify()
+	}
 	return nil
 }
 
 // FollowClaudeName gives the tab of the session run by pid the name claude
-// reports for it, when that name changed since the last report: /rename in
-// the session renames the tab, while a rename made in the page stays until
-// claude's name changes again.
+// reports for it: claude's list is the source of truth for names.
 func (m *Manager) FollowClaudeName(pid int, name string) {
 	m.mu.Lock()
 	sessions := append([]*Session(nil), m.sessions...)
 	m.mu.Unlock()
 	for _, s := range sessions {
 		s.mu.Lock()
-		if s.cmd == nil || s.cmd.Process == nil || s.cmd.Process.Pid != pid || name == "" || name == s.claudeName {
+		if s.cmd == nil || s.cmd.Process == nil || s.cmd.Process.Pid != pid || name == "" || name == s.Name {
 			s.mu.Unlock()
 			continue
 		}
-		s.claudeName = name
-		renamed := s.Name != name
 		s.Name = name
 		sid := s.ClaudeSessionID
 		s.mu.Unlock()
-		if renamed {
-			m.renameFavourite(sid, name)
-			m.save()
-			m.notify()
-		}
+		m.renameFavourite(sid, name)
+		m.save()
+		m.notify()
 		return
 	}
 }

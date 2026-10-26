@@ -35,8 +35,9 @@ type External struct {
 type Externals struct {
 	m *Manager
 
-	mu   sync.Mutex
-	list []External
+	mu      sync.Mutex
+	list    []External
+	pending map[string]string // session id → a rename waiting for it to be idle
 }
 
 func (e *Externals) List() []External {
@@ -76,6 +77,10 @@ func (e *Externals) refresh(ctx context.Context) {
 			continue
 		}
 		x.Title = transcriptTitle(x.SessionID)
+		e.m.renameFavourite(x.SessionID, x.Name)
+		if x.Status == "idle" {
+			e.renameIfPending(x)
+		}
 		list = append(list, x)
 	}
 	e.mu.Lock()
@@ -85,6 +90,47 @@ func (e *Externals) refresh(ctx context.Context) {
 	if changed {
 		e.m.notify()
 	}
+}
+
+// Rename renames a session running in another terminal through claude: the
+// rename keys typed into its window, now if it is idle, else once the poll
+// sees it idle.
+func (e *Externals) Rename(sid, name string) error {
+	if strings.TrimSpace(name) == "" {
+		return errors.New("empty name")
+	}
+	for _, x := range e.List() {
+		if x.SessionID != sid {
+			continue
+		}
+		e.mu.Lock()
+		if e.pending == nil {
+			e.pending = map[string]string{}
+		}
+		e.pending[sid] = name
+		e.mu.Unlock()
+		if x.Status == "idle" {
+			e.renameIfPending(x)
+		}
+		return nil
+	}
+	return errNotFound
+}
+
+func (e *Externals) renameIfPending(x External) {
+	e.mu.Lock()
+	name, ok := e.pending[x.SessionID]
+	delete(e.pending, x.SessionID)
+	e.mu.Unlock()
+	if !ok {
+		return
+	}
+	clear, command := renameKeys(name)
+	go func() {
+		if err := TypeInto(x.PID, clear+command); err != nil {
+			fmt.Fprintln(os.Stderr, "rename:", err)
+		}
+	}()
 }
 
 // Stop hangs up the claude process running session sid elsewhere, as closing

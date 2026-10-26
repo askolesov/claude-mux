@@ -359,9 +359,9 @@ function render() {
     const active = selected?.kind === "x" && selected.id === x.sessionId;
     html += `<div class="tab external ${active ? "active" : ""}" data-kind="x" data-id="${esc(x.sessionId)}" title="${esc(x.cwd)}">
       <span class="dot ext ${esc(x.status)}"></span>
-      <span class="name">${star(x.sessionId)}${esc(x.title || x.name)}</span>
+      <span class="name">${star(x.sessionId)}${esc(x.name)}</span>
       <span class="key"></span>
-      <span class="sub">${esc(x.status)} · ${esc(x.kind)} · ${esc(x.name)} · ${esc(base(x.cwd))}</span>
+      <span class="sub">${esc(x.status)}${x.title && x.title !== x.name ? " · " + esc(x.title) : ""} · ${esc(base(x.cwd))}</span>
     </div>`;
   }
 
@@ -411,7 +411,7 @@ function renderBar() {
       </span>`;
   } else {
     const x = state.external.find((e) => e.sessionId === selected.id);
-    const name = x ? x.title || x.name : "ended";
+    const name = x ? x.name : "ended";
     bar.innerHTML = `
       <span class="title">${esc(name)}</span>
       <span class="pill">${x ? esc(x.status) : "not running"} · other terminal</span>
@@ -809,7 +809,7 @@ function menuItems(kind, id) {
   if (kind === "f") {
     items = [["open-here", "Open here"], ["open-terminal", "Open in Terminal"], null, ...copy(id), null, ["unsave", "Remove from saved", "danger"]];
   } else if (kind === "x") {
-    items = [["takeover", "Move here"], save(id), null, ...copy(id), null, ["close-ext", "Close", "danger"]];
+    items = [["rename", "Rename…"], ["takeover", "Move here"], save(id), null, ...copy(id), null, ["close-ext", "Close", "danger"]];
   } else {
     const s = state.sessions.find((x) => x.id === id);
     if (!s) return [];
@@ -862,10 +862,14 @@ async function act(what, target = selected) {
   if (!target) return;
   const id = target.id;
   try {
-    if (what === "rename" && target.kind === "s") {
-      const s = state.sessions.find((x) => x.id === id);
-      const name = prompt("Rename session", s?.name || "");
-      if (name && name.trim()) await api("PATCH", `/api/sessions/${id}`, { name: name.trim() });
+    if (what === "rename") {
+      // Claude renames itself (/rename); the sidebar shows the name it reports, within a few seconds.
+      const cur = target.kind === "s" ? state.sessions.find((x) => x.id === id)?.name : state.external.find((x) => x.sessionId === id)?.name;
+      const name = prompt("Rename session (sent to claude as /rename; an unsent draft in its prompt is cleared)", cur || "");
+      if (name && name.trim()) {
+        if (target.kind === "s") await api("PATCH", `/api/sessions/${id}`, { name: name.trim() });
+        else await api("POST", `/api/external/${encodeURIComponent(id)}/rename`, { name: name.trim() });
+      }
     } else if (what === "handoff") {
       await api("POST", `/api/sessions/${id}/handoff`);
     } else if (what === "resume") {

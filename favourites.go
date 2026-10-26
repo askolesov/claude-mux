@@ -83,11 +83,12 @@ func (m *Manager) SetFavourite(f Favourite) error {
 func (m *Manager) renameFavourite(sid, name string) {
 	m.mu.Lock()
 	i := slices.IndexFunc(m.favourites, func(f Favourite) bool { return f.ClaudeSessionID == sid })
-	if i >= 0 {
+	changed := i >= 0 && m.favourites[i].Name != name
+	if changed {
 		m.favourites[i].Name = name
 	}
 	m.mu.Unlock()
-	if i >= 0 {
+	if changed {
 		m.saveFavourites()
 	}
 }

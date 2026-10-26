@@ -50,8 +50,11 @@ Also:
   write of 64 bytes or more as a paste, where Enter turns into a newline, so
   the text goes in chunks of at most 48 bytes, joined with Alt+Enter and
   Backspace (see `keystrokeChunks`).
-- **Names**: a tab follows claude's own name, so `/rename` in the session
-  renames the tab. A rename in the page sticks until claude's name changes.
+- **Names** come from claude's own list (`claude agents --json`), for tabs,
+  Terminal sessions and saved ones alike. Rename (right-click, either kind)
+  goes through claude: it clears the prompt (an unsent draft is lost),
+  types `/rename <name>` and Enter, waiting first while claude works or
+  shows a prompt; the sidebar follows on the next poll.
 - **Themes**: page theme (Auto follows macOS, Light, Dark) and terminal theme
   (Auto matches the page, or Tokyo Night, Dracula, Solarized) in the footer,
   kept per browser.

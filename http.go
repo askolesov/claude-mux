@@ -52,6 +52,7 @@ func NewHandler(m *Manager, ext *Externals, defaultCwd string) http.Handler {
 	api.POST("/external/:sid/takeover", h.takeover)
 	api.POST("/external/:sid/send", h.send)
 	api.DELETE("/external/:sid", h.closeExternal)
+	api.POST("/external/:sid/rename", h.renameExternal)
 	api.GET("/transcript/:sid", h.transcript)
 	api.PUT("/favourites/:sid", h.favourite)
 	api.DELETE("/favourites/:sid", h.unfavourite)
@@ -285,6 +286,17 @@ func (h *Handler) favouriteInTerminal(c *gin.Context) {
 		return
 	}
 	respond(c, nil, h.m.FavouriteInTerminal(c.Param("sid")))
+}
+
+func (h *Handler) renameExternal(c *gin.Context) {
+	var req struct {
+		Name string `json:"name" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respond(c, nil, err)
+		return
+	}
+	respond(c, nil, h.ext.Rename(c.Param("sid"), req.Name))
 }
 
 // closeExternal ends a session running in another terminal; its window and
