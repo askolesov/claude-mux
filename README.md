@@ -29,7 +29,9 @@ works, because the server strips the session markers from its children's env.
   transcript, Markdown rendered. The box at the bottom sends a message: it
   is typed into that session's Terminal.app or iTerm2 window over
   AppleScript, as one line (line breaks become spaces). **Take over**
-  continues the session here after you quit it in its own terminal.
+  hangs up that session's claude process (SIGHUP to its pid only, so the
+  window and its shell stay open), waits for it to exit, and continues the
+  session here.
 - **Open in Terminal** is Take over in reverse: it ends the session here,
   waits for the process to exit, opens a Terminal.app window running
   `claude --resume <id>` in the same directory, and removes the tab. The

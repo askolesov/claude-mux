@@ -6,12 +6,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -81,6 +84,35 @@ func (e *Externals) refresh(ctx context.Context) {
 	if changed {
 		e.m.notify()
 	}
+}
+
+// Stop hangs up the claude process running session sid elsewhere, as closing
+// its terminal window would, and waits for it to exit. Only that process is
+// signalled: its window and shell stay open. A session not running is fine.
+func (e *Externals) Stop(sid string) error {
+	pid := 0
+	for _, x := range e.List() {
+		if x.SessionID == sid {
+			pid = x.PID
+		}
+	}
+	if pid == 0 {
+		return nil
+	}
+	if err := syscall.Kill(pid, syscall.SIGHUP); err != nil && !errors.Is(err, syscall.ESRCH) {
+		return fmt.Errorf("stop process %d: %w", pid, err)
+	}
+	for deadline := time.Now().Add(6 * time.Second); syscall.Kill(pid, 0) == nil; {
+		if time.Now().After(deadline) {
+			return fmt.Errorf("process %d didn't exit; quit it in its terminal", pid)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	e.mu.Lock()
+	e.list = slices.DeleteFunc(slices.Clone(e.list), func(x External) bool { return x.SessionID == sid })
+	e.mu.Unlock()
+	e.m.notify()
+	return nil
 }
 
 func jsonEqual(a, b any) bool {

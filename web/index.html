@@ -301,7 +301,7 @@ function renderBar() {
       <span class="title">${esc(name)}</span>
       <span class="pill">${x ? esc(x.status) : "not running"} · other terminal</span>
       <span class="cwd">${esc(x?.cwd || selected.cwd || "")}</span>
-      <span class="actions"><button data-act="takeover" ${x ? 'title="Quit it in its own terminal first"' : ""}>Take over</button></span>`;
+      <span class="actions"><button data-act="takeover" title="End it in its terminal and continue it here">Take over</button></span>`;
   }
 }
 
@@ -417,7 +417,7 @@ async function loadTranscript(sid) {
   try {
     const entries = await api("GET", `/api/transcript/${encodeURIComponent(sid)}`);
     const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
-    box.innerHTML = `<div class="note">Running in another terminal — last ${entries.length} messages, refreshed every few seconds. Messages you send below are typed into that window. <b>Take over</b> moves it here once you quit it there.</div>` +
+    box.innerHTML = `<div class="note">Running in another terminal — last ${entries.length} messages, refreshed every few seconds. Messages you send below are typed into that window. <b>Take over</b> ends it there and continues it here.</div>` +
       entries.map((e) => e.role === "tool"
         ? `<div class="msg tool">→ ${esc(e.text)}</div>`
         : `<div class="msg ${e.role}"><div class="who">${e.role === "user" ? "you" : "claude"}</div>${
@@ -575,6 +575,8 @@ async function act(what) {
       await api("DELETE", `/api/sessions/${id}`);
     } else if (what === "takeover") {
       const x = state.external.find((e) => e.sessionId === id);
+      const busy = x?.status === "busy" ? "\n\nIt is busy: the turn in progress will be cut off." : "";
+      if (x && !confirm(`End this session in its terminal (pid ${x.pid}) and continue it here? The window stays open.${busy}`)) return;
       const s = await api("POST", `/api/external/${encodeURIComponent(id)}/takeover`, { name: x?.title || x?.name || "", cwd: x?.cwd || selected.cwd || "" });
       state.sessions = [...state.sessions, s];
       select("s", s.id);

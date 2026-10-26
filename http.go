@@ -178,17 +178,16 @@ func (h *Handler) seen(c *gin.Context)    { respond(c, nil, h.m.MarkSeen(c.Param
 
 func (h *Handler) takeover(c *gin.Context) {
 	sid := c.Param("sid")
-	for _, x := range h.ext.List() {
-		if x.SessionID == sid {
-			respond(c, nil, errors.New("it is still running elsewhere: quit it there first (/exit)"))
-			return
-		}
-	}
 	var req struct {
 		Name string `json:"name"`
 		Cwd  string `json:"cwd" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
+		respond(c, nil, err)
+		return
+	}
+	// One live process per session: two would fork its transcript.
+	if err := h.ext.Stop(sid); err != nil {
 		respond(c, nil, err)
 		return
 	}
