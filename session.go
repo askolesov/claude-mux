@@ -38,6 +38,7 @@ type Session struct {
 	status      Status
 	statusSince time.Time
 	unseen      bool
+	claudeName  string // the name claude reported last; /rename changes it
 	cmd         *exec.Cmd
 	ptmx        *os.File
 	scrollback  []byte

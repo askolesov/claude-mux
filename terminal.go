@@ -119,7 +119,8 @@ end run`)
 	return nil
 }
 
-// shellQuote wraps s in single quotes; 'a'\”b' reads as a'b in sh, zsh and fish.
+// shellQuote wraps s in single quotes. A quote inside becomes '\” (close, escaped
+// quote, reopen), which sh, zsh and fish all read the same way.
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }

@@ -247,6 +247,32 @@ func (m *Manager) Rename(id, name string) error {
 	return nil
 }
 
+// FollowClaudeName gives the tab of the session run by pid the name claude
+// reports for it, when that name changed since the last report: /rename in
+// the session renames the tab, while a rename made in the page stays until
+// claude's name changes again.
+func (m *Manager) FollowClaudeName(pid int, name string) {
+	m.mu.Lock()
+	sessions := append([]*Session(nil), m.sessions...)
+	m.mu.Unlock()
+	for _, s := range sessions {
+		s.mu.Lock()
+		if s.cmd == nil || s.cmd.Process == nil || s.cmd.Process.Pid != pid || name == "" || name == s.claudeName {
+			s.mu.Unlock()
+			continue
+		}
+		s.claudeName = name
+		renamed := s.Name != name
+		s.Name = name
+		s.mu.Unlock()
+		if renamed {
+			m.save()
+			m.notify()
+		}
+		return
+	}
+}
+
 func (m *Manager) MarkSeen(id string) error {
 	s, err := m.Get(id)
 	if err != nil {

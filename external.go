@@ -71,7 +71,8 @@ func (e *Externals) refresh(ctx context.Context) {
 	}
 	list := []External{}
 	for _, x := range all {
-		if own[x.PID] || x.PID == os.Getpid() {
+		if own[x.PID] {
+			e.m.FollowClaudeName(x.PID, x.Name)
 			continue
 		}
 		x.Title = transcriptTitle(x.SessionID)

@@ -9,6 +9,10 @@ go -C tools/claude-mux run . -cwd ~/Documents/@Ankr/codespace
 # → http://127.0.0.1:7777
 ```
 
+`tools/claude-mux/restart.sh` rebuilds it, restarts it and resumes the
+sessions that were running. Run it from a regular terminal, because a
+session inside claude-mux is hung up by the restart.
+
 Start it from a normal terminal. Starting it from inside a claude session also
 works, because the server strips the session markers from its children's env.
 
@@ -39,6 +43,9 @@ works, because the server strips the session markers from its children's env.
 - **Kill / Resume**: kill ends the process and keeps the tab. Resume runs
   `claude --resume <id>` in it. After a server restart every session shows
   as stopped and can be resumed.
+- **Names**: a tab follows claude's own name, so `/rename` in the session
+  renames the tab. A rename in the page sticks until claude's name changes
+  again.
 - Keys: ⌥1–9 tab, ⌥↑/↓ prev/next, ⌥J next session that waits for you,
   ⌥N new, ⇧↵ newline in the prompt.
 
