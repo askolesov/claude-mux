@@ -381,23 +381,25 @@ function render() {
   renderBar();
 }
 
+// The top bar's buttons are the context menu's actions, minus the copy ones,
+// so the two never disagree.
+function barActions(kind, id) {
+  const items = menuItems(kind, id).filter((it) => it && !it[0].startsWith("copy-"));
+  return `<span class="actions">${items.map(([act, label, cls]) =>
+    `<button data-act="${act}" class="${cls || ""}">${esc(label)}</button>`).join("")}</span>`;
+}
+
 function renderBar() {
   const bar = $("bar");
   if (!selected) { bar.innerHTML = `<span class="cwd">Pick a session on the left.</span>`; return; }
   if (selected.kind === "s") {
     const s = state.sessions.find((x) => x.id === selected.id);
     if (!s) return;
-    const dead = s.status === "exited" || s.status === "stopped";
     bar.innerHTML = `
       <span class="title" title="Double-click to rename">${esc(s.name)}</span>
       <span class="pill ${esc(s.status)}">${esc(STATUS_TEXT[s.status] || s.status)}</span>
       <span class="cwd" title="${esc(s.cwd)}">${esc(s.cwd)}</span>
-      <span class="actions">
-        <button data-act="rename">Rename</button>
-        ${s.claudeSessionId ? `<button data-act="handoff" title="End it here and continue it in a Terminal window">Move to Terminal</button>` : ""}
-        ${dead && s.claudeSessionId ? `<button class="primary" data-act="resume">Resume</button>` : ""}
-        <button class="danger" data-act="close" title="End it and remove the tab">Close</button>
-      </span>`;
+      ${barActions("s", s.id)}`;
   } else if (selected.kind === "f") {
     const f = state.favourites.find((x) => x.claudeSessionId === selected.id);
     if (!f) return;
@@ -405,10 +407,7 @@ function renderBar() {
       <span class="title">${esc(f.name)}</span>
       <span class="pill">saved · not running</span>
       <span class="cwd" title="${esc(f.cwd)}">${esc(f.cwd)}</span>
-      <span class="actions">
-        <button class="primary" data-act="open-here">Open here</button>
-        <button data-act="open-terminal">Open in Terminal</button>
-      </span>`;
+      ${barActions("f", f.claudeSessionId)}`;
   } else {
     const x = state.external.find((e) => e.sessionId === selected.id);
     const name = x ? x.name : "ended";
@@ -416,10 +415,7 @@ function renderBar() {
       <span class="title">${esc(name)}</span>
       <span class="pill">${x ? esc(x.status) : "not running"} · other terminal</span>
       <span class="cwd">${esc(x?.cwd || selected.cwd || "")}</span>
-      <span class="actions">
-        <button data-act="takeover" title="End it in its terminal and continue it here">Move here</button>
-        ${x ? `<button class="danger" data-act="close-ext" title="End it; its terminal window stays open">Close</button>` : ""}
-      </span>`;
+      ${x ? barActions("x", x.sessionId) : ""}`;
   }
 }
 
