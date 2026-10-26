@@ -1,0 +1,552 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>claude-mux</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.css">
+<script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@xterm/addon-web-links@0.11.0/lib/addon-web-links.js"></script>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #161920;
+    --panel-2: #1c2029;
+    --line: #262b36;
+    --text: #d7dae0;
+    --muted: #7d8494;
+    --accent: #7aa2f7;
+    --working: #7aa2f7;
+    --ready: #4fd18b;
+    --needs: #f5b14c;
+    --dead: #5b6170;
+    --danger: #f16c6c;
+    --mono: "JetBrains Mono", "SF Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    display: grid; grid-template-columns: 270px 1fr; overflow: hidden;
+  }
+  button {
+    font: inherit; color: var(--text); background: var(--panel-2);
+    border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); }
+  button.danger:hover { border-color: var(--danger); color: var(--danger); }
+  button.primary { background: var(--accent); color: #0f1115; border-color: var(--accent); font-weight: 600; }
+
+  /* sidebar */
+  aside {
+    background: var(--panel); border-right: 1px solid var(--line);
+    display: flex; flex-direction: column; min-height: 0;
+  }
+  .brand { display: flex; align-items: center; justify-content: space-between; padding: 12px 12px 8px; }
+  .brand b { font-family: var(--mono); font-size: 14px; letter-spacing: .02em; }
+  .summary { padding: 0 12px 8px; color: var(--muted); font-size: 12px; }
+  .summary .n { color: var(--text); font-weight: 600; }
+  .list { flex: 1; overflow-y: auto; padding-bottom: 8px; }
+  .section { padding: 12px 12px 4px; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+  .tab {
+    display: grid; grid-template-columns: 14px 1fr auto; gap: 2px 8px; align-items: center;
+    padding: 7px 12px; margin: 1px 6px; border-radius: 6px; cursor: pointer; border: 1px solid transparent;
+  }
+  .tab:hover { background: var(--panel-2); }
+  .tab.active { background: var(--panel-2); border-color: var(--line); }
+  .tab .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tab.unseen .name { font-weight: 700; }
+  .tab .key { color: var(--muted); font-family: var(--mono); font-size: 11px; }
+  .tab .sub { grid-column: 2 / 4; color: var(--muted); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tab.unseen { box-shadow: inset 3px 0 0 var(--ready); }
+  .tab.needs-you { box-shadow: inset 3px 0 0 var(--needs); }
+  .tab.external { opacity: .85; }
+  .empty { padding: 4px 18px; color: var(--muted); font-size: 12px; }
+
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--dead); justify-self: center; }
+  .dot.working { background: var(--working); animation: pulse 1.2s ease-in-out infinite; }
+  .dot.starting { background: var(--muted); animation: pulse 1.2s ease-in-out infinite; }
+  .dot.ready { background: var(--ready); }
+  .dot.needs-you { background: var(--needs); animation: pulse .8s ease-in-out infinite; }
+  .dot.exited, .dot.stopped { background: transparent; border: 2px solid var(--dead); }
+  .dot.ext { background: transparent; border: 2px solid var(--muted); }
+  .dot.ext.busy { border-color: var(--working); }
+  @keyframes pulse { 50% { opacity: .35; } }
+
+  .foot { border-top: 1px solid var(--line); padding: 8px 12px; color: var(--muted); font-size: 11px; line-height: 1.7; }
+  .foot kbd { font-family: var(--mono); background: var(--panel-2); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; color: var(--text); }
+  .foot button { margin-top: 6px; font-size: 11px; padding: 2px 8px; }
+
+  /* main */
+  main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  .bar {
+    display: flex; align-items: center; gap: 10px; padding: 8px 14px;
+    border-bottom: 1px solid var(--line); background: var(--panel); min-height: 45px;
+  }
+  .bar .title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bar .cwd { color: var(--muted); font-family: var(--mono); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
+  .pill { font-size: 11px; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+  .pill.ready { color: var(--ready); border-color: var(--ready); }
+  .pill.needs-you { color: var(--needs); border-color: var(--needs); }
+  .pill.working { color: var(--working); border-color: var(--working); }
+  .bar .actions { display: flex; gap: 6px; }
+  .stage { flex: 1; position: relative; min-height: 0; }
+  .term { position: absolute; inset: 0; padding: 6px 0 0 10px; display: none; background: var(--bg); }
+  .term.shown { display: block; }
+  .placeholder { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); text-align: center; }
+  .placeholder p { margin: 6px 0; }
+
+  .transcript { position: absolute; inset: 0; overflow-y: auto; padding: 16px 22px 40px; display: none; }
+  .transcript.shown { display: block; }
+  .transcript .note { color: var(--muted); margin-bottom: 14px; }
+  .msg { margin: 0 0 12px; white-space: pre-wrap; word-break: break-word; max-width: 900px; }
+  .msg .who { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 2px; }
+  .msg.user .body { background: var(--panel-2); border-radius: 8px; padding: 8px 10px; }
+  .msg.tool { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+
+  dialog {
+    background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 10px;
+    padding: 18px; width: min(460px, 92vw);
+  }
+  dialog::backdrop { background: rgba(0, 0, 0, .5); }
+  dialog h3 { margin: 0 0 12px; font-size: 15px; }
+  dialog label { display: block; color: var(--muted); font-size: 12px; margin: 10px 0 4px; }
+  dialog input {
+    width: 100%; font: 13px var(--mono); color: var(--text); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px;
+  }
+  dialog input:focus { outline: none; border-color: var(--accent); }
+  dialog .row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+  dialog .err { color: var(--danger); font-size: 12px; margin-top: 8px; min-height: 1em; }
+</style>
+</head>
+<body>
+<aside>
+  <div class="brand"><b>claude-mux</b><button id="new" title="New session (⌥N)">+ New</button></div>
+  <div class="summary" id="summary"></div>
+  <div class="list" id="list"></div>
+  <div class="foot">
+    <kbd>⌥1–9</kbd> tab · <kbd>⌥↑↓</kbd> prev/next · <kbd>⌥J</kbd> next waiting<br>
+    <kbd>⌥N</kbd> new · <kbd>⇧↵</kbd> newline
+    <div><button id="notify" hidden>Enable notifications</button></div>
+  </div>
+</aside>
+<main>
+  <div class="bar" id="bar"></div>
+  <div class="stage" id="stage">
+    <div class="placeholder" id="placeholder">
+      <div><p>No session selected.</p><p><button class="primary" id="new2">+ New session</button></p></div>
+    </div>
+    <div class="transcript" id="transcript"></div>
+  </div>
+</main>
+
+<dialog id="dlg">
+  <form method="dialog" id="dlgForm">
+    <h3 id="dlgTitle">New session</h3>
+    <label for="fName">Name</label>
+    <input id="fName" placeholder="defaults to the folder name" autocomplete="off">
+    <label for="fCwd">Directory</label>
+    <input id="fCwd" list="cwds" autocomplete="off">
+    <datalist id="cwds"></datalist>
+    <label for="fArgs">Extra claude args</label>
+    <input id="fArgs" placeholder="e.g. --model opus --permission-mode acceptEdits" autocomplete="off">
+    <div class="err" id="dlgErr"></div>
+    <div class="row"><button type="button" id="dlgCancel">Cancel</button><button class="primary" id="dlgOk">Start</button></div>
+  </form>
+</dialog>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+};
+
+let state = { sessions: [], external: [], defaultCwd: "" };
+let selected = null;             // {kind: "s" | "x", id}
+const terms = new Map();         // session id -> {term, fit, ws, el, closed}
+const lastStatus = new Map();    // session id -> status, for notifications
+let transcriptTimer = null;
+
+const STATUS_TEXT = {
+  starting: "starting", working: "working", ready: "ready for input",
+  "needs-you": "needs you", exited: "exited", stopped: "stopped",
+};
+
+// ---------- api ----------
+async function api(method, path, body) {
+  const res = await fetch(path, {
+    method,
+    headers: body ? { "Content-Type": "application/json" } : {},
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) {
+    let msg = res.statusText;
+    try { msg = (await res.json()).error || msg; } catch {}
+    throw new Error(msg);
+  }
+  return res.status === 204 ? null : res.json();
+}
+
+// ---------- helpers ----------
+function ago(ts) {
+  const s = Math.max(0, (Date.now() - new Date(ts).getTime()) / 1000);
+  if (s < 60) return `${Math.floor(s)}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h`;
+  return `${Math.floor(s / 86400)}d`;
+}
+const base = (p) => p.split("/").filter(Boolean).pop() || p;
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const waiting = (s) => s.status === "needs-you" || (s.status === "ready" && s.unseen);
+
+// ---------- rendering ----------
+function render() {
+  const { sessions, external } = state;
+  const needs = sessions.filter((s) => s.status === "needs-you").length;
+  const ready = sessions.filter((s) => s.status === "ready").length;
+  const working = sessions.filter((s) => s.status === "working" || s.status === "starting").length;
+  $("summary").innerHTML =
+    `<span class="n">${needs}</span> need you · <span class="n">${ready}</span> ready · <span class="n">${working}</span> working`;
+
+  const waitingCount = sessions.filter(waiting).length;
+  document.title = waitingCount ? `(${waitingCount}) claude-mux` : "claude-mux";
+
+  let html = `<div class="section">Sessions</div>`;
+  if (!sessions.length) html += `<div class="empty">None yet — ⌥N starts one.</div>`;
+  sessions.forEach((s, i) => {
+    const active = selected?.kind === "s" && selected.id === s.id;
+    const cls = ["tab", active && "active", s.unseen && "unseen", s.status === "needs-you" && "needs-you"].filter(Boolean).join(" ");
+    html += `<div class="${cls}" data-kind="s" data-id="${esc(s.id)}" title="${esc(s.cwd)}">
+      <span class="dot ${esc(s.status)}"></span>
+      <span class="name">${esc(s.name)}</span>
+      <span class="key">${i < 9 ? "⌥" + (i + 1) : ""}</span>
+      <span class="sub">${esc(STATUS_TEXT[s.status] || s.status)} · ${ago(s.statusSince)} · ${esc(base(s.cwd))}</span>
+    </div>`;
+  });
+
+  html += `<div class="section">Other terminals</div>`;
+  if (!external.length) html += `<div class="empty">No other claude sessions running.</div>`;
+  for (const x of external) {
+    const active = selected?.kind === "x" && selected.id === x.sessionId;
+    html += `<div class="tab external ${active ? "active" : ""}" data-kind="x" data-id="${esc(x.sessionId)}" title="${esc(x.cwd)}">
+      <span class="dot ext ${esc(x.status)}"></span>
+      <span class="name">${esc(x.title || x.name)}</span>
+      <span class="key"></span>
+      <span class="sub">${esc(x.status)} · ${esc(x.kind)} · ${esc(x.name)} · ${esc(base(x.cwd))}</span>
+    </div>`;
+  }
+  $("list").innerHTML = html;
+  renderBar();
+}
+
+function renderBar() {
+  const bar = $("bar");
+  if (!selected) { bar.innerHTML = `<span class="cwd">Pick a session on the left.</span>`; return; }
+  if (selected.kind === "s") {
+    const s = state.sessions.find((x) => x.id === selected.id);
+    if (!s) return;
+    const dead = s.status === "exited" || s.status === "stopped";
+    bar.innerHTML = `
+      <span class="title" title="Double-click to rename">${esc(s.name)}</span>
+      <span class="pill ${esc(s.status)}">${esc(STATUS_TEXT[s.status] || s.status)}</span>
+      <span class="cwd" title="${esc(s.cwd)}">${esc(s.cwd)}</span>
+      <span class="actions">
+        <button data-act="rename">Rename</button>
+        ${dead && s.claudeSessionId ? `<button class="primary" data-act="resume">Resume</button>` : ""}
+        ${dead ? `<button class="danger" data-act="remove">Remove</button>` : `<button class="danger" data-act="kill">Kill</button>`}
+      </span>`;
+  } else {
+    const x = state.external.find((e) => e.sessionId === selected.id);
+    const name = x ? x.title || x.name : "ended";
+    bar.innerHTML = `
+      <span class="title">${esc(name)}</span>
+      <span class="pill">${x ? esc(x.status) : "not running"} · read-only</span>
+      <span class="cwd">${esc(x?.cwd || selected.cwd || "")}</span>
+      <span class="actions"><button data-act="takeover" ${x ? 'title="Quit it in its own terminal first"' : ""}>Take over</button></span>`;
+  }
+}
+
+// ---------- terminals ----------
+function ensureTerm(id) {
+  if (terms.has(id)) return terms.get(id);
+  const el = document.createElement("div");
+  el.className = "term";
+  $("stage").appendChild(el);
+  const term = new Terminal({
+    fontFamily: '"JetBrains Mono", "SF Mono", Menlo, monospace',
+    fontSize: 13,
+    cursorBlink: true,
+    allowProposedApi: true,
+    scrollback: 20000,
+    theme: { background: "#0f1115", foreground: "#d7dae0", cursor: "#7aa2f7", selectionBackground: "#33467c" },
+  });
+  const fit = new FitAddon.FitAddon();
+  term.loadAddon(fit);
+  term.loadAddon(new WebLinksAddon.WebLinksAddon());
+  term.open(el);
+  const t = { term, fit, el, ws: null, closed: false, retry: 0 };
+
+  // Shift+Enter: ESC CR, which Claude Code reads as a newline in the prompt.
+  term.attachCustomKeyEventHandler((e) => {
+    if (e.key === "Enter" && e.shiftKey) {
+      if (e.type === "keydown") send(t, { t: "in", d: "\x1b\r" });
+      return false;
+    }
+    return true;
+  });
+  term.onData((d) => send(t, { t: "in", d }));
+  term.onResize(({ cols, rows }) => send(t, { t: "resize", c: cols, r: rows }));
+  connect(id, t);
+  terms.set(id, t);
+  return t;
+}
+
+function send(t, msg) {
+  if (t.ws && t.ws.readyState === WebSocket.OPEN) t.ws.send(JSON.stringify(msg));
+}
+
+function connect(id, t) {
+  const ws = new WebSocket(`ws://${location.host}/api/sessions/${encodeURIComponent(id)}/term`);
+  ws.binaryType = "arraybuffer";
+  t.ws = ws;
+  ws.onopen = () => {
+    t.retry = 0;
+    t.term.reset(); // the server replays its scrollback first
+    send(t, { t: "resize", c: t.term.cols, r: t.term.rows });
+  };
+  ws.onmessage = (e) => t.term.write(new Uint8Array(e.data));
+  ws.onclose = () => {
+    if (t.closed) return;
+    t.retry = Math.min(t.retry + 1, 6);
+    setTimeout(() => { if (!t.closed && state.sessions.some((s) => s.id === id)) connect(id, t); }, 500 * t.retry);
+  };
+}
+
+function dropTerm(id) {
+  const t = terms.get(id);
+  if (!t) return;
+  t.closed = true;
+  t.ws?.close();
+  t.term.dispose();
+  t.el.remove();
+  terms.delete(id);
+}
+
+function fitSelected() {
+  if (selected?.kind !== "s") return;
+  const t = terms.get(selected.id);
+  if (t) { t.fit.fit(); }
+}
+
+// ---------- selection ----------
+function select(kind, id, extra = {}) {
+  selected = { kind, id, ...extra };
+  store.set("mux.selected", JSON.stringify({ kind, id }));
+  for (const [tid, t] of terms) t.el.classList.toggle("shown", kind === "s" && tid === id);
+  $("placeholder").style.display = "none";
+  $("transcript").classList.toggle("shown", kind === "x");
+  clearInterval(transcriptTimer);
+
+  if (kind === "s") {
+    const t = ensureTerm(id);
+    t.el.classList.add("shown");
+    requestAnimationFrame(() => { fitSelected(); t.term.focus(); });
+    markSeen(id);
+  } else {
+    loadTranscript(id);
+    transcriptTimer = setInterval(() => loadTranscript(id), 4000);
+  }
+  render();
+}
+
+function markSeen(id) {
+  const s = state.sessions.find((x) => x.id === id);
+  if (s?.unseen && document.visibilityState === "visible") api("POST", `/api/sessions/${id}/seen`).catch(() => {});
+}
+
+async function loadTranscript(sid) {
+  const box = $("transcript");
+  try {
+    const entries = await api("GET", `/api/transcript/${encodeURIComponent(sid)}`);
+    const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+    box.innerHTML = `<div class="note">Running in another terminal — last ${entries.length} messages, refreshed every few seconds. Quit it there and press <b>Take over</b> to continue it here.</div>` +
+      entries.map((e) => e.role === "tool"
+        ? `<div class="msg tool">→ ${esc(e.text)}</div>`
+        : `<div class="msg ${e.role}"><div class="who">${e.role === "user" ? "you" : "claude"}</div><div class="body">${esc(e.text)}</div></div>`).join("");
+    if (atBottom) box.scrollTop = box.scrollHeight;
+  } catch (err) {
+    box.innerHTML = `<div class="note">No transcript: ${esc(err.message)}</div>`;
+  }
+}
+
+function ordered() {
+  return [
+    ...state.sessions.map((s) => ({ kind: "s", id: s.id })),
+    ...state.external.map((x) => ({ kind: "x", id: x.sessionId })),
+  ];
+}
+
+function step(dir) {
+  const all = ordered();
+  if (!all.length) return;
+  const i = all.findIndex((t) => selected && t.kind === selected.kind && t.id === selected.id);
+  const next = all[(i + dir + all.length) % all.length];
+  select(next.kind, next.id);
+}
+
+// ⌥J: the next session that waits for you, permission prompts first.
+function jumpWaiting() {
+  const list = state.sessions;
+  const start = Math.max(0, list.findIndex((s) => selected?.kind === "s" && s.id === selected.id));
+  const rot = [...list.slice(start + 1), ...list.slice(0, start + 1)];
+  const next = rot.find((s) => s.status === "needs-you") || rot.find((s) => s.status === "ready" && s.unseen);
+  if (next) select("s", next.id);
+}
+
+// ---------- notifications ----------
+function notifyTransitions() {
+  for (const s of state.sessions) {
+    const prev = lastStatus.get(s.id);
+    lastStatus.set(s.id, s.status);
+    if (!prev || prev === s.status) continue;
+    if (s.status === "starting" || prev === "exited" || prev === "stopped") {
+      const t = terms.get(s.id);
+      if (t && t.ws?.readyState !== WebSocket.OPEN) { t.retry = 0; connect(s.id, t); }
+    }
+    if (s.status !== "ready" && s.status !== "needs-you") continue;
+    const looking = document.visibilityState === "visible" && document.hasFocus() && selected?.kind === "s" && selected.id === s.id;
+    if (looking || typeof Notification === "undefined" || Notification.permission !== "granted") continue;
+    const n = new Notification(s.name, { body: s.status === "needs-you" ? "needs you" : "ready for input", tag: s.id });
+    n.onclick = () => { window.focus(); select("s", s.id); n.close(); };
+  }
+}
+
+function updateNotifyButton() {
+  const b = $("notify");
+  b.hidden = typeof Notification === "undefined" || Notification.permission !== "default";
+}
+
+// ---------- state stream ----------
+function applyState(next) {
+  state = next;
+  for (const id of [...terms.keys()]) if (!state.sessions.some((s) => s.id === id)) dropTerm(id);
+  if (selected?.kind === "s" && !state.sessions.some((s) => s.id === selected.id)) {
+    selected = null;
+    $("placeholder").style.display = "";
+  }
+  notifyTransitions();
+  if (selected?.kind === "s") markSeen(selected.id);
+  render();
+}
+
+function stream() {
+  const es = new EventSource("/api/events");
+  es.onmessage = (e) => applyState(JSON.parse(e.data));
+  es.onerror = () => { $("summary").textContent = "server unreachable — retrying…"; };
+}
+
+// ---------- actions ----------
+function openNew(prefill = {}) {
+  const cwds = new Set([state.defaultCwd, ...state.sessions.map((s) => s.cwd), ...state.external.map((x) => x.cwd)]);
+  $("cwds").innerHTML = [...cwds].filter(Boolean).map((c) => `<option value="${esc(c)}">`).join("");
+  $("fName").value = prefill.name || "";
+  $("fCwd").value = prefill.cwd || store.get("mux.lastCwd") || state.defaultCwd;
+  $("fArgs").value = store.get("mux.lastArgs") || "";
+  $("dlgErr").textContent = "";
+  $("dlg").showModal();
+  $("fName").focus();
+}
+
+$("dlgForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const body = { name: $("fName").value, cwd: $("fCwd").value, args: $("fArgs").value };
+  try {
+    const s = await api("POST", "/api/sessions", body);
+    store.set("mux.lastCwd", body.cwd);
+    store.set("mux.lastArgs", body.args);
+    $("dlg").close();
+    state.sessions = [...state.sessions.filter((x) => x.id !== s.id), s];
+    select("s", s.id);
+  } catch (err) {
+    $("dlgErr").textContent = err.message;
+  }
+});
+$("dlgCancel").onclick = () => $("dlg").close();
+$("new").onclick = () => openNew();
+$("new2").onclick = () => openNew();
+$("notify").onclick = async () => { await Notification.requestPermission(); updateNotifyButton(); };
+
+$("list").addEventListener("click", (e) => {
+  const tab = e.target.closest(".tab");
+  if (!tab) return;
+  const extra = tab.dataset.kind === "x" ? { cwd: state.external.find((x) => x.sessionId === tab.dataset.id)?.cwd } : {};
+  select(tab.dataset.kind, tab.dataset.id, extra);
+});
+
+$("bar").addEventListener("dblclick", (e) => { if (e.target.classList.contains("title")) act("rename"); });
+$("bar").addEventListener("click", (e) => { const b = e.target.closest("button[data-act]"); if (b) act(b.dataset.act); });
+
+async function act(what) {
+  if (!selected) return;
+  const id = selected.id;
+  try {
+    if (what === "rename" && selected.kind === "s") {
+      const s = state.sessions.find((x) => x.id === id);
+      const name = prompt("Rename session", s?.name || "");
+      if (name && name.trim()) await api("PATCH", `/api/sessions/${id}`, { name: name.trim() });
+    } else if (what === "resume") {
+      await api("POST", `/api/sessions/${id}/resume`);
+      terms.get(id)?.term.focus();
+    } else if (what === "kill") {
+      if (confirm("Kill this session? Its conversation stays resumable.")) await api("POST", `/api/sessions/${id}/kill`);
+    } else if (what === "remove") {
+      await api("DELETE", `/api/sessions/${id}`);
+    } else if (what === "takeover") {
+      const x = state.external.find((e) => e.sessionId === id);
+      const s = await api("POST", `/api/external/${encodeURIComponent(id)}/takeover`, { name: x?.title || x?.name || "", cwd: x?.cwd || selected.cwd || "" });
+      state.sessions = [...state.sessions, s];
+      select("s", s.id);
+    }
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+// Shortcuts are caught before the terminal sees them.
+window.addEventListener("keydown", (e) => {
+  if (!e.altKey || e.metaKey || e.ctrlKey) return;
+  let handled = true;
+  if (/^Digit[1-9]$/.test(e.code)) {
+    const s = state.sessions[Number(e.code.slice(5)) - 1];
+    if (s) select("s", s.id);
+  } else if (e.code === "KeyN") openNew();
+  else if (e.code === "KeyJ") jumpWaiting();
+  else if (e.code === "ArrowUp") step(-1);
+  else if (e.code === "ArrowDown") step(1);
+  else handled = false;
+  if (handled) { e.preventDefault(); e.stopPropagation(); }
+}, true);
+
+window.addEventListener("resize", fitSelected);
+new ResizeObserver(fitSelected).observe($("stage"));
+document.addEventListener("visibilitychange", () => { if (selected?.kind === "s") markSeen(selected.id); });
+window.addEventListener("focus", () => { if (selected?.kind === "s") markSeen(selected.id); });
+setInterval(render, 15000); // keep the "3m ago" labels moving
+
+// ---------- boot ----------
+(async () => {
+  updateNotifyButton();
+  try {
+    applyState(await api("GET", "/api/state"));
+    const saved = JSON.parse(store.get("mux.selected") || "null");
+    if (saved?.kind === "s" && state.sessions.some((s) => s.id === saved.id)) select("s", saved.id);
+  } catch {}
+  stream();
+})();
+</script>
+</body>
+</html>
