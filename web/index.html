@@ -119,6 +119,9 @@
   }
   dialog input:focus { outline: none; border-color: var(--accent); }
   dialog .row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+  dialog .checks { display: flex; gap: 18px; margin-top: 12px; }
+  dialog .checks label { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--text); font: 12px var(--mono); cursor: pointer; }
+  dialog .checks input { width: auto; margin: 0; accent-color: var(--accent); }
   dialog .err { color: var(--danger); font-size: 12px; margin-top: 8px; min-height: 1em; }
 </style>
 </head>
@@ -153,6 +156,10 @@
     <datalist id="cwds"></datalist>
     <label for="fArgs">Extra claude args</label>
     <input id="fArgs" placeholder="e.g. --model opus --permission-mode acceptEdits" autocomplete="off">
+    <div class="checks">
+      <label><input type="checkbox" id="fSkip"> --dangerously-skip-permissions</label>
+      <label><input type="checkbox" id="fChrome"> --chrome</label>
+    </div>
     <div class="err" id="dlgErr"></div>
     <div class="row"><button type="button" id="dlgCancel">Cancel</button><button class="primary" id="dlgOk">Start</button></div>
   </form>
@@ -456,6 +463,8 @@ function openNew(prefill = {}) {
   $("fName").value = prefill.name || "";
   $("fCwd").value = prefill.cwd || store.get("mux.lastCwd") || state.defaultCwd;
   $("fArgs").value = store.get("mux.lastArgs") || "";
+  $("fSkip").checked = store.get("mux.skip") === "1";
+  $("fChrome").checked = store.get("mux.chrome") === "1";
   $("dlgErr").textContent = "";
   $("dlg").showModal();
   $("fName").focus();
@@ -463,11 +472,14 @@ function openNew(prefill = {}) {
 
 $("dlgForm").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const body = { name: $("fName").value, cwd: $("fCwd").value, args: $("fArgs").value };
+  const flags = [$("fSkip").checked && "--dangerously-skip-permissions", $("fChrome").checked && "--chrome"].filter(Boolean);
+  const body = { name: $("fName").value, cwd: $("fCwd").value, args: [...flags, $("fArgs").value].join(" ") };
   try {
     const s = await api("POST", "/api/sessions", body);
     store.set("mux.lastCwd", body.cwd);
-    store.set("mux.lastArgs", body.args);
+    store.set("mux.lastArgs", $("fArgs").value);
+    store.set("mux.skip", $("fSkip").checked ? "1" : "0");
+    store.set("mux.chrome", $("fChrome").checked ? "1" : "0");
     $("dlg").close();
     state.sessions = [...state.sessions.filter((x) => x.id !== s.id), s];
     select("s", s.id);
