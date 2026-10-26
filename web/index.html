@@ -69,6 +69,9 @@
   .tab.unseen { box-shadow: inset 3px 0 0 var(--ready); }
   .tab.needs-you { box-shadow: inset 3px 0 0 var(--needs); }
   .tab.external { opacity: .85; }
+  .tab.drop-before { box-shadow: inset 0 2px 0 var(--accent); }
+  .tab.drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
+  .tab.dragging { opacity: .4; }
   .empty { padding: 4px 18px; color: var(--muted); font-size: 12px; }
 
   .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--dead); justify-self: center; }
@@ -137,6 +140,16 @@
     padding: 18px; width: min(460px, 92vw);
   }
   dialog::backdrop { background: rgba(0, 0, 0, .5); }
+
+  .menu {
+    position: fixed; z-index: 50; min-width: 190px; padding: 4px; display: none;
+    background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, .4);
+  }
+  .menu.open { display: block; }
+  .menu button { display: block; width: 100%; text-align: left; border: 0; background: none; border-radius: 5px; padding: 6px 10px; }
+  .menu button:hover { background: var(--line); }
+  .menu button.danger:hover { color: var(--danger); }
+  .menu hr { border: 0; border-top: 1px solid var(--line); margin: 4px 2px; }
   dialog h3 { margin: 0 0 12px; font-size: 15px; }
   dialog label { display: block; color: var(--muted); font-size: 12px; margin: 10px 0 4px; }
   dialog input {
@@ -177,6 +190,8 @@
     </form>
   </div>
 </main>
+
+<div class="menu" id="menu"></div>
 
 <dialog id="dlg">
   <form method="dialog" id="dlgForm">
@@ -259,7 +274,11 @@ function favicon(dot) {
 }
 
 // ---------- rendering ----------
+let dragId = null;        // the session tab being dragged; renders wait for the drop
+let renderPending = false;
+
 function render() {
+  if (dragId) { renderPending = true; return; }
   const { sessions, external } = state;
   const needs = sessions.filter((s) => s.status === "needs-you").length;
   const ready = sessions.filter((s) => s.status === "ready").length;
@@ -276,7 +295,7 @@ function render() {
   sessions.forEach((s, i) => {
     const active = selected?.kind === "s" && selected.id === s.id;
     const cls = ["tab", active && "active", s.unseen && "unseen", s.status === "needs-you" && "needs-you"].filter(Boolean).join(" ");
-    html += `<div class="${cls}" data-kind="s" data-id="${esc(s.id)}" title="${esc(s.cwd)}">
+    html += `<div class="${cls}" data-kind="s" data-id="${esc(s.id)}" title="${esc(s.cwd)}" draggable="true">
       <span class="dot ${esc(s.status)}"></span>
       <span class="name">${esc(s.name)}</span>
       <span class="key">${i < 9 ? "⌥" + (i + 1) : ""}</span>
@@ -575,19 +594,104 @@ $("list").addEventListener("click", (e) => {
   select(tab.dataset.kind, tab.dataset.id, extra);
 });
 
+// Drag a session tab to reorder; the server keeps the order.
+function dropSide(tab, e) {
+  const r = tab.getBoundingClientRect();
+  return e.clientY < r.top + r.height / 2 ? "before" : "after";
+}
+function clearDrop() {
+  for (const t of $("list").querySelectorAll(".drop-before, .drop-after")) t.classList.remove("drop-before", "drop-after");
+}
+$("list").addEventListener("dragstart", (e) => {
+  const tab = e.target.closest('.tab[data-kind="s"]');
+  if (!tab) return;
+  dragId = tab.dataset.id;
+  e.dataTransfer.effectAllowed = "move";
+  e.dataTransfer.setData("text/plain", dragId);
+  tab.classList.add("dragging");
+});
+$("list").addEventListener("dragover", (e) => {
+  const tab = e.target.closest('.tab[data-kind="s"]');
+  if (!dragId || !tab) return;
+  e.preventDefault();
+  clearDrop();
+  if (tab.dataset.id !== dragId) tab.classList.add("drop-" + dropSide(tab, e));
+});
+$("list").addEventListener("drop", (e) => {
+  const tab = e.target.closest('.tab[data-kind="s"]');
+  if (!dragId || !tab || tab.dataset.id === dragId) return;
+  e.preventDefault();
+  const ids = state.sessions.map((s) => s.id).filter((id) => id !== dragId);
+  ids.splice(ids.indexOf(tab.dataset.id) + (dropSide(tab, e) === "after" ? 1 : 0), 0, dragId);
+  state.sessions = ids.map((id) => state.sessions.find((s) => s.id === id));
+  api("PUT", "/api/sessions/order", { ids }).catch((err) => alert(err.message));
+});
+$("list").addEventListener("dragend", () => {
+  dragId = null;
+  renderPending = false;
+  clearDrop();
+  render();
+});
+
+// Right-click a tab for its actions.
+function menuItems(kind, id) {
+  if (kind === "x") return [["takeover", "Take over"], null, ["copy-id", "Copy session id"], ["copy-cwd", "Copy directory"]];
+  const s = state.sessions.find((x) => x.id === id);
+  if (!s) return [];
+  const dead = s.status === "exited" || s.status === "stopped";
+  return [
+    ["rename", "Rename…"],
+    dead && s.claudeSessionId && ["resume", "Resume"],
+    !dead && ["kill", "Kill"],
+    s.claudeSessionId && ["handoff", "Open in Terminal"],
+    null,
+    s.claudeSessionId && ["copy-id", "Copy session id"],
+    ["copy-cwd", "Copy directory"],
+    null,
+    ["remove", "Remove", "danger"],
+  ].filter((x) => x !== false && x !== undefined && x !== "");
+}
+
+function closeMenu() { $("menu").classList.remove("open"); }
+
+$("list").addEventListener("contextmenu", (e) => {
+  const tab = e.target.closest(".tab");
+  if (!tab) return;
+  e.preventDefault();
+  const target = { kind: tab.dataset.kind, id: tab.dataset.id };
+  const menu = $("menu");
+  menu.innerHTML = menuItems(target.kind, target.id)
+    .map((it) => it ? `<button data-act="${it[0]}" class="${it[2] || ""}">${esc(it[1])}</button>` : "<hr>").join("");
+  menu.onclick = (ev) => {
+    const b = ev.target.closest("button[data-act]");
+    if (!b) return;
+    closeMenu();
+    act(b.dataset.act, target);
+  };
+  menu.classList.add("open");
+  const r = menu.getBoundingClientRect();
+  menu.style.left = Math.min(e.clientX, innerWidth - r.width - 8) + "px";
+  menu.style.top = Math.min(e.clientY, innerHeight - r.height - 8) + "px";
+});
+window.addEventListener("pointerdown", (e) => { if (!e.target.closest("#menu")) closeMenu(); }, true);
+window.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMenu(); });
+window.addEventListener("blur", closeMenu);
+
 $("bar").addEventListener("dblclick", (e) => { if (e.target.classList.contains("title")) act("rename"); });
 $("bar").addEventListener("click", (e) => { const b = e.target.closest("button[data-act]"); if (b) act(b.dataset.act); });
 
-async function act(what) {
-  if (!selected) return;
-  const id = selected.id;
+// act runs one action on a tab: the selected one (the top bar) or the one
+// right-clicked (the context menu).
+async function act(what, target = selected) {
+  if (!target) return;
+  const id = target.id;
   try {
-    if (what === "rename" && selected.kind === "s") {
+    if (what === "rename" && target.kind === "s") {
       const s = state.sessions.find((x) => x.id === id);
       const name = prompt("Rename session", s?.name || "");
       if (name && name.trim()) await api("PATCH", `/api/sessions/${id}`, { name: name.trim() });
     } else if (what === "handoff") {
-      if (confirm("Move this session to a Terminal window? It ends here and continues there.")) await api("POST", `/api/sessions/${id}/handoff`);
+      await api("POST", `/api/sessions/${id}/handoff`);
     } else if (what === "resume") {
       await api("POST", `/api/sessions/${id}/resume`);
       terms.get(id)?.term.focus();
@@ -599,9 +703,13 @@ async function act(what) {
       const x = state.external.find((e) => e.sessionId === id);
       const busy = x?.status === "busy" ? "\n\nIt is busy: the turn in progress will be cut off." : "";
       if (x && !confirm(`End this session in its terminal (pid ${x.pid}) and continue it here? The window stays open.${busy}`)) return;
-      const s = await api("POST", `/api/external/${encodeURIComponent(id)}/takeover`, { name: x?.title || x?.name || "", cwd: x?.cwd || selected.cwd || "" });
+      const s = await api("POST", `/api/external/${encodeURIComponent(id)}/takeover`, { name: x?.title || x?.name || "", cwd: x?.cwd || target.cwd || "" });
       state.sessions = [...state.sessions, s];
       select("s", s.id);
+    } else if (what === "copy-id" || what === "copy-cwd") {
+      const t = target.kind === "s" ? state.sessions.find((x) => x.id === id) : state.external.find((x) => x.sessionId === id);
+      const text = what === "copy-cwd" ? t?.cwd : target.kind === "s" ? t?.claudeSessionId : id;
+      if (text) await navigator.clipboard.writeText(text);
     }
   } catch (err) {
     alert(err.message);

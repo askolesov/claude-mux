@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -323,6 +324,32 @@ func (m *Manager) Handoff(id string) error {
 		return err
 	}
 	return m.Remove(id)
+}
+
+// Reorder puts the sessions in the order of ids. Sessions it doesn't name
+// keep their relative order after the named ones.
+func (m *Manager) Reorder(ids []string) {
+	m.mu.Lock()
+	rank := map[string]int{}
+	for i, id := range ids {
+		rank[id] = i
+	}
+	slices.SortStableFunc(m.sessions, func(a, b *Session) int {
+		ra, oka := rank[a.ID]
+		rb, okb := rank[b.ID]
+		switch {
+		case oka && okb:
+			return ra - rb
+		case oka:
+			return -1
+		case okb:
+			return 1
+		}
+		return 0
+	})
+	m.mu.Unlock()
+	m.save()
+	m.notify()
 }
 
 // Remove kills the session if it runs and forgets it.

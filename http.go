@@ -42,6 +42,7 @@ func NewHandler(m *Manager, ext *Externals, defaultCwd string) http.Handler {
 	api.GET("/state", h.state)
 	api.GET("/events", h.events)
 	api.POST("/sessions", h.create)
+	api.PUT("/sessions/order", h.reorder)
 	api.PATCH("/sessions/:id", h.rename)
 	api.DELETE("/sessions/:id", h.remove)
 	api.POST("/sessions/:id/kill", h.kill)
@@ -157,6 +158,18 @@ func (h *Handler) create(c *gin.Context) {
 		return
 	}
 	respond(c, s.View(), nil)
+}
+
+func (h *Handler) reorder(c *gin.Context) {
+	var req struct {
+		IDs []string `json:"ids" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respond(c, nil, err)
+		return
+	}
+	h.m.Reorder(req.IDs)
+	respond(c, nil, nil)
 }
 
 func (h *Handler) rename(c *gin.Context) {
