@@ -22,15 +22,16 @@ func main() {
 	addr := flag.String("addr", "127.0.0.1:7777", "listen address; keep it on loopback, the page can start processes")
 	stateDir := flag.String("state", filepath.Join(home, ".claude-mux"), "where sessions and the hooks file are kept")
 	defaultCwd := flag.String("cwd", cwd, "default directory for new sessions")
+	resumeRunning := flag.Bool("resume-running", false, "bring back the tabs that were running when the server last stopped (restart.sh sets it)")
 	flag.Parse()
 
-	if err := run(*addr, *stateDir, *defaultCwd); err != nil {
+	if err := run(*addr, *stateDir, *defaultCwd, *resumeRunning); err != nil {
 		fmt.Fprintln(os.Stderr, "claude-mux:", err)
 		os.Exit(1)
 	}
 }
 
-func run(addr, stateDir, defaultCwd string) error {
+func run(addr, stateDir, defaultCwd string, resumeRunning bool) error {
 	if _, err := exec.LookPath("claude"); err != nil {
 		return err
 	}
@@ -42,7 +43,7 @@ func run(addr, stateDir, defaultCwd string) error {
 		return fmt.Errorf("refusing to listen on %s: the page runs commands, keep it on loopback", addr)
 	}
 
-	m, err := NewManager(stateDir, "http://"+addr+"/hook")
+	m, err := NewManager(stateDir, "http://"+addr+"/hook", resumeRunning)
 	if err != nil {
 		return err
 	}
@@ -66,6 +67,5 @@ func run(addr, stateDir, defaultCwd string) error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	_ = srv.Shutdown(shutdownCtx)
-	time.Sleep(500 * time.Millisecond) // let the hung-up sessions write their last hooks
 	return err
 }

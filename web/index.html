@@ -25,7 +25,41 @@
     --needs: #f5b14c;
     --dead: #5b6170;
     --danger: #f16c6c;
+    --on-accent: #0f1115;
     --mono: "JetBrains Mono", "SF Mono", Menlo, monospace;
+  }
+  /* Light: chosen in the footer, or Auto on a light system. */
+  :root[data-theme="light"] {
+    --bg: #ffffff;
+    --panel: #f6f7f9;
+    --panel-2: #eceef2;
+    --line: #d9dde4;
+    --text: #1d2129;
+    --muted: #646c7c;
+    --accent: #2f5fd0;
+    --on-accent: #ffffff;
+    --working: #2f5fd0;
+    --ready: #1f9d5c;
+    --needs: #c27a10;
+    --dead: #9aa1ad;
+    --danger: #d64545;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme]) {
+    --bg: #ffffff;
+      --panel: #f6f7f9;
+      --panel-2: #eceef2;
+      --line: #d9dde4;
+      --text: #1d2129;
+      --muted: #646c7c;
+      --accent: #2f5fd0;
+      --on-accent: #ffffff;
+      --working: #2f5fd0;
+      --ready: #1f9d5c;
+      --needs: #c27a10;
+      --dead: #9aa1ad;
+      --danger: #d64545;
+    }
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
@@ -40,7 +74,7 @@
   }
   button:hover { border-color: var(--accent); }
   button.danger:hover { border-color: var(--danger); color: var(--danger); }
-  button.primary { background: var(--accent); color: #0f1115; border-color: var(--accent); font-weight: 600; }
+  button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 600; }
 
   /* sidebar */
   aside {
@@ -69,6 +103,8 @@
   .tab.unseen { box-shadow: inset 3px 0 0 var(--ready); }
   .tab.needs-you { box-shadow: inset 3px 0 0 var(--needs); }
   .tab.external { opacity: .85; }
+  .star { color: var(--needs); }
+  .dot.saved { background: transparent; border: 2px dashed var(--muted); }
   .tab.drop-before { box-shadow: inset 0 2px 0 var(--accent); }
   .tab.drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
   .tab.dragging { opacity: .4; }
@@ -87,6 +123,9 @@
   .foot { border-top: 1px solid var(--line); padding: 8px 12px; color: var(--muted); font-size: 11px; line-height: 1.7; }
   .foot kbd { font-family: var(--mono); background: var(--panel-2); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; color: var(--text); }
   .foot button { margin-top: 6px; font-size: 11px; padding: 2px 8px; }
+  .prefs { display: flex; gap: 10px; margin-top: 6px; flex-wrap: wrap; }
+  .prefs label { display: flex; align-items: center; gap: 4px; }
+  .prefs select { font: 11px inherit; color: var(--text); background: var(--panel-2); border: 1px solid var(--line); border-radius: 5px; padding: 1px 4px; }
 
   /* main */
   main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
@@ -174,6 +213,10 @@
   <div class="foot">
     <kbd>⌥1–9</kbd> tab · <kbd>⌥↑↓</kbd> prev/next · <kbd>⌥J</kbd> next waiting<br>
     <kbd>⌥N</kbd> new · <kbd>⇧↵</kbd> newline
+    <div class="prefs">
+      <label>Theme <select id="pageTheme"><option value="auto">Auto</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
+      <label>Terminal <select id="termTheme"><option value="auto">Auto</option><option value="dark">Dark</option><option value="light">Light</option><option value="tokyo-night">Tokyo Night</option><option value="dracula">Dracula</option><option value="solarized-dark">Solarized Dark</option><option value="solarized-light">Solarized Light</option></select></label>
+    </div>
     <div><button id="notify" hidden>Enable notifications</button></div>
   </div>
 </aside>
@@ -220,8 +263,8 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, v); } catch {} },
 };
 
-let state = { sessions: [], external: [], defaultCwd: "" };
-let selected = null;             // {kind: "s" | "x", id}
+let state = { sessions: [], external: [], favourites: [], defaultCwd: "" };
+let selected = null;             // {kind: "s" | "x" | "f", id}: running here, in Terminal, saved
 const terms = new Map();         // session id -> {term, fit, ws, el, closed}
 const lastStatus = new Map();    // session id -> status, for notifications
 let transcriptTimer = null;
@@ -257,6 +300,12 @@ function ago(ts) {
 const base = (p) => p.split("/").filter(Boolean).pop() || p;
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const waiting = (s) => s.status === "needs-you" || (s.status === "ready" && s.unseen);
+const isSaved = (sid) => !!sid && state.favourites.some((f) => f.claudeSessionId === sid);
+const star = (sid) => isSaved(sid) ? `<span class="star" title="Saved">★</span> ` : "";
+// Saved conversations that run nowhere: no tab holds them and no terminal runs them.
+const idleSaved = () => state.favourites.filter((f) =>
+  !state.sessions.some((s) => s.claudeSessionId === f.claudeSessionId) &&
+  !state.external.some((x) => x.sessionId === f.claudeSessionId));
 
 // ---------- icon ----------
 // Tabs on the left, a prompt on the right; a dot when something waits:
@@ -291,28 +340,41 @@ function render() {
   document.title = waitingCount ? `(${waitingCount}) claude-mux` : "claude-mux";
   favicon(needs ? "#f5b14c" : waitingCount ? "#4fd18b" : null);
 
-  let html = `<div class="section">Sessions</div>`;
+  let html = `<div class="section">Running here</div>`;
   if (!sessions.length) html += `<div class="empty">None yet — ⌥N starts one.</div>`;
   sessions.forEach((s, i) => {
     const active = selected?.kind === "s" && selected.id === s.id;
     const cls = ["tab", active && "active", s.unseen && "unseen", s.status === "needs-you" && "needs-you"].filter(Boolean).join(" ");
     html += `<div class="${cls}" data-kind="s" data-id="${esc(s.id)}" title="${esc(s.cwd)}" draggable="true">
       <span class="dot ${esc(s.status)}"></span>
-      <span class="name">${esc(s.name)}</span>
+      <span class="name">${star(s.claudeSessionId)}${esc(s.name)}</span>
       <span class="key">${i < 9 ? "⌥" + (i + 1) : ""}</span>
       <span class="sub">${esc(STATUS_TEXT[s.status] || s.status)} · ${ago(s.statusSince)} · ${esc(base(s.cwd))}</span>
     </div>`;
   });
 
-  html += `<div class="section">Other terminals</div>`;
-  if (!external.length) html += `<div class="empty">No other claude sessions running.</div>`;
+  html += `<div class="section">Running in Terminal</div>`;
+  if (!external.length) html += `<div class="empty">No claude running in other terminals.</div>`;
   for (const x of external) {
     const active = selected?.kind === "x" && selected.id === x.sessionId;
     html += `<div class="tab external ${active ? "active" : ""}" data-kind="x" data-id="${esc(x.sessionId)}" title="${esc(x.cwd)}">
       <span class="dot ext ${esc(x.status)}"></span>
-      <span class="name">${esc(x.title || x.name)}</span>
+      <span class="name">${star(x.sessionId)}${esc(x.title || x.name)}</span>
       <span class="key"></span>
       <span class="sub">${esc(x.status)} · ${esc(x.kind)} · ${esc(x.name)} · ${esc(base(x.cwd))}</span>
+    </div>`;
+  }
+
+  html += `<div class="section">Saved</div>`;
+  const saved = idleSaved();
+  if (!saved.length) html += `<div class="empty">Right-click a session → Save to keep it here.</div>`;
+  for (const f of saved) {
+    const active = selected?.kind === "f" && selected.id === f.claudeSessionId;
+    html += `<div class="tab ${active ? "active" : ""}" data-kind="f" data-id="${esc(f.claudeSessionId)}" title="${esc(f.cwd)}">
+      <span class="dot saved"></span>
+      <span class="name">${esc(f.name)}</span>
+      <span class="key"></span>
+      <span class="sub">not running · ${esc(base(f.cwd))}</span>
     </div>`;
   }
   $("list").innerHTML = html;
@@ -332,9 +394,20 @@ function renderBar() {
       <span class="cwd" title="${esc(s.cwd)}">${esc(s.cwd)}</span>
       <span class="actions">
         <button data-act="rename">Rename</button>
-        ${s.claudeSessionId ? `<button data-act="handoff" title="End it here and continue it in a Terminal.app window">Open in Terminal</button>` : ""}
+        ${s.claudeSessionId ? `<button data-act="handoff" title="End it here and continue it in a Terminal window">Move to Terminal</button>` : ""}
         ${dead && s.claudeSessionId ? `<button class="primary" data-act="resume">Resume</button>` : ""}
-        ${dead ? `<button class="danger" data-act="remove">Remove</button>` : `<button class="danger" data-act="kill">Kill</button>`}
+        <button class="danger" data-act="close" title="End it and remove the tab">Close</button>
+      </span>`;
+  } else if (selected.kind === "f") {
+    const f = state.favourites.find((x) => x.claudeSessionId === selected.id);
+    if (!f) return;
+    bar.innerHTML = `
+      <span class="title">${esc(f.name)}</span>
+      <span class="pill">saved · not running</span>
+      <span class="cwd" title="${esc(f.cwd)}">${esc(f.cwd)}</span>
+      <span class="actions">
+        <button class="primary" data-act="open-here">Open here</button>
+        <button data-act="open-terminal">Open in Terminal</button>
       </span>`;
   } else {
     const x = state.external.find((e) => e.sessionId === selected.id);
@@ -343,9 +416,73 @@ function renderBar() {
       <span class="title">${esc(name)}</span>
       <span class="pill">${x ? esc(x.status) : "not running"} · other terminal</span>
       <span class="cwd">${esc(x?.cwd || selected.cwd || "")}</span>
-      <span class="actions"><button data-act="takeover" title="End it in its terminal and continue it here">Take over</button></span>`;
+      <span class="actions">
+        <button data-act="takeover" title="End it in its terminal and continue it here">Move here</button>
+        ${x ? `<button class="danger" data-act="close-ext" title="End it; its terminal window stays open">Close</button>` : ""}
+      </span>`;
   }
 }
+
+// ---------- themes ----------
+// The page theme (Auto follows the system) and the terminal theme are picked
+// separately in the footer; Auto for the terminal matches the page.
+const TERM_THEMES = {
+  dark: { background: "#0f1115", foreground: "#d7dae0", cursor: "#7aa2f7", selectionBackground: "#33467c" },
+  light: {
+    background: "#ffffff", foreground: "#1d2129", cursor: "#2f5fd0", selectionBackground: "#c8d6f5",
+    black: "#1d2129", red: "#c4262e", green: "#1f8a4c", yellow: "#946300", blue: "#2f5fd0", magenta: "#8a3fc7", cyan: "#13808c", white: "#6a7282",
+    brightBlack: "#5b6170", brightRed: "#d6373f", brightGreen: "#23a05a", brightYellow: "#a87200", brightBlue: "#3d6fe0", brightMagenta: "#9c4fd9", brightCyan: "#1793a0", brightWhite: "#3a404c",
+  },
+  "tokyo-night": {
+    background: "#1a1b26", foreground: "#c0caf5", cursor: "#c0caf5", selectionBackground: "#33467c",
+    black: "#15161e", red: "#f7768e", green: "#9ece6a", yellow: "#e0af68", blue: "#7aa2f7", magenta: "#bb9af7", cyan: "#7dcfff", white: "#a9b1d6",
+    brightBlack: "#414868", brightRed: "#f7768e", brightGreen: "#9ece6a", brightYellow: "#e0af68", brightBlue: "#7aa2f7", brightMagenta: "#bb9af7", brightCyan: "#7dcfff", brightWhite: "#c0caf5",
+  },
+  dracula: {
+    background: "#282a36", foreground: "#f8f8f2", cursor: "#f8f8f2", selectionBackground: "#44475a",
+    black: "#21222c", red: "#ff5555", green: "#50fa7b", yellow: "#f1fa8c", blue: "#bd93f9", magenta: "#ff79c6", cyan: "#8be9fd", white: "#f8f8f2",
+    brightBlack: "#6272a4", brightRed: "#ff6e6e", brightGreen: "#69ff94", brightYellow: "#ffffa5", brightBlue: "#d6acff", brightMagenta: "#ff92df", brightCyan: "#a4ffff", brightWhite: "#ffffff",
+  },
+  "solarized-dark": {
+    background: "#002b36", foreground: "#93a1a1", cursor: "#93a1a1", selectionBackground: "#073642",
+    black: "#073642", red: "#dc322f", green: "#859900", yellow: "#b58900", blue: "#268bd2", magenta: "#d33682", cyan: "#2aa198", white: "#eee8d5",
+    brightBlack: "#586e75", brightRed: "#cb4b16", brightGreen: "#859900", brightYellow: "#b58900", brightBlue: "#268bd2", brightMagenta: "#6c71c4", brightCyan: "#2aa198", brightWhite: "#fdf6e3",
+  },
+  "solarized-light": {
+    background: "#fdf6e3", foreground: "#586e75", cursor: "#586e75", selectionBackground: "#eee8d5",
+    black: "#073642", red: "#dc322f", green: "#859900", yellow: "#b58900", blue: "#268bd2", magenta: "#d33682", cyan: "#2aa198", white: "#657b83",
+    brightBlack: "#586e75", brightRed: "#cb4b16", brightGreen: "#859900", brightYellow: "#b58900", brightBlue: "#268bd2", brightMagenta: "#6c71c4", brightCyan: "#2aa198", brightWhite: "#073642",
+  },
+};
+const systemDark = matchMedia("(prefers-color-scheme: dark)");
+
+function pageIsDark() {
+  const t = document.documentElement.dataset.theme;
+  return t ? t === "dark" : systemDark.matches;
+}
+
+function termTheme() {
+  const k = store.get("mux.termTheme") || "auto";
+  return TERM_THEMES[k === "auto" ? (pageIsDark() ? "dark" : "light") : k] || TERM_THEMES.dark;
+}
+
+function applyTheme() {
+  const page = store.get("mux.theme") || "auto";
+  if (page === "auto") delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = page;
+  const th = termTheme();
+  for (const t of terms.values()) {
+    t.term.options.theme = th;
+    t.el.style.background = th.background;
+  }
+  $("pageTheme").value = page;
+  $("termTheme").value = store.get("mux.termTheme") || "auto";
+}
+
+$("pageTheme").addEventListener("change", (e) => { store.set("mux.theme", e.target.value); applyTheme(); });
+$("termTheme").addEventListener("change", (e) => { store.set("mux.termTheme", e.target.value); applyTheme(); });
+systemDark.addEventListener("change", applyTheme);
+applyTheme();
 
 // ---------- terminals ----------
 function ensureTerm(id) {
@@ -359,8 +496,9 @@ function ensureTerm(id) {
     cursorBlink: true,
     allowProposedApi: true,
     scrollback: 20000,
-    theme: { background: "#0f1115", foreground: "#d7dae0", cursor: "#7aa2f7", selectionBackground: "#33467c" },
+    theme: termTheme(),
   });
+  el.style.background = termTheme().background;
   const fit = new FitAddon.FitAddon();
   term.loadAddon(fit);
   term.loadAddon(new WebLinksAddon.WebLinksAddon());
@@ -431,7 +569,7 @@ function select(kind, id, extra = {}) {
   store.set("mux.selected", JSON.stringify({ kind, id }));
   for (const [tid, t] of terms) t.el.classList.toggle("shown", kind === "s" && tid === id);
   $("placeholder").style.display = "none";
-  $("transcript").classList.toggle("shown", kind === "x");
+  $("transcript").classList.toggle("shown", kind === "x" || kind === "f");
   $("composer").classList.toggle("shown", kind === "x");
   $("cHint").textContent = "";
   clearInterval(transcriptTimer);
@@ -441,10 +579,12 @@ function select(kind, id, extra = {}) {
     t.el.classList.add("shown");
     requestAnimationFrame(() => { fitSelected(); t.term.focus(); });
     markSeen(id);
-  } else {
+  } else if (kind === "x") {
     loadTranscript(id);
     $("cText").focus();
     transcriptTimer = setInterval(() => loadTranscript(id), 4000);
+  } else {
+    loadTranscript(id);
   }
   render();
 }
@@ -459,7 +599,10 @@ async function loadTranscript(sid) {
   try {
     const entries = await api("GET", `/api/transcript/${encodeURIComponent(sid)}`);
     const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
-    box.innerHTML = `<div class="note">Running in another terminal — last ${entries.length} messages, refreshed every few seconds. Messages you send below are typed into that window. <b>Take over</b> ends it there and continues it here.</div>` +
+    const note = selected?.kind === "f"
+      ? `Saved, not running — its last ${entries.length} messages. <b>Open here</b> or <b>Open in Terminal</b> continues it.`
+      : `Running in another terminal — last ${entries.length} messages, refreshed every few seconds. Messages you send below are typed into that window. <b>Move here</b> ends it there and continues it here.`;
+    box.innerHTML = `<div class="note">${note}</div>` +
       entries.map((e) => e.role === "tool"
         ? `<div class="msg tool">→ ${esc(e.text)}</div>`
         : `<div class="msg ${e.role}"><div class="who">${e.role === "user" ? "you" : "claude"}</div>${
@@ -474,6 +617,7 @@ function ordered() {
   return [
     ...state.sessions.map((s) => ({ kind: "s", id: s.id })),
     ...state.external.map((x) => ({ kind: "x", id: x.sessionId })),
+    ...idleSaved().map((f) => ({ kind: "f", id: f.claudeSessionId })),
   ];
 }
 
@@ -519,11 +663,18 @@ function updateNotifyButton() {
 
 // ---------- state stream ----------
 function applyState(next) {
-  state = next;
+  state = { ...next, sessions: next.sessions || [], external: next.external || [], favourites: next.favourites || [] };
   for (const id of [...terms.keys()]) if (!state.sessions.some((s) => s.id === id)) dropTerm(id);
   if (selected?.kind === "s" && !state.sessions.some((s) => s.id === selected.id)) {
     selected = null;
     $("placeholder").style.display = "";
+  }
+  // A saved conversation that just started: follow it to where it now runs.
+  if (selected?.kind === "f" && !idleSaved().some((f) => f.claudeSessionId === selected.id)) {
+    const s = state.sessions.find((x) => x.claudeSessionId === selected.id);
+    const x = state.external.find((e) => e.sessionId === selected.id);
+    if (s) select("s", s.id);
+    else if (x) select("x", x.sessionId, { cwd: x.cwd });
   }
   notifyTransitions();
   if (selected?.kind === "s") markSeen(selected.id);
@@ -652,21 +803,29 @@ $("list").addEventListener("dragend", () => {
 
 // Right-click a tab for its actions.
 function menuItems(kind, id) {
-  if (kind === "x") return [["takeover", "Take over"], null, ["copy-id", "Copy session id"], ["copy-cwd", "Copy directory"]];
-  const s = state.sessions.find((x) => x.id === id);
-  if (!s) return [];
-  const dead = s.status === "exited" || s.status === "stopped";
-  return [
-    ["rename", "Rename…"],
-    dead && s.claudeSessionId && ["resume", "Resume"],
-    !dead && ["kill", "Kill"],
-    s.claudeSessionId && ["handoff", "Open in Terminal"],
-    null,
-    s.claudeSessionId && ["copy-id", "Copy session id"],
-    ["copy-cwd", "Copy directory"],
-    null,
-    ["remove", "Remove", "danger"],
-  ].filter((x) => x !== false && x !== undefined && x !== "");
+  const save = (sid) => sid && (isSaved(sid) ? ["unsave", "Unsave"] : ["save", "★ Save"]);
+  const copy = (sid) => [sid && ["copy-id", "Copy session id"], ["copy-cwd", "Copy directory"]];
+  let items;
+  if (kind === "f") {
+    items = [["open-here", "Open here"], ["open-terminal", "Open in Terminal"], null, ...copy(id), null, ["unsave", "Remove from saved", "danger"]];
+  } else if (kind === "x") {
+    items = [["takeover", "Move here"], save(id), null, ...copy(id), null, ["close-ext", "Close", "danger"]];
+  } else {
+    const s = state.sessions.find((x) => x.id === id);
+    if (!s) return [];
+    const dead = s.status === "exited" || s.status === "stopped";
+    items = [
+      ["rename", "Rename…"],
+      dead && s.claudeSessionId && ["resume", "Resume"],
+      s.claudeSessionId && ["handoff", "Move to Terminal"],
+      save(s.claudeSessionId),
+      null,
+      ...copy(s.claudeSessionId),
+      null,
+      ["close", "Close", "danger"],
+    ];
+  }
+  return items.filter((x) => x !== false && x !== undefined && x !== "");
 }
 
 function closeMenu() { $("menu").classList.remove("open"); }
@@ -712,10 +871,26 @@ async function act(what, target = selected) {
     } else if (what === "resume") {
       await api("POST", `/api/sessions/${id}/resume`);
       terms.get(id)?.term.focus();
-    } else if (what === "kill") {
-      if (confirm("Kill this session? Its conversation stays resumable.")) await api("POST", `/api/sessions/${id}/kill`);
-    } else if (what === "remove") {
-      await api("DELETE", `/api/sessions/${id}`);
+    } else if (what === "close") {
+      const s = state.sessions.find((x) => x.id === id);
+      if (s?.status !== "working" || confirm("It is working — close it anyway? The turn in progress is cut off.")) await api("DELETE", `/api/sessions/${id}`);
+    } else if (what === "close-ext") {
+      const x = state.external.find((e) => e.sessionId === id);
+      if (x?.status !== "busy" || confirm("It is working — close it anyway? The turn in progress is cut off.")) await api("DELETE", `/api/external/${encodeURIComponent(id)}`);
+    } else if (what === "save" || what === "unsave") {
+      const s = target.kind === "s" ? state.sessions.find((x) => x.id === id) : null;
+      const x = target.kind === "x" ? state.external.find((e) => e.sessionId === id) : null;
+      const sid = s ? s.claudeSessionId : id;
+      if (what === "unsave") await api("DELETE", `/api/favourites/${encodeURIComponent(sid)}`);
+      else await api("PUT", `/api/favourites/${encodeURIComponent(sid)}`, s
+        ? { name: s.name, cwd: s.cwd, args: s.args || [] }
+        : { name: x?.title || x?.name || "", cwd: x?.cwd || "", args: [] });
+    } else if (what === "open-here") {
+      const s = await api("POST", `/api/favourites/${encodeURIComponent(id)}/start`);
+      state.sessions = [...state.sessions, s];
+      select("s", s.id);
+    } else if (what === "open-terminal") {
+      await api("POST", `/api/favourites/${encodeURIComponent(id)}/terminal`);
     } else if (what === "takeover") {
       const x = state.external.find((e) => e.sessionId === id);
       const busy = x?.status === "busy" ? "\n\nIt is busy: the turn in progress will be cut off." : "";
@@ -724,7 +899,9 @@ async function act(what, target = selected) {
       state.sessions = [...state.sessions, s];
       select("s", s.id);
     } else if (what === "copy-id" || what === "copy-cwd") {
-      const t = target.kind === "s" ? state.sessions.find((x) => x.id === id) : state.external.find((x) => x.sessionId === id);
+      const t = target.kind === "s" ? state.sessions.find((x) => x.id === id)
+        : target.kind === "f" ? state.favourites.find((f) => f.claudeSessionId === id)
+        : state.external.find((x) => x.sessionId === id);
       const text = what === "copy-cwd" ? t?.cwd : target.kind === "s" ? t?.claudeSessionId : id;
       if (text) await navigator.clipboard.writeText(text);
     }

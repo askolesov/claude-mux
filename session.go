@@ -33,6 +33,7 @@ type Session struct {
 	Args            []string  `json:"args"`
 	ClaudeSessionID string    `json:"claudeSessionId"`
 	CreatedAt       time.Time `json:"createdAt"`
+	WasRunning      bool      `json:"wasRunning,omitempty"` // set at shutdown, read by the next start
 
 	mu          sync.Mutex
 	status      Status
@@ -53,6 +54,7 @@ type SessionView struct {
 	Name            string    `json:"name"`
 	Cwd             string    `json:"cwd"`
 	ClaudeSessionID string    `json:"claudeSessionId"`
+	Args            []string  `json:"args"`
 	Status          Status    `json:"status"`
 	StatusSince     time.Time `json:"statusSince"`
 	Unseen          bool      `json:"unseen"`
@@ -67,6 +69,7 @@ func (s *Session) View() SessionView {
 		Name:            s.Name,
 		Cwd:             s.Cwd,
 		ClaudeSessionID: s.ClaudeSessionID,
+		Args:            s.Args,
 		Status:          s.status,
 		StatusSince:     s.statusSince,
 		Unseen:          s.unseen,

@@ -44,15 +44,19 @@ func NewHandler(m *Manager, ext *Externals, defaultCwd string) http.Handler {
 	api.POST("/sessions", h.create)
 	api.PUT("/sessions/order", h.reorder)
 	api.PATCH("/sessions/:id", h.rename)
-	api.DELETE("/sessions/:id", h.remove)
-	api.POST("/sessions/:id/kill", h.kill)
+	api.DELETE("/sessions/:id", h.close)
 	api.POST("/sessions/:id/resume", h.resume)
 	api.POST("/sessions/:id/handoff", h.handoff)
 	api.POST("/sessions/:id/seen", h.seen)
 	api.GET("/sessions/:id/term", h.term)
 	api.POST("/external/:sid/takeover", h.takeover)
 	api.POST("/external/:sid/send", h.send)
+	api.DELETE("/external/:sid", h.closeExternal)
 	api.GET("/transcript/:sid", h.transcript)
+	api.PUT("/favourites/:sid", h.favourite)
+	api.DELETE("/favourites/:sid", h.unfavourite)
+	api.POST("/favourites/:sid/start", h.startFavourite)
+	api.POST("/favourites/:sid/terminal", h.favouriteInTerminal)
 
 	r.POST("/hook/:id", h.hook)
 	return r
@@ -97,11 +101,12 @@ func respond(c *gin.Context, v any, err error) {
 type State struct {
 	Sessions   []SessionView `json:"sessions"`
 	External   []External    `json:"external"`
+	Favourites []Favourite   `json:"favourites"`
 	DefaultCwd string        `json:"defaultCwd"`
 }
 
 func (h *Handler) snapshot() State {
-	return State{Sessions: h.m.List(), External: h.ext.List(), DefaultCwd: h.defaultCwd}
+	return State{Sessions: h.m.List(), External: h.ext.List(), Favourites: h.m.Favourites(), DefaultCwd: h.defaultCwd}
 }
 
 func (h *Handler) state(c *gin.Context) { c.JSON(http.StatusOK, h.snapshot()) }
@@ -183,8 +188,7 @@ func (h *Handler) rename(c *gin.Context) {
 	respond(c, nil, h.m.Rename(c.Param("id"), strings.TrimSpace(req.Name)))
 }
 
-func (h *Handler) remove(c *gin.Context)  { respond(c, nil, h.m.Remove(c.Param("id"))) }
-func (h *Handler) kill(c *gin.Context)    { respond(c, nil, h.m.Kill(c.Param("id"))) }
+func (h *Handler) close(c *gin.Context)   { respond(c, nil, h.m.Close(c.Param("id"))) }
 func (h *Handler) handoff(c *gin.Context) { respond(c, nil, h.m.Handoff(c.Param("id"))) }
 func (h *Handler) resume(c *gin.Context)  { respond(c, nil, h.m.Resume(c.Param("id"))) }
 func (h *Handler) seen(c *gin.Context)    { respond(c, nil, h.m.MarkSeen(c.Param("id"))) }
@@ -204,7 +208,7 @@ func (h *Handler) takeover(c *gin.Context) {
 		respond(c, nil, err)
 		return
 	}
-	s, err := h.m.Takeover(sid, req.Name, req.Cwd)
+	s, err := h.m.Takeover(sid, req.Name, req.Cwd, nil)
 	if err != nil {
 		respond(c, nil, err)
 		return
@@ -230,6 +234,62 @@ func (h *Handler) send(c *gin.Context) {
 	}
 	respond(c, nil, errNotFound)
 }
+
+func (h *Handler) favourite(c *gin.Context) {
+	var f Favourite
+	if err := c.ShouldBindJSON(&f); err != nil {
+		respond(c, nil, err)
+		return
+	}
+	f.ClaudeSessionID = c.Param("sid")
+	respond(c, nil, h.m.SetFavourite(f))
+}
+
+func (h *Handler) unfavourite(c *gin.Context) {
+	h.m.Unfavourite(c.Param("sid"))
+	respond(c, nil, nil)
+}
+
+// runningAnywhere refuses to start a conversation that already runs: two
+// processes on one session fork its transcript.
+func (h *Handler) runningAnywhere(sid string) error {
+	for _, v := range h.m.List() {
+		if v.ClaudeSessionID == sid && v.PID != 0 && v.Status != StatusExited {
+			return errors.New("it already runs in a tab here")
+		}
+	}
+	for _, x := range h.ext.List() {
+		if x.SessionID == sid {
+			return errors.New("it already runs in another terminal")
+		}
+	}
+	return nil
+}
+
+func (h *Handler) startFavourite(c *gin.Context) {
+	if err := h.runningAnywhere(c.Param("sid")); err != nil {
+		respond(c, nil, err)
+		return
+	}
+	s, err := h.m.StartFavourite(c.Param("sid"))
+	if err != nil {
+		respond(c, nil, err)
+		return
+	}
+	respond(c, s.View(), nil)
+}
+
+func (h *Handler) favouriteInTerminal(c *gin.Context) {
+	if err := h.runningAnywhere(c.Param("sid")); err != nil {
+		respond(c, nil, err)
+		return
+	}
+	respond(c, nil, h.m.FavouriteInTerminal(c.Param("sid")))
+}
+
+// closeExternal ends a session running in another terminal; its window and
+// shell stay open.
+func (h *Handler) closeExternal(c *gin.Context) { respond(c, nil, h.ext.Stop(c.Param("sid"))) }
 
 func (h *Handler) transcript(c *gin.Context) {
 	entries, err := Transcript(c.Param("sid"), 40)

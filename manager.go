@@ -25,20 +25,26 @@ var (
 // anything changed.
 type Manager struct {
 	stateFile    string
+	favFile      string
 	hooksFile    string
 	hookEndpoint string
 
-	mu       sync.Mutex
-	sessions []*Session
-	subs     map[chan struct{}]struct{}
+	mu         sync.Mutex
+	sessions   []*Session
+	favourites []Favourite
+	subs       map[chan struct{}]struct{}
 }
 
-func NewManager(stateDir, hookEndpoint string) (*Manager, error) {
+// NewManager loads the favourites. With resumeRunning it also brings back the
+// tabs that were running when the server last stopped (a redeploy); without
+// it the last run's tabs are dropped and the favourites are what remains.
+func NewManager(stateDir, hookEndpoint string, resumeRunning bool) (*Manager, error) {
 	if err := os.MkdirAll(stateDir, 0o700); err != nil {
 		return nil, err
 	}
 	m := &Manager{
 		stateFile:    filepath.Join(stateDir, "sessions.json"),
+		favFile:      filepath.Join(stateDir, "favourites.json"),
 		hooksFile:    filepath.Join(stateDir, "hooks.json"),
 		hookEndpoint: hookEndpoint,
 		subs:         map[chan struct{}]struct{}{},
@@ -46,14 +52,23 @@ func NewManager(stateDir, hookEndpoint string) (*Manager, error) {
 	if err := writeHookSettings(m.hooksFile, hookEndpoint); err != nil {
 		return nil, err
 	}
-	if err := m.load(); err != nil {
+	if err := m.loadFavourites(); err != nil {
 		return nil, err
+	}
+	if err := m.load(resumeRunning); err != nil {
+		return nil, err
+	}
+	for _, s := range m.List() {
+		if err := m.Resume(s.ID); err != nil {
+			fmt.Fprintf(os.Stderr, "resume %s: %v\n", s.Name, err)
+		}
 	}
 	return m, nil
 }
 
-// load restores the sessions of a previous run as stopped, ready to resume.
-func (m *Manager) load() error {
+// load reads the tabs of the previous run and keeps the ones that were
+// running when it stopped, if resumeRunning; NewManager resumes them.
+func (m *Manager) load(resumeRunning bool) error {
 	data, err := os.ReadFile(m.stateFile)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
@@ -64,9 +79,15 @@ func (m *Manager) load() error {
 	if err := json.Unmarshal(data, &m.sessions); err != nil {
 		return fmt.Errorf("%s: %w", m.stateFile, err)
 	}
+	m.sessions = slices.DeleteFunc(m.sessions, func(s *Session) bool {
+		_, noTranscript := transcriptPath(s.ClaudeSessionID)
+		return !resumeRunning || !s.WasRunning || noTranscript != nil // nothing said yet: nothing to resume
+	})
 	for _, s := range m.sessions {
+		s.WasRunning = false
 		s.status, s.statusSince = StatusStopped, time.Now()
 	}
+	m.save()
 	return nil
 }
 
@@ -137,9 +158,9 @@ func (m *Manager) Create(name, cwd string, args []string) (*Session, error) {
 }
 
 // Takeover continues a claude conversation that ran somewhere else, here.
-func (m *Manager) Takeover(claudeSessionID, name, cwd string) (*Session, error) {
-	s := &Session{ID: newID(), Name: name, Cwd: cwd, ClaudeSessionID: claudeSessionID, CreatedAt: time.Now()}
-	return s, m.add(s, []string{"--resume", claudeSessionID})
+func (m *Manager) Takeover(claudeSessionID, name, cwd string, args []string) (*Session, error) {
+	s := &Session{ID: newID(), Name: name, Cwd: cwd, Args: args, ClaudeSessionID: claudeSessionID, CreatedAt: time.Now()}
+	return s, m.add(s, append([]string{"--resume", claudeSessionID}, args...))
 }
 
 func (m *Manager) add(s *Session, args []string) error {
@@ -242,7 +263,9 @@ func (m *Manager) Rename(id, name string) error {
 	}
 	s.mu.Lock()
 	s.Name = name
+	sid := s.ClaudeSessionID
 	s.mu.Unlock()
+	m.renameFavourite(sid, name)
 	m.save()
 	m.notify()
 	return nil
@@ -265,8 +288,10 @@ func (m *Manager) FollowClaudeName(pid int, name string) {
 		s.claudeName = name
 		renamed := s.Name != name
 		s.Name = name
+		sid := s.ClaudeSessionID
 		s.mu.Unlock()
 		if renamed {
+			m.renameFavourite(sid, name)
 			m.save()
 			m.notify()
 		}
@@ -286,16 +311,6 @@ func (m *Manager) MarkSeen(id string) error {
 	if changed {
 		m.notify()
 	}
-	return nil
-}
-
-// Kill ends the session's process; the session stays listed, resumable.
-func (m *Manager) Kill(id string) error {
-	s, err := m.Get(id)
-	if err != nil {
-		return err
-	}
-	s.kill()
 	return nil
 }
 
@@ -323,7 +338,7 @@ func (m *Manager) Handoff(id string) error {
 	if err := OpenTerminal(cwd, append([]string{"claude", "--resume", sid, "--name", name}, args...)); err != nil {
 		return err
 	}
-	return m.Remove(id)
+	return m.Close(id)
 }
 
 // Reorder puts the sessions in the order of ids. Sessions it doesn't name
@@ -352,8 +367,9 @@ func (m *Manager) Reorder(ids []string) {
 	m.notify()
 }
 
-// Remove kills the session if it runs and forgets it.
-func (m *Manager) Remove(id string) error {
+// Close ends the session if it runs and removes its tab. A favourite stays
+// in the favourites.
+func (m *Manager) Close(id string) error {
 	s, err := m.Get(id)
 	if err != nil {
 		return err
@@ -372,13 +388,23 @@ func (m *Manager) Remove(id string) error {
 	return nil
 }
 
-// Shutdown hangs up every running session.
+// Shutdown notes which sessions run, for a restart that brings them back,
+// hangs them all up and waits for them to exit: a restart resuming a
+// conversation whose old process still runs would fork its transcript.
 func (m *Manager) Shutdown() {
 	m.mu.Lock()
 	sessions := append([]*Session(nil), m.sessions...)
 	m.mu.Unlock()
 	for _, s := range sessions {
+		s.WasRunning = s.running()
+	}
+	m.save()
+	for _, s := range sessions {
 		s.kill()
+	}
+	// kill escalates to SIGKILL after 3s, so this ends.
+	for slices.ContainsFunc(sessions, (*Session).running) {
+		time.Sleep(50 * time.Millisecond)
 	}
 }
 

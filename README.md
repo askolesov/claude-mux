@@ -18,37 +18,46 @@ works, because the server strips the session markers from its children's env.
 
 ## What it does
 
-- **Sessions it starts** (`+ New`, ⌥N): each one is `claude` in its own pty,
-  with the live terminal in the browser. Closing the tab doesn't stop
-  anything, and reopening replays the last 1 MB of output.
+The sidebar has three sections, by where a conversation is:
+
+- **Running here**: claude-mux's own sessions (`+ New`, ⌥N), each `claude`
+  in its own pty with the live terminal in the page. Closing the browser tab
+  doesn't stop anything, and reopening replays the last 1 MB of output.
+  **Close** ends the session and removes its tab. **Move to Terminal** ends
+  it here and continues it in a Terminal.app window. Drag tabs to reorder.
+- **Running in Terminal**: claude sessions in other terminals (from
+  `claude agents --json`), with their last 40 messages, Markdown rendered.
+  The box at the bottom types a message into that window (see below).
+  **Move here** hangs up that claude process (SIGHUP to its pid only; the
+  window and its shell stay open) and continues the session here. **Close**
+  just ends it.
+- **Saved**: conversations you starred (right-click → ★ Save) that run
+  nowhere at the moment. **Open here** or **Open in Terminal** continues
+  one. Saved conversations live in `~/.claude-mux/favourites.json`; while
+  one runs, its row shows ★. Unsave forgets it.
+
+Also:
+
 - **Status dot**: blue pulsing = working, green = ready for input, amber
   pulsing = needs you (a permission prompt, or a prompt shown before startup
-  such as trusting the folder), hollow = exited/stopped. A session that
-  finished while you looked elsewhere gets a bold name and a green edge until
-  you open it. The page title counts what waits: `(2) claude-mux`.
+  such as trusting the folder), hollow = exited. A session that finished
+  while you looked elsewhere gets a bold name and a green edge until you open
+  it. The page title and icon count what waits: `(2) claude-mux`.
 - **Notifications** when a session becomes ready or needs you and you aren't
   looking at it (press "Enable notifications" once).
-- **Other terminals**: the claude sessions running outside it (from
-  `claude agents --json`) are listed with their last 40 messages from the
-  transcript, Markdown rendered. The box at the bottom sends a message: it
-  is typed into that session's Terminal.app or iTerm2 window over
-  AppleScript, line breaks included. Claude reads a write of 64 bytes or
-  more as a paste, where Enter turns into a newline, so the text goes in
-  chunks of at most 48 bytes, joined with Alt+Enter and Backspace (see
-  `keystrokeChunks`). The window doesn't come to the front. **Take over**
-  hangs up that session's claude process (SIGHUP to its pid only, so the
-  window and its shell stay open), waits for it to exit, and continues the
-  session here.
-- **Open in Terminal** is Take over in reverse: it ends the session here,
-  waits for the process to exit, opens a Terminal.app window running
-  `claude --resume <id>` in the same directory, and removes the tab. The
-  window then appears under Other terminals.
-- **Kill / Resume**: kill ends the process and keeps the tab. Resume runs
-  `claude --resume <id>` in it. After a server restart every session shows
-  as stopped and can be resumed.
+- **Sending to other terminals** types the text over AppleScript, line
+  breaks included, without bringing the window to the front. Claude reads a
+  write of 64 bytes or more as a paste, where Enter turns into a newline, so
+  the text goes in chunks of at most 48 bytes, joined with Alt+Enter and
+  Backspace (see `keystrokeChunks`).
 - **Names**: a tab follows claude's own name, so `/rename` in the session
-  renames the tab. A rename in the page sticks until claude's name changes
-  again.
+  renames the tab. A rename in the page sticks until claude's name changes.
+- **Themes**: page theme (Auto follows macOS, Light, Dark) and terminal theme
+  (Auto matches the page, or Tokyo Night, Dracula, Solarized) in the footer,
+  kept per browser.
+- **Restarts**: a plain start brings back only the saved conversations.
+  `restart.sh` passes `-resume-running`, which also resumes the tabs that
+  were running, so a redeploy keeps them.
 - Keys: ⌥1–9 tab, ⌥↑/↓ prev/next, ⌥J next session that waits for you,
   ⌥N new, ⇧↵ newline in the prompt.
 
@@ -68,10 +77,13 @@ works, because the server strips the session markers from its children's env.
 ## Known rough edges
 
 - The processes live in the server: stopping it hangs up every session.
-  Resume brings back the conversations, but not what was running.
+  Resuming brings back the conversations, but not what was running in them
+  (background tasks, watchers).
 - For a moment, claude's status line shows "running … hook" while a hook
   `curl`s.
 - The xterm.js, marked and DOMPurify scripts load from jsdelivr, so the page
   needs internet.
 - Sending to other terminals: the first send makes macOS ask whether
   claude-mux may control Terminal. The iTerm2 path is written but untested.
+- Claude Code picks its own colours (`/theme`); with a light terminal theme
+  its light theme reads better.
