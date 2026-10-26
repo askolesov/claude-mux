@@ -42,6 +42,7 @@ type Session struct {
 	ptmx        *os.File
 	scrollback  []byte
 	lastOutput  time.Time
+	size        pty.Winsize // the browser's last size; a resumed pty starts with it
 	clients     map[chan []byte]struct{}
 }
 
@@ -103,7 +104,13 @@ func (s *Session) start(claudeArgs []string, env []string, onExit func()) error 
 	cmd := exec.Command("claude", claudeArgs...)
 	cmd.Dir = s.Cwd
 	cmd.Env = env
-	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{Cols: 120, Rows: 40})
+	s.mu.Lock()
+	size := s.size
+	s.mu.Unlock()
+	if size.Cols == 0 {
+		size = pty.Winsize{Cols: 120, Rows: 40}
+	}
+	ptmx, err := pty.StartWithSize(cmd, &size)
 	if err != nil {
 		return err
 	}
@@ -179,10 +186,14 @@ func (s *Session) write(p []byte) {
 }
 
 func (s *Session) resize(cols, rows uint16) {
+	if cols == 0 || rows == 0 {
+		return
+	}
 	s.mu.Lock()
+	s.size = pty.Winsize{Cols: cols, Rows: rows}
 	ptmx := s.ptmx
 	s.mu.Unlock()
-	if ptmx != nil && cols > 0 && rows > 0 {
+	if ptmx != nil {
 		_ = pty.Setsize(ptmx, &pty.Winsize{Cols: cols, Rows: rows})
 	}
 }
