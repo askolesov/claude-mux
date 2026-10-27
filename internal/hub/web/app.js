@@ -261,7 +261,7 @@ function renderList() {
     const own = tabs.filter((t) => t.env === e.name);
     const eshut = collapsed.has("env:" + e.name);
     const edot = eshut ? urgent(own) : "";
-    html += `<div class="envblock"><div class="envhead ${eshut ? "shut" : ""}" data-env="${esc(e.name)}" title="${esc(envMeta(e))} · click to ${eshut ? "show" : "hide"} · drag to reorder · right-click for actions" draggable="true">
+    html += `<div class="envblock" data-env="${esc(e.name)}"><div class="envhead ${eshut ? "shut" : ""}" data-env="${esc(e.name)}" title="${esc(envMeta(e))} · click to ${eshut ? "show" : "hide"} · drag to reorder · right-click for actions" draggable="true">
       ${CHEVRON}<span class="ename">${esc(e.name)}</span><span class="kind">${esc(kindTag(e))}</span>${edot ? `<span class="dot ${edot}"></span>` : ""}
       <span class="gap"></span><span class="hdot ${health(e)}"></span><span class="estate">${esc(envState(e))}</span></div>`;
     if (eshut) { html += `</div>`; continue; }
@@ -1213,7 +1213,9 @@ function dropTarget(e) {
   const elEnv = el.classList.contains("glabel") ? el.dataset.env : tab(el.dataset.key)?.env;
   return elEnv === tab(dragKey)?.env ? el : null;
 }
-const envTarget = (e) => (dragEnv ? e.target.closest(".envhead") : null);
+// An environment drops anywhere on another one's block: its top half puts
+// it before, its bottom half after.
+const envTarget = (e) => (dragEnv ? e.target.closest(".envblock") : null);
 // groupDrop is where a dragged group would land: before or after a whole
 // other group, or an ungrouped tab, in the same environment; with the row
 // to mark.

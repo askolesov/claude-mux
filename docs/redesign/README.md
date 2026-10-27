@@ -72,15 +72,15 @@ Mockups: `V4Main.dc.html` (tabs on the left), `V4TopTabs.dc.html` (on top).
   environment without claude says *No claude here · Install*.
 - **Group**: a small semibold muted label, indented under its environment,
   with the tab count on the right.
-- **Tab row** (indented under the environment): the status dot, then two
+- **Tab row** (indented under the environment, one step further inside a group): the status dot, then two
   lines: the name (plus ↻ when it has a startup message) and the directory
   in small mono. Nothing else. Settings › Appearance › *Tab rows* switches
   between **Detailed** (two lines, the default) and **Compact** (name only,
   one line); mockup `V4Compact.dc.html`.
-- **New tab** lives with its environment: a quiet *+ New tab* row ends
-  each environment's list, so a new tab always opens where you clicked
-  (⌥N opens one in the current tab's environment). An environment without
-  claude shows *Install* instead.
+- **New tab** lives with what it goes into: a small **+** at the right end
+  of every environment header and every group header opens a new tab
+  there (in that group, for a group). ⌥N opens one next to the current
+  tab. An environment without claude has no **+**; it shows *Install*.
 - **Connect environment…** is a dashed row after the last environment:
   adding an environment extends the list it belongs to.
 - At the bottom, only when a release is out: *0.9.3 is out · Update and

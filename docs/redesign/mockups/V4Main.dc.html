@@ -70,6 +70,7 @@ body{margin:0}
 <span style="flex: 1"></span>
 <span style="{{e.healthDot}}"></span>
 <span style="font-size: 11px; color: {{c.muted}}">{{e.metaShort}}</span>
+<sc-if value="{{e.hasClaude}}" hint-placeholder-val="{{ true }}"><button type="button" aria-label="New tab in {{e.label}}" title="New tab in {{e.label}}" style="width: 22px; height: 22px; display: grid; place-items: center; border: 0; border-radius: 5px; background: transparent; color: {{c.muted}}; cursor: pointer; flex: none"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button></sc-if>
 </div>
 <sc-if value="{{e.noClaude}}" hint-placeholder-val="{{ false }}">
 <div style="padding: 4px 8px 4px 24px; font-size: 12px; color: {{c.muted}}">No claude here · <button type="button" style="border: 0; padding: 0; background: transparent; color: {{c.accentText}}; font: inherit; cursor: pointer">Install</button></div>
@@ -77,8 +78,8 @@ body{margin:0}
 <sc-for list="{{e.groups}}" as="g" hint-placeholder-count="2">
 <div>
 <sc-if value="{{g.hasLabel}}" hint-placeholder-val="{{ true }}">
-<div style="display: flex; align-items: center; gap: 6px; padding: 8px 10px 4px 24px; color: {{c.muted}}; font-size: 11px; font-weight: 600">
-<span style="flex: 1">{{g.label}}</span><span style="font-weight: 500">{{g.count}}</span>
+<div style="display: flex; align-items: center; gap: 6px; padding: 6px 6px 2px 24px; color: {{c.muted}}; font-size: 11px; font-weight: 600">
+<span style="flex: 1">{{g.label}}</span><span style="font-weight: 500">{{g.count}}</span><button type="button" aria-label="New tab in {{g.label}}" title="New tab in {{g.label}}" style="width: 22px; height: 22px; display: grid; place-items: center; border: 0; border-radius: 5px; background: transparent; color: {{c.muted}}; cursor: pointer; flex: none"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button>
 </div>
 </sc-if>
 <sc-for list="{{g.tabs}}" as="t" hint-placeholder-count="3">
@@ -92,7 +93,6 @@ body{margin:0}
 </sc-for>
 </div>
 </sc-for>
-<sc-if value="{{e.hasClaude}}" hint-placeholder-val="{{ true }}"><button type="button" aria-label="New tab in {{e.label}}" style="display: flex; align-items: center; gap: 8px; width: 100%; height: 28px; padding: 0 10px 0 24px; margin-top: 1px; border: 0; border-radius: 6px; background: transparent; color: {{c.muted}}; font: inherit; font-size: 12px; text-align: left; cursor: pointer"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>New tab</button></sc-if>
 </div>
 </sc-for>
 <button type="button" title="An SSH host, a Docker container or a WSL distro" style="display: flex; align-items: center; gap: 8px; width: 100%; height: 34px; margin-top: 14px; padding: 0 10px; border: 1px dashed {{c.line}}; border-radius: 6px; background: transparent; color: {{c.muted}}; font: inherit; font-size: 12px; text-align: left; cursor: pointer"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 2v5M15 2v5M6 7h12v4a6 6 0 0 1-12 0zM12 17v5"></path></svg>Connect environment…</button>
@@ -171,7 +171,7 @@ class Component extends DCLogic {
         name: t.id, startup: !!t.startup, twoLine: twoLine,
         dotStyle: dot(t),
         nameStyle: 'flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:' + (bold ? '600' : '400') + ';color:' + (t.status === 'exited' ? c.exitedText : c.text),
-        rowStyle: 'display:flex;align-items:center;gap:10px;width:100%;padding:' + (twoLine ? '6px' : '5px') + ' 10px ' + (twoLine ? '6px' : '5px') + ' 24px;margin:1px 0;border:0;border-radius:6px;cursor:pointer;text-align:left;font:inherit;color:inherit;background:' + (active ? c.sel : 'transparent'),
+        rowStyle: 'display:flex;align-items:center;gap:10px;width:100%;padding:' + (twoLine ? '6px' : '5px') + ' 10px ' + (twoLine ? '6px' : '5px') + (t.group ? ' 40px' : ' 24px') + ';margin:1px 0;border:0;border-radius:6px;cursor:pointer;text-align:left;font:inherit;color:inherit;background:' + (active ? c.sel : 'transparent'),
         topStyle: 'display:flex;align-items:center;gap:7px;height:28px;padding:0 11px;border:0;border-radius:999px;font-size:12px;font:inherit;cursor:pointer;flex:none;color:inherit;background:' + (active ? c.sel : 'transparent'),
         crumb: t.env + (t.group ? ' / ' + t.group : '') + '  ·  ' + t.cwd + '  ·  ' + t.branch,
         select: () => this.setState({ active: t.id })
