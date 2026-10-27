@@ -25,93 +25,68 @@ works, because the server strips the session markers from its children's env.
 
 ## What it does
 
-The sidebar has three sections, by where a conversation is:
+Tabs for claude, like a browser's. Each tab is one `claude` in its own pty
+with the live terminal in the page. A tab stays until you close it:
+quitting claude-mux, a reboot or a crashed backend just restarts it, and
+every start continues the tab's conversation (`claude --resume`). **Close**
+ends its claude and removes it for good. Only claudes started here are
+shown; claude running in other terminals is left alone.
 
-- **Running here**: claude-mux's own sessions (`+ New`, ⌥N), each `claude`
-  in its own pty with the live terminal in the page. Closing the browser tab
-  doesn't stop anything, and reopening replays the last 1 MB of output.
-  **Close** ends the session and removes its tab. **Move to Terminal** ends
-  it here and continues it in a Terminal.app window. Drag tabs to reorder.
-- **Running in Terminal**: claude sessions in other terminals (from
-  `claude agents --json`), with their last 40 messages, Markdown rendered.
-  The box at the bottom types a message into that window (see below).
-  **Move here** hangs up that claude process (SIGHUP to its pid only; the
-  window and its shell stay open) and continues the session here. **Close**
-  just ends it.
-- **Saved**: conversations you starred (right-click → ★ Save) that run
-  nowhere at the moment. **Open here** or **Open in Terminal** continues
-  one. Saved conversations live in `~/.claude-mux/favourites.json`; while
-  one runs, its row shows ★. Unsave forgets it.
-  A saved conversation can have a **restore message** (right-click →
-  Restore message…, marked ↻): the first prompt whenever it starts in a new
-  process (Open here, Open in Terminal, Move, Resume, a claude-mux
-  restart), passed as `claude --resume <id> -- "<message>"`. Use it to bring
-  back what dies with the old process, like a watcher.
-
-Also:
-
-- **Groups**: right-click a tab or saved conversation → Group… (or the
-  Group field in New) puts it under a collapsible header. Drag a tab onto a
-  header to put it in that group, or next to a tab to take that tab's group.
-  A collapsed header shows the most urgent status inside it. Right-click a
-  header to start a new session in it, rename it (an existing name merges
-  the two) or ungroup it. A tab's group goes with it to its saved
-  conversation and back; collapsing is kept per browser.
+- **New** (⌥N): name, group, directory, startup message, extra args and the
+  `--dangerously-skip-permissions` / `--chrome` switches. The name is
+  passed as `--name`.
+- **Names** belong to claude: type `/rename <name>` in the tab and the
+  sidebar follows (from `claude agents --json`, polled every 5 s).
+- **Startup message** (right-click → Startup message…, marked ↻): the first
+  prompt whenever the tab's claude starts, passed as
+  `claude [--resume <id>] -- "<message>"`. Use it to bring back what dies
+  with the old process, like a watcher.
+- **Groups**: right-click → Group… (or the Group field in New) puts a tab
+  under a collapsible header. Drag a tab onto a header to put it in that
+  group, or next to a tab to take that tab's group; drag to reorder. A
+  collapsed header shows the most urgent status inside it. Right-click a
+  header to start a new tab in it, rename it (an existing name merges the
+  two) or ungroup it. Collapsing is kept per browser.
+- **Resume** restarts a tab whose claude exited (`/exit`, a crash).
 - **Status dot**: blue pulsing = working, green = ready for input, amber
   pulsing = needs you (a permission prompt, or a prompt shown before startup
-  such as trusting the folder), hollow = exited. A session that finished
-  while you looked elsewhere gets a bold name and a green edge until you open
-  it. The page title and icon count what waits: `(2) claude-mux`.
-- **Notifications** when a session becomes ready or needs you and you aren't
+  such as trusting the folder), hollow = exited. A tab that finished while
+  you looked elsewhere gets a bold name and a green edge until you open it.
+  The page title and icon count what waits: `(2) claude-mux`.
+- **Notifications** when a tab becomes ready or needs you and you aren't
   looking at it (press "Enable notifications" once).
-- **Sending to other terminals** types the text over AppleScript, line
-  breaks included, without bringing the window to the front. Claude reads a
-  write of 64 bytes or more as a paste, where Enter turns into a newline, so
-  the text goes in chunks of at most 48 bytes, joined with Alt+Enter and
-  Backspace (see `keystrokeChunks`).
-- **Names** come from claude's own list (`claude agents --json`), for tabs,
-  Terminal sessions and saved ones alike. Rename (right-click, either kind)
-  goes through claude: it clears the prompt (an unsent draft is lost),
-  types `/rename <name>` and Enter, waiting first while claude works or
-  shows a prompt; the sidebar follows on the next poll.
 - **Themes**: page theme (Auto follows macOS, Light, Dark) and terminal theme
   (Auto matches the page, or Tokyo Night, Dracula, Solarized) in the footer,
   kept per browser.
-- **Restarts**: every start resumes the tabs whose claude was running when
-  the backend stopped, whether the hub quit, the backend was killed or the
-  machine rebooted. Tabs whose claude had exited, and tabs where nothing was
-  said yet, are dropped. Saved conversations always stay.
-- Keys: ⌥1–9 tab, ⌥↑/↓ prev/next, ⌥J next session that waits for you,
-  ⌥N new, ⇧↵ newline in the prompt.
+- Keys: ⌥1–9 tab, ⌥↑/↓ prev/next, ⌥J next tab that waits for you, ⌥N new,
+  ⇧↵ newline in the prompt.
 
 ## How it works
 
 - The page talks to the hub, which forwards `/env/local/…` to the backend
   over one pipe (the backend's stdin and stdout, split into streams by
   yamux). The backend's API listens on no port.
-- Status comes from Claude Code hooks. Each session gets
+- State is one file, `~/.claude-mux/state.json`: the tabs in sidebar order,
+  each with its name, group, directory, args, claude session id and startup
+  message. (Older versions' `sessions.json` and `favourites.json` are
+  migrated into it once.)
+- Status comes from Claude Code hooks. Each tab's claude gets
   `--settings ~/.claude-mux/hooks.json`, whose hooks run
   `claude-mux-backend hook`; it posts the payload to the backend's hook-only
   loopback port, given to the session in `CLAUDE_MUX_HOOK` with a token
   that changes every start: SessionStart/Stop → ready,
   UserPromptSubmit/Pre/PostToolUse → working, a permission Notification →
   needs you, SessionEnd → exited. The hook also reports the claude session
-  id that Resume uses.
-- State (names, dirs, claude session ids) is in `~/.claude-mux/sessions.json`.
+  id the tab resumes.
 - The hub only listens on loopback. It rejects foreign Host/Origin headers
-  and non-JSON writes, because anything that reaches the API can start
+  and non-JSON writes, because anything that reaches a backend can start
   processes.
 
 ## Known rough edges
 
-- The processes live in the server: stopping it hangs up every session.
+- The processes live in the backend: stopping it hangs up every tab.
   Resuming brings back the conversations, but not what was running in them
-  (background tasks, watchers).
-- For a moment, claude's status line shows "running … hook" while a hook
-  `curl`s.
-- The xterm.js, marked and DOMPurify scripts load from jsdelivr, so the page
-  needs internet.
-- Sending to other terminals: the first send makes macOS ask whether
-  claude-mux may control Terminal. The iTerm2 path is written but untested.
+  (background tasks, watchers); a startup message can restart those.
+- The xterm.js scripts load from jsdelivr, so the page needs internet.
 - Claude Code picks its own colours (`/theme`); with a light terminal theme
   its light theme reads better.

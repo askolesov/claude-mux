@@ -45,8 +45,7 @@ func Run(stateDir, defaultCwd string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	defer stop()
 
-	ext := &Externals{m: m}
-	go ext.Poll(ctx, 5*time.Second)
+	go m.PollNames(ctx, 5*time.Second)
 	go m.WatchStartup(ctx)
 
 	hooks := &http.Server{Handler: NewHookHandler(m, hex.EncodeToString(token)), ReadHeaderTimeout: 10 * time.Second}
@@ -60,7 +59,7 @@ func Run(stateDir, defaultCwd string) error {
 	if err != nil {
 		return err
 	}
-	api := &http.Server{Handler: NewHandler(m, ext, defaultCwd), ReadHeaderTimeout: 10 * time.Second}
+	api := &http.Server{Handler: NewHandler(m, defaultCwd), ReadHeaderTimeout: 10 * time.Second}
 	go func() { _ = api.Serve(session) }()
 
 	select {

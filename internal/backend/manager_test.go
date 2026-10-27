@@ -1,6 +1,8 @@
 package backend
 
 import (
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -39,5 +41,39 @@ func TestGroupTogether(t *testing.T) {
 				t.Errorf("got %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestMigrate(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, data string) {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(data), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("sessions.json", `[
+		{"id":"t1","name":"ops","cwd":"/w","claudeSessionId":"s1","wasRunning":true},
+		{"id":"t2","name":"dev","group":"g","cwd":"/w","claudeSessionId":"s2"}
+	]`)
+	write("favourites.json", `[
+		{"claudeSessionId":"s1","name":"ops","onRestore":"restart the watch"},
+		{"claudeSessionId":"s9","name":"elsewhere","onRestore":"never opened"}
+	]`)
+
+	m := &Manager{stateFile: filepath.Join(dir, "state.json")}
+	if err := m.load(dir); err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, s := range m.sessions {
+		got = append(got, s.ID+"|"+s.Group+"|"+s.StartupMessage)
+	}
+	if want := []string{"t1||restart the watch", "t2|g|"}; !slices.Equal(got, want) {
+		t.Errorf("tabs %v, want %v", got, want)
+	}
+	for _, name := range []string{"state.json", "sessions.json.migrated", "favourites.json.migrated"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+			t.Errorf("%s: %v", name, err)
+		}
 	}
 }

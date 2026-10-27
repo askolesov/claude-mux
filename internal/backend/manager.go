@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -18,33 +19,34 @@ import (
 var (
 	errNotFound = errors.New("session not found")
 	errRunning  = errors.New("session is still running")
-	errNoResume = errors.New("session has no claude session id to resume")
 )
 
-// Manager owns the sessions, keeps them on disk, and tells subscribers when
-// anything changed.
+// Manager owns the tabs: one claude each, in the order and groups of the
+// sidebar. It keeps them in the state file and tells subscribers when
+// anything changed. A tab lives until it is closed.
 type Manager struct {
 	stateFile string
-	favFile   string
 	hooksFile string
 	hookURL   string // the hook port's base, ".../hook/<token>"; a session adds its id
 
-	mu           sync.Mutex
-	shuttingDown bool // claudes exiting now were hung up by Shutdown; they run again on the next start
-	sessions     []*Session
-	favourites   []Favourite
-	subs         map[chan struct{}]struct{}
+	mu       sync.Mutex
+	sessions []*Session
+	subs     map[chan struct{}]struct{}
 }
 
-// NewManager loads the favourites and brings back the tabs that were running
-// when the backend last stopped: the hub quitting is a restart.
+// State is the state file.
+type State struct {
+	Sessions []*Session `json:"sessions"`
+}
+
+// NewManager loads the tabs and starts every one of them, continuing each
+// tab's conversation.
 func NewManager(stateDir, hookURL, exe string) (*Manager, error) {
 	if err := os.MkdirAll(stateDir, 0o700); err != nil {
 		return nil, err
 	}
 	m := &Manager{
-		stateFile: filepath.Join(stateDir, "sessions.json"),
-		favFile:   filepath.Join(stateDir, "favourites.json"),
+		stateFile: filepath.Join(stateDir, "state.json"),
 		hooksFile: filepath.Join(stateDir, "hooks.json"),
 		hookURL:   hookURL,
 		subs:      map[chan struct{}]struct{}{},
@@ -52,48 +54,78 @@ func NewManager(stateDir, hookURL, exe string) (*Manager, error) {
 	if err := writeHookSettings(m.hooksFile, exe); err != nil {
 		return nil, err
 	}
-	if err := m.loadFavourites(); err != nil {
-		return nil, err
-	}
-	if err := m.load(); err != nil {
+	if err := m.load(stateDir); err != nil {
 		return nil, err
 	}
 	for _, s := range m.List() {
-		if err := m.Resume(s.ID); err != nil {
-			fmt.Fprintf(os.Stderr, "resume %s: %v\n", s.Name, err)
+		if err := m.Start(s.ID); err != nil {
+			fmt.Fprintf(os.Stderr, "start %s: %v\n", s.Name, err)
 		}
 	}
 	return m, nil
 }
 
-// load reads the tabs of the previous run and keeps the ones that were
-// running when it stopped; NewManager resumes them.
-func (m *Manager) load() error {
+func (m *Manager) load(stateDir string) error {
 	data, err := os.ReadFile(m.stateFile)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil
+		return m.migrate(stateDir)
 	}
 	if err != nil {
 		return err
 	}
-	if err := json.Unmarshal(data, &m.sessions); err != nil {
+	var st State
+	if err := json.Unmarshal(data, &st); err != nil {
 		return fmt.Errorf("%s: %w", m.stateFile, err)
 	}
-	m.sessions = slices.DeleteFunc(m.sessions, func(s *Session) bool {
-		_, noTranscript := transcriptPath(s.ClaudeSessionID)
-		return !s.WasRunning || noTranscript != nil // nothing said yet: nothing to resume
-	})
+	m.sessions = st.Sessions
 	for _, s := range m.sessions {
-		s.WasRunning = false
 		s.status, s.statusSince = StatusStopped, time.Now()
 	}
+	return nil
+}
+
+// migrate builds the state file from the two files of earlier versions: the
+// tabs (sessions.json) and the saved conversations (favourites.json), whose
+// restore messages become the tabs' startup messages. A saved conversation
+// no tab holds is dropped, not opened: it may run in a terminal, and a
+// second claude on it would fork its transcript. The old files are kept as
+// *.migrated.
+func (m *Manager) migrate(stateDir string) error {
+	var tabs []*Session
+	var saved []struct {
+		ClaudeSessionID string `json:"claudeSessionId"`
+		OnRestore       string `json:"onRestore"`
+	}
+	old := map[string]any{"sessions.json": &tabs, "favourites.json": &saved}
+	for name, v := range old {
+		if data, err := os.ReadFile(filepath.Join(stateDir, name)); err == nil {
+			if err := json.Unmarshal(data, v); err != nil {
+				return fmt.Errorf("%s: %w", name, err)
+			}
+		}
+	}
+	for _, f := range saved {
+		for _, t := range tabs {
+			if f.ClaudeSessionID != "" && t.ClaudeSessionID == f.ClaudeSessionID {
+				t.StartupMessage = f.OnRestore
+			}
+		}
+	}
+	m.sessions = tabs
+	for _, s := range m.sessions {
+		s.status, s.statusSince = StatusStopped, time.Now()
+	}
+	m.groupTogether()
 	m.save()
+	for name := range old {
+		_ = os.Rename(filepath.Join(stateDir, name), filepath.Join(stateDir, name+".migrated"))
+	}
 	return nil
 }
 
 func (m *Manager) save() {
 	m.mu.Lock()
-	data, err := json.MarshalIndent(m.sessions, "", "  ")
+	data, err := json.MarshalIndent(State{Sessions: m.sessions}, "", "  ")
 	m.mu.Unlock()
 	if err == nil {
 		err = os.WriteFile(m.stateFile, data, 0o600)
@@ -151,44 +183,30 @@ func (m *Manager) Get(id string) (*Session, error) {
 	return nil, errNotFound
 }
 
-// Create starts a new claude session in cwd.
-func (m *Manager) Create(name, group, cwd string, args []string) (*Session, error) {
-	s := &Session{ID: newID(), Name: name, Group: group, Cwd: cwd, Args: args, CreatedAt: time.Now()}
-	return s, m.add(s, args)
-}
-
-// Takeover continues a claude conversation that ran somewhere else, here. A
-// saved conversation's tab joins its group.
-func (m *Manager) Takeover(claudeSessionID, name, cwd string, args []string) (*Session, error) {
-	s := &Session{ID: newID(), Name: name, Cwd: cwd, Args: args, ClaudeSessionID: claudeSessionID, CreatedAt: time.Now()}
-	if f, err := m.Favourite(claudeSessionID); err == nil {
-		s.Group = f.Group
+// Create opens a tab with a new claude in cwd.
+func (m *Manager) Create(name, group, cwd, startupMessage string, args []string) (*Session, error) {
+	if st, err := os.Stat(cwd); err != nil || !st.IsDir() {
+		return nil, fmt.Errorf("%q is not a directory", cwd)
 	}
-	return s, m.add(s, append(append([]string{"--resume", claudeSessionID}, args...), m.restorePrompt(claudeSessionID)...))
-}
-
-func (m *Manager) add(s *Session, args []string) error {
-	if st, err := os.Stat(s.Cwd); err != nil || !st.IsDir() {
-		return fmt.Errorf("%q is not a directory", s.Cwd)
+	if name == "" {
+		name = filepath.Base(cwd)
 	}
-	if s.Name == "" {
-		s.Name = filepath.Base(s.Cwd)
-	}
-	if err := m.run(s, args); err != nil {
-		return err
-	}
+	s := &Session{ID: newID(), Name: name, Group: group, Cwd: cwd, Args: args, StartupMessage: startupMessage}
 	m.mu.Lock()
 	m.sessions = append(m.sessions, s)
 	m.groupTogether()
 	m.mu.Unlock()
+	if err := m.Start(s.ID); err != nil {
+		_ = m.Close(s.ID)
+		return nil, err
+	}
 	m.save()
-	m.notify()
-	return nil
+	return s, nil
 }
 
-// Resume restarts a session that exited or was stopped by a server restart,
-// continuing its claude conversation.
-func (m *Manager) Resume(id string) error {
+// Start runs the tab's claude: it continues the tab's conversation, if it
+// has one yet, and sends the startup message as the first prompt.
+func (m *Manager) Start(id string) error {
 	s, err := m.Get(id)
 	if err != nil {
 		return err
@@ -196,45 +214,40 @@ func (m *Manager) Resume(id string) error {
 	if s.running() {
 		return errRunning
 	}
-	if s.ClaudeSessionID == "" {
-		return errNoResume
+	s.mu.Lock()
+	name, sid, startupMessage := s.Name, s.ClaudeSessionID, s.StartupMessage
+	args := append([]string{"--settings", m.hooksFile, "--name", name}, s.Args...)
+	s.mu.Unlock()
+	if hasConversation(sid) {
+		args = append([]string{"--resume", sid}, args...)
 	}
-	if err := m.run(s, append(append([]string{"--resume", s.ClaudeSessionID}, s.Args...), m.restorePrompt(s.ClaudeSessionID)...)); err != nil {
+	if strings.TrimSpace(startupMessage) != "" {
+		args = append(args, "--", startupMessage) // after "--", a message starting with "-" stays a prompt
+	}
+	env := append(childEnv(), "CLAUDE_MUX_ID="+s.ID, "CLAUDE_MUX_HOOK="+m.hookURL+"/"+s.ID, "TERM=xterm-256color", "COLORTERM=truecolor")
+	if err := s.start(args, env, func() {
+		s.setStatus(StatusExited)
+		m.notify()
+	}); err != nil {
 		return err
 	}
 	m.notify()
 	return nil
 }
 
-func (m *Manager) run(s *Session, args []string) error {
-	claudeArgs := append([]string{"--settings", m.hooksFile, "--name", s.Name}, args...)
-	env := append(childEnv(), "CLAUDE_MUX_ID="+s.ID, "CLAUDE_MUX_HOOK="+m.hookURL+"/"+s.ID, "TERM=xterm-256color", "COLORTERM=truecolor")
-	err := s.start(claudeArgs, env, func() {
-		m.mu.Lock()
-		shuttingDown := m.shuttingDown
-		m.mu.Unlock()
-		if !shuttingDown {
-			s.mu.Lock()
-			s.WasRunning = false
-			s.mu.Unlock()
-			m.save()
-		}
-		s.setStatus(StatusExited)
-		m.notify()
-	})
-	if err != nil {
-		return err
+// hasConversation reports whether claude has a transcript for the session:
+// a tab where nothing was said yet has nothing to resume.
+func hasConversation(sessionID string) bool {
+	home, err := os.UserHomeDir()
+	if sessionID == "" || err != nil || strings.ContainsAny(sessionID, `/\`) {
+		return false
 	}
-	// Saved now, not at shutdown, so a backend that dies resumes it too.
-	s.mu.Lock()
-	s.WasRunning = true
-	s.mu.Unlock()
-	m.save()
-	return nil
+	matches, _ := filepath.Glob(filepath.Join(home, ".claude", "projects", "*", sessionID+".jsonl"))
+	return len(matches) > 0
 }
 
 // sessionMarkers are set by a running Claude Code for its own children. A
-// server started from inside a claude session must not pass them on: the
+// backend started from inside a claude session must not pass them on: the
 // child would take itself for a subagent and stop saving its transcript.
 var sessionMarkers = map[string]bool{
 	"CLAUDECODE": true, "CLAUDE_PID": true, "CLAUDE_EFFORT": true,
@@ -279,60 +292,62 @@ func (m *Manager) WatchStartup(ctx context.Context) {
 	}
 }
 
-// Rename renames the session through claude: /rename typed into it, now if
-// it waits for a prompt, else when it next does (typed into a turn or a
-// permission prompt it would land in the wrong place). The tab follows the
-// name claude then reports. A session that doesn't run keeps the name for
-// its next start, which passes it as --name.
-func (m *Manager) Rename(id, name string) error {
-	if strings.TrimSpace(name) == "" {
-		return errors.New("empty name")
+// PollNames follows the names claude reports for the tabs' processes in
+// `claude agents --json`: claude owns the name, and /rename typed in a tab
+// renames the tab. The name is passed back as --name on the next start.
+func (m *Manager) PollNames(ctx context.Context, every time.Duration) {
+	for {
+		if out, err := exec.CommandContext(ctx, "claude", "agents", "--json").Output(); err == nil {
+			var agents []struct {
+				PID  int    `json:"pid"`
+				Name string `json:"name"`
+			}
+			if json.Unmarshal(out, &agents) == nil {
+				for _, a := range agents {
+					m.followName(a.PID, a.Name)
+				}
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(every):
+		}
 	}
-	s, err := m.Get(id)
-	if err != nil {
-		return err
-	}
-	s.mu.Lock()
-	running, ready := s.ptmx != nil, s.status == StatusReady
-	if running && !ready {
-		s.pendingName = name
-	}
-	if !running {
-		s.Name = name
-	}
-	sid := s.ClaudeSessionID
-	s.mu.Unlock()
-	switch {
-	case running && ready:
-		s.typeRename(name)
-	case !running:
-		m.renameFavourite(sid, name)
-		m.save()
-		m.notify()
-	}
-	return nil
 }
 
-// FollowClaudeName gives the tab of the session run by pid the name claude
-// reports for it: claude's list is the source of truth for names.
-func (m *Manager) FollowClaudeName(pid int, name string) {
+func (m *Manager) followName(pid int, name string) {
 	m.mu.Lock()
 	sessions := append([]*Session(nil), m.sessions...)
 	m.mu.Unlock()
 	for _, s := range sessions {
 		s.mu.Lock()
-		if s.cmd == nil || s.cmd.Process == nil || s.cmd.Process.Pid != pid || name == "" || name == s.Name {
-			s.mu.Unlock()
-			continue
+		changed := s.cmd != nil && s.cmd.Process != nil && s.cmd.Process.Pid == pid && name != "" && name != s.Name
+		if changed {
+			s.Name = name
 		}
-		s.Name = name
-		sid := s.ClaudeSessionID
 		s.mu.Unlock()
-		m.renameFavourite(sid, name)
-		m.save()
-		m.notify()
-		return
+		if changed {
+			m.save()
+			m.notify()
+			return
+		}
 	}
+}
+
+// SetStartupMessage sets the prompt the tab's claude gets whenever it
+// starts; "" means none.
+func (m *Manager) SetStartupMessage(id, msg string) error {
+	s, err := m.Get(id)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.StartupMessage = strings.TrimSpace(msg)
+	s.mu.Unlock()
+	m.save()
+	m.notify()
+	return nil
 }
 
 func (m *Manager) MarkSeen(id string) error {
@@ -348,33 +363,6 @@ func (m *Manager) MarkSeen(id string) error {
 		m.notify()
 	}
 	return nil
-}
-
-// Handoff moves a session out to a Terminal.app window: it ends the process
-// here, waits for it to exit so the two never write one transcript, resumes
-// the conversation in a new window, and forgets the tab.
-func (m *Manager) Handoff(id string) error {
-	s, err := m.Get(id)
-	if err != nil {
-		return err
-	}
-	s.mu.Lock()
-	sid, name, cwd, args := s.ClaudeSessionID, s.Name, s.Cwd, s.Args
-	s.mu.Unlock()
-	if _, err := transcriptPath(sid); sid == "" || err != nil {
-		return errors.New("nothing to hand off yet: the conversation has no messages")
-	}
-	s.kill()
-	for deadline := time.Now().Add(6 * time.Second); s.running(); {
-		if time.Now().After(deadline) {
-			return errors.New("the session didn't exit; try again")
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	if err := OpenTerminal(cwd, append(append([]string{"claude", "--resume", sid, "--name", name}, args...), m.restorePrompt(sid)...)); err != nil {
-		return err
-	}
-	return m.Close(id)
 }
 
 // Reorder puts the sessions in the order of ids. Sessions it doesn't name
@@ -422,27 +410,23 @@ func (m *Manager) groupTogether() {
 	slices.SortStableFunc(m.sessions, func(a, b *Session) int { return rank[a] - rank[b] })
 }
 
-// SetGroup moves a tab into group, or out of any with "". Its saved
-// conversation, if any, keeps the group for its next start.
+// SetGroup moves a tab into group, or out of any with "".
 func (m *Manager) SetGroup(id, group string) error {
 	s, err := m.Get(id)
 	if err != nil {
 		return err
 	}
-	group = strings.TrimSpace(group)
 	m.mu.Lock()
-	s.Group = group
-	sid := s.ClaudeSessionID
+	s.Group = strings.TrimSpace(group)
 	m.groupTogether()
 	m.mu.Unlock()
-	m.setFavouriteGroup(sid, group)
 	m.save()
 	m.notify()
 	return nil
 }
 
-// RenameGroup renames a group on every tab and saved conversation; renaming
-// to "" dissolves it, and renaming to an existing group merges the two.
+// RenameGroup renames a group on every tab; renaming to "" dissolves it,
+// and renaming to an existing group merges the two.
 func (m *Manager) RenameGroup(from, to string) error {
 	if from == "" {
 		return errors.New("no group to rename")
@@ -454,21 +438,14 @@ func (m *Manager) RenameGroup(from, to string) error {
 			s.Group = to
 		}
 	}
-	for i := range m.favourites {
-		if m.favourites[i].Group == from {
-			m.favourites[i].Group = to
-		}
-	}
 	m.groupTogether()
 	m.mu.Unlock()
 	m.save()
-	m.saveFavourites()
 	m.notify()
 	return nil
 }
 
-// Close ends the session if it runs and removes its tab. A favourite stays
-// in the favourites.
+// Close ends the tab's claude and removes the tab.
 func (m *Manager) Close(id string) error {
 	s, err := m.Get(id)
 	if err != nil {
@@ -476,24 +453,18 @@ func (m *Manager) Close(id string) error {
 	}
 	s.kill()
 	m.mu.Lock()
-	for i, x := range m.sessions {
-		if x == s {
-			m.sessions = append(m.sessions[:i], m.sessions[i+1:]...)
-			break
-		}
-	}
+	m.sessions = slices.DeleteFunc(m.sessions, func(x *Session) bool { return x == s })
 	m.mu.Unlock()
 	m.save()
 	m.notify()
 	return nil
 }
 
-// Shutdown hangs up every session, keeping WasRunning for the next start,
-// and waits for them to exit: a restart resuming a conversation whose old
-// process still runs would fork its transcript.
+// Shutdown hangs up every session and waits for them to exit: the next
+// start resuming a conversation whose old process still runs would fork its
+// transcript. The tabs stay in the state file.
 func (m *Manager) Shutdown() {
 	m.mu.Lock()
-	m.shuttingDown = true
 	sessions := append([]*Session(nil), m.sessions...)
 	m.mu.Unlock()
 	for _, s := range sessions {

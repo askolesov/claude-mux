@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -26,6 +27,12 @@ func writeHookSettings(path, exe string) error {
 		return err
 	}
 	return os.WriteFile(path, data, 0o600)
+}
+
+// shellQuote wraps s in single quotes. A quote inside becomes '\” (close,
+// escaped quote, reopen), which sh, zsh and fish all read the same way.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // Hook is the hook command: it posts the hook's payload, read on stdin, to
@@ -80,15 +87,6 @@ func (m *Manager) ApplyHook(id string, p HookPayload) error {
 	}
 	if st != "" && s.setStatus(st) {
 		m.notify()
-	}
-	if st == StatusReady {
-		s.mu.Lock()
-		name := s.pendingName
-		s.pendingName = ""
-		s.mu.Unlock()
-		if name != "" {
-			s.typeRename(name)
-		}
 	}
 	return nil
 }

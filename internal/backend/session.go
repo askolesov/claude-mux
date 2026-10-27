@@ -25,22 +25,21 @@ const (
 // scrollbackLimit caps the output kept for replay when a browser reconnects.
 const scrollbackLimit = 1 << 20
 
-// Session is one claude process in a pty. The fields above mu are persisted.
+// Session is a tab: one claude process in a pty. The fields above mu are
+// persisted in the state file.
 type Session struct {
-	ID              string    `json:"id"`
-	Name            string    `json:"name"`
-	Group           string    `json:"group,omitempty"` // tabs with one group sit together under its header
-	Cwd             string    `json:"cwd"`
-	Args            []string  `json:"args"`
-	ClaudeSessionID string    `json:"claudeSessionId"`
-	CreatedAt       time.Time `json:"createdAt"`
-	WasRunning      bool      `json:"wasRunning,omitempty"` // claude runs, or ran when the backend stopped or died: the next start resumes it
+	ID              string   `json:"id"`
+	Name            string   `json:"name"`
+	Group           string   `json:"group,omitempty"` // tabs with one group sit together under its header
+	Cwd             string   `json:"cwd"`
+	Args            []string `json:"args,omitempty"`
+	ClaudeSessionID string   `json:"claudeSessionId,omitempty"` // the conversation the tab continues
+	StartupMessage  string   `json:"startupMessage,omitempty"`  // the first prompt whenever its claude starts
 
 	mu          sync.Mutex
 	status      Status
 	statusSince time.Time
 	unseen      bool
-	pendingName string // a rename waiting for claude to be ready
 	cmd         *exec.Cmd
 	ptmx        *os.File
 	scrollback  []byte
@@ -55,32 +54,29 @@ type SessionView struct {
 	Name            string    `json:"name"`
 	Group           string    `json:"group"`
 	Cwd             string    `json:"cwd"`
-	ClaudeSessionID string    `json:"claudeSessionId"`
 	Args            []string  `json:"args"`
+	ClaudeSessionID string    `json:"claudeSessionId"`
+	StartupMessage  string    `json:"startupMessage"`
 	Status          Status    `json:"status"`
 	StatusSince     time.Time `json:"statusSince"`
 	Unseen          bool      `json:"unseen"`
-	PID             int       `json:"pid"`
 }
 
 func (s *Session) View() SessionView {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	v := SessionView{
+	return SessionView{
 		ID:              s.ID,
 		Name:            s.Name,
 		Group:           s.Group,
 		Cwd:             s.Cwd,
-		ClaudeSessionID: s.ClaudeSessionID,
 		Args:            s.Args,
+		ClaudeSessionID: s.ClaudeSessionID,
+		StartupMessage:  s.StartupMessage,
 		Status:          s.status,
 		StatusSince:     s.statusSince,
 		Unseen:          s.unseen,
 	}
-	if s.cmd != nil && s.cmd.Process != nil {
-		v.PID = s.cmd.Process.Pid
-	}
-	return v
 }
 
 // setStatus records a new status and reports whether it changed. Ending up
@@ -190,21 +186,6 @@ func (s *Session) write(p []byte) {
 	if ptmx != nil {
 		_, _ = ptmx.Write(p)
 	}
-}
-
-// typeRename types the rename keys into the pty, a few at a time so claude
-// never reads them as a paste, with Enter as a write of its own.
-func (s *Session) typeRename(name string) {
-	clear, command := renameKeys(name)
-	go func() {
-		for i := 0; i < len(clear); i += chunkBytes {
-			s.write([]byte(clear[i:min(i+chunkBytes, len(clear))]))
-			time.Sleep(60 * time.Millisecond)
-		}
-		s.write([]byte(command))
-		time.Sleep(150 * time.Millisecond)
-		s.write([]byte("\r"))
-	}()
 }
 
 func (s *Session) resize(cols, rows uint16) {

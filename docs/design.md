@@ -12,8 +12,7 @@ show sessions running here, over SSH, in Docker, in WSL and on Windows.
 - The hub runs on Mac and Windows. Backends run on Mac, Windows and Linux.
 - Nothing to install by hand in an environment: the hub puts the backend
   there on first connect, the way VS Code Remote installs its server.
-- Everything claude-mux does today keeps working in every environment,
-  except what is tied to Terminal.app (see Non-goals).
+- Everything claude-mux does today keeps working in every environment.
 
 ## Non-goals
 
@@ -22,9 +21,9 @@ show sessions running here, over SSH, in Docker, in WSL and on Windows.
   back with `--resume` on the next connect.
 - **Moving a conversation between environments.** Each environment has its
   own claude, its own login and its own `~/.claude`.
-- **Typing into terminals claude-mux doesn't own** anywhere but the local
-  Mac. Today's Send and Rename for "Running in Terminal" use AppleScript;
-  they stay a Mac-local feature.
+- **Claude that claude-mux didn't start.** Each environment shows only its
+  own tabs (dropped on 2026-10-27, before this work began: no "Running in
+  Terminal", no saved conversations, no typing into other windows).
 
 ## Components
 
@@ -33,12 +32,12 @@ Two programs, one Go module, one version.
 | Program | Job | Built for |
 |---|---|---|
 | `claude-mux` (hub) | the window and the page; the environment list; starts one backend per environment and routes the page's requests to it; installs backends | Mac, Windows |
-| `claude-mux-backend` | everything about sessions in the environment it runs in: ptys, claude processes, hooks, the claude list, transcripts, tabs, groups, saved conversations | Mac, Windows, Linux; amd64 and arm64 |
+| `claude-mux-backend` | the tabs of the environment it runs in: ptys, claude processes, hooks, names, groups, the state file | Mac, Windows, Linux; amd64 and arm64 |
 
 ```
 cmd/hub/            main for the hub
 cmd/backend/        main for the backend
-internal/backend/   today's code: manager, sessions, hooks, externals, saved, HTTP API
+internal/backend/   tabs, ptys, hooks, the state file, the API
 internal/hub/       environments, transport, install, routing, the page (web/)
 ```
 
@@ -155,25 +154,12 @@ need to reach it.
 |---|---|---|
 | pty | `creack/pty` | ConPTY |
 | stopping a claude | SIGHUP, SIGKILL after 3s | close the pseudo-console, then `TerminateProcess` |
-| the claude list | `claude agents --json` | the same |
-| Send / Rename to "Running in Terminal" | Mac local only (AppleScript); not offered elsewhere | not offered |
-
-The backend reports what it supports in its state (`capabilities`), and the
-page shows only those actions.
-
-**Open in Terminal / Move to Terminal** open a terminal on the hub's
-machine, so they move to the hub. The backend stops the session and returns
-the command that resumes it; the hub opens a local terminal (Terminal.app,
-`wt.exe`) running it through the environment's command with a tty:
-`ssh -t devbox 'cd … && claude --resume …'`,
-`wsl.exe -d Ubuntu --cd … -- claude --resume …`,
-`docker exec -it … claude --resume …`.
+| names (`claude agents --json`) | the same | the same |
 
 ## The page
 
-- The sidebar shows one block per environment, each with today's sections
-  (Running here, Running in Terminal, Saved) and its groups. With only
-  `local`, the page looks as it does today.
+- The sidebar shows one block per environment, each with its tabs and
+  groups. With only `local`, the page looks as it does today.
 - An environment's header shows its state: connected, connecting (with the
   error), or a missing claude / login.
 - New asks for the environment, defaulting to the selected tab's.
@@ -204,7 +190,7 @@ Each step ships something that runs.
    the `ssh` kind, the bootstrap with install from `-backend-dir`.
 3. **Releases.** The CI matrix, install from GitHub releases, the local
    backend installed the same way.
-4. **Docker and WSL** kinds; Open in Terminal moved to the hub.
+4. **Docker and WSL** kinds.
 5. **Windows.** ConPTY in the backend, the Windows hub, `wt.exe`.
 6. **A native window** for the hub on Mac and Windows (until then the hub
    opens the page in the browser).
