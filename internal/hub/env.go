@@ -39,6 +39,7 @@ const (
 type EnvView struct {
 	EnvConfig
 	State string `json:"state"`
+	Step  string `json:"step,omitempty"` // while connecting: what it is doing
 	Error string `json:"error,omitempty"`
 }
 
@@ -46,13 +47,14 @@ type EnvView struct {
 // over the child's stdin and stdout. A backend that stops is started again.
 type Env struct {
 	EnvConfig
-	prepare  func() ([]string, error) // installs the backend if needed and returns the command that runs it
+	prepare  func(step func(string)) ([]string, error) // installs the backend if needed and returns the command that runs it
 	onChange func()
 
 	mu      sync.Mutex
 	session *yamux.Session
 	cmd     *exec.Cmd
 	state   string
+	step    string
 	err     string
 
 	quit chan struct{} // closed by Close
@@ -61,7 +63,7 @@ type Env struct {
 	proxy *httputil.ReverseProxy
 }
 
-func NewEnv(cfg EnvConfig, prepare func() ([]string, error), onChange func()) *Env {
+func NewEnv(cfg EnvConfig, prepare func(step func(string)) ([]string, error), onChange func()) *Env {
 	e := &Env{EnvConfig: cfg, prepare: prepare, onChange: onChange, state: StateConnecting,
 		quit: make(chan struct{}), done: make(chan struct{})}
 	e.proxy = &httputil.ReverseProxy{
@@ -81,13 +83,24 @@ func NewEnv(cfg EnvConfig, prepare func() ([]string, error), onChange func()) *E
 func (e *Env) View() EnvView {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	return EnvView{EnvConfig: e.EnvConfig, State: e.state, Error: e.err}
+	return EnvView{EnvConfig: e.EnvConfig, State: e.state, Step: e.step, Error: e.err}
 }
 
 func (e *Env) setState(state, err string) {
 	e.mu.Lock()
-	changed := e.state != state || e.err != err
-	e.state, e.err = state, err
+	changed := e.state != state || e.err != err || e.step != ""
+	e.state, e.err, e.step = state, err, ""
+	e.mu.Unlock()
+	if changed {
+		e.onChange()
+	}
+}
+
+// setStep says what connecting is doing now.
+func (e *Env) setStep(step string) {
+	e.mu.Lock()
+	changed := e.step != step
+	e.step = step
 	e.mu.Unlock()
 	if changed {
 		e.onChange()
@@ -139,7 +152,8 @@ func (e *Env) Supervise() {
 // reason: its last line on stderr, if it left one.
 func (e *Env) run() error {
 	e.setState(StateConnecting, "")
-	argv, err := e.prepare()
+	argv, err := e.prepare(e.setStep)
+	e.setStep("starting the backend")
 	if err != nil {
 		return err
 	}

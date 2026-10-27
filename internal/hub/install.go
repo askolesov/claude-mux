@@ -31,8 +31,9 @@ type Backends struct {
 	Cache   string // downloads, by version
 }
 
-// Build is the build for a platform ("linux-arm64") and its version.
-func (b Backends) Build(platform string) (path, ver string, err error) {
+// Build is the build for a platform ("linux-arm64") and its version. step
+// says what it is doing, for the page.
+func (b Backends) Build(platform string, step func(string)) (path, ver string, err error) {
 	name := "claude-mux-backend-" + platform
 	if strings.HasPrefix(platform, "windows") {
 		name += ".exe"
@@ -52,7 +53,9 @@ func (b Backends) Build(platform string) (path, ver string, err error) {
 	if _, err := os.Stat(path); err == nil {
 		return path, b.Version, nil
 	}
-	if err := download(b.Version, name, path); err != nil {
+	if err := download(b.Version, name, path, func(done, total int64) {
+		step(fmt.Sprintf("downloading the backend %s", progress(done, total)))
+	}); err != nil {
 		return "", "", fmt.Errorf("downloading the %s backend: %w", platform, err)
 	}
 	prune(b.Cache, b.Version)
@@ -60,9 +63,10 @@ func (b Backends) Build(platform string) (path, ver string, err error) {
 }
 
 // download fetches a release file and checks it against the release's
-// checksums.txt before putting it at dst.
-func download(ver, name, dst string) error {
+// checksums.txt before putting it at dst, telling onProgress as it goes.
+func download(ver, name, dst string, onProgress func(done, total int64)) error {
 	client := &http.Client{Timeout: 5 * time.Minute}
+	var total int64
 	get := func(file string) (io.ReadCloser, error) {
 		resp, err := client.Get(releases + ver + "/" + file)
 		if err != nil {
@@ -72,6 +76,7 @@ func download(ver, name, dst string) error {
 			_ = resp.Body.Close()
 			return nil, fmt.Errorf("%s: %s", resp.Request.URL, resp.Status)
 		}
+		total = resp.ContentLength
 		return resp.Body, nil
 	}
 	body, err := get("checksums.txt")
@@ -102,7 +107,7 @@ func download(ver, name, dst string) error {
 	}
 	defer func() { _ = os.Remove(f.Name()) }()
 	h := sha256.New()
-	_, err = io.Copy(io.MultiWriter(f, h), body)
+	_, err = io.Copy(io.MultiWriter(f, h), &counting{r: body, total: total, onProgress: onProgress})
 	if cerr := f.Close(); err == nil {
 		err = cerr
 	}
@@ -116,6 +121,32 @@ func download(ver, name, dst string) error {
 		return err
 	}
 	return os.Rename(f.Name(), dst)
+}
+
+// counting reports how much of a transfer has been read, every megabyte.
+type counting struct {
+	r          io.Reader
+	done, last int64
+	total      int64 // -1 if unknown
+	onProgress func(done, total int64)
+}
+
+func (c *counting) Read(p []byte) (int, error) {
+	n, err := c.r.Read(p)
+	c.done += int64(n)
+	if c.done-c.last >= 1<<20 || (err == io.EOF && c.done != c.last) {
+		c.last = c.done
+		c.onProgress(c.done, c.total)
+	}
+	return n, err
+}
+
+// progress is "12 / 22 MB", or "12 MB" when the size is unknown.
+func progress(done, total int64) string {
+	if total <= 0 {
+		return fmt.Sprintf("%d MB", done>>20)
+	}
+	return fmt.Sprintf("%d / %d MB", done>>20, total>>20)
 }
 
 // checksum finds a file's sha256 in sha256sum's output.
@@ -299,12 +330,13 @@ func run(argv []string, stdin io.Reader) ([]byte, error) {
 
 // Prepare installs the backend in an environment if the right build isn't
 // there yet, under ~/.claude-mux/bin/<version>/, and returns the command that
-// runs it.
-func (c Connectors) Prepare(cfg EnvConfig, b Backends) ([]string, error) {
+// runs it. step says what it is doing, for the page.
+func (c Connectors) Prepare(cfg EnvConfig, b Backends, step func(string)) ([]string, error) {
 	shell, err := c.shell(cfg)
 	if err != nil {
 		return nil, err
 	}
+	step("checking the platform")
 	uname, err := run(shell("uname -sm"), nil)
 	if err != nil {
 		return nil, fmt.Errorf("%s %s: %w", cfg.Kind, cfg.Target, err)
@@ -313,7 +345,7 @@ func (c Connectors) Prepare(cfg EnvConfig, b Backends) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	file, ver, err := b.Build(p)
+	file, ver, err := b.Build(p, step)
 	if err != nil {
 		return nil, err
 	}
@@ -325,10 +357,17 @@ func (c Connectors) Prepare(cfg EnvConfig, b Backends) ([]string, error) {
 			return nil, err
 		}
 		defer func() { _ = f.Close() }()
+		var size int64
+		if st, err := f.Stat(); err == nil {
+			size = st.Size()
+		}
+		copying := &counting{r: f, total: size, onProgress: func(done, total int64) {
+			step(fmt.Sprintf("copying the backend %s", progress(done, total)))
+		}}
 		// Install, then remove the versions nothing uses anymore.
 		install := fmt.Sprintf("mkdir -p %s && cat > %s.tmp && chmod +x %s.tmp && mv %s.tmp %s && "+
 			"find $HOME/.claude-mux/bin -mindepth 1 -maxdepth 1 ! -name %s -exec rm -rf {} +", dir, bin, bin, bin, bin, ver)
-		if _, err := run(shell(install), f); err != nil {
+		if _, err := run(shell(install), copying); err != nil {
 			return nil, fmt.Errorf("installing the backend in %s: %w", cfg.Target, err)
 		}
 	}

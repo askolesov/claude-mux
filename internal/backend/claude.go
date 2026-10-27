@@ -3,6 +3,7 @@ package backend
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -61,15 +62,18 @@ func installCommand() (argv []string, line string) {
 	return []string{"bash", "-c", line}, line
 }
 
-// InstallClaude runs the official installer and returns its output. Then it
-// looks for claude again and starts the tabs that couldn't start without it.
-func (m *Manager) InstallClaude(ctx context.Context) (string, error) {
+// InstallClaude runs the official installer, passing its output to out as
+// it comes. Then it looks for claude again and starts the tabs that couldn't
+// start without it.
+func (m *Manager) InstallClaude(ctx context.Context, out io.Writer) error {
 	argv, _ := installCommand()
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
-	out, err := sysproc.Hide(exec.CommandContext(ctx, argv[0], argv[1:]...)).CombinedOutput()
+	cmd := sysproc.Hide(exec.CommandContext(ctx, argv[0], argv[1:]...))
+	cmd.Stdout, cmd.Stderr = out, out
+	err := cmd.Run()
 	m.CheckClaude()
-	return string(out), err
+	return err
 }
 
 // CheckClaude looks for claude again, for one installed by hand, and starts

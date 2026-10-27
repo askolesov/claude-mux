@@ -200,6 +200,7 @@
   dialog pre { font: 11.5px/1.4 var(--mono); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px; max-height: 260px; overflow: auto; white-space: pre-wrap; }
   dialog select { width: 100%; font: 13px var(--mono); color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
   dialog .err { color: var(--danger); font-size: 12px; margin-top: 8px; min-height: 1em; }
+  dialog .note { color: var(--muted); font-size: 12px; margin-top: 8px; min-height: 1em; }
 </style>
 </head>
 <body>
@@ -269,6 +270,7 @@
   <h3 id="iTitle"></h3>
   <label>Runs Anthropic's official installer there:</label>
   <code id="iCmd"></code>
+  <div class="note" id="iState"></div>
   <pre id="iOut" hidden></pre>
   <div class="row"><button type="button" id="iClose">Cancel</button><button class="primary" id="iRun">Install</button></div>
 </dialog>
@@ -451,7 +453,7 @@ function envHeader(e) {
   const where = e.kind === "local" ? "this machine" : `${e.kind} ${e.target}`;
   return `<div class="env" data-env="${esc(e.name)}" title="Right-click for actions">
     <span class="dot env-${esc(e.state)}"></span><b>${esc(e.name)}</b><span class="where">${esc(where)}</span>
-    ${e.state !== "connected" ? `<span class="estate">${esc(e.state)}</span>` : ""}</div>`;
+    ${e.state !== "connected" ? `<span class="estate">${esc(e.state === "connecting" && e.step ? e.step + "…" : e.state)}</span>` : ""}</div>`;
 }
 
 function tabRow(t, inGroup) {
@@ -835,16 +837,47 @@ async function envAct(what, name) {
   $("iRun").hidden = false;
   $("iRun").disabled = false;
   $("iClose").textContent = "Cancel";
+  $("iState").textContent = "";
   $("iRun").onclick = async () => {
     $("iRun").disabled = true;
     $("iOut").hidden = false;
-    $("iOut").textContent = "Installing… this takes a minute.";
+    $("iOut").textContent = "";
+    const started = Date.now();
+    const tick = () => { $("iState").textContent = `Installing… ${Math.round((Date.now() - started) / 1000)} s`; };
+    tick();
+    const timer = setInterval(tick, 1000);
+    let result = { error: "the connection to the installer broke" };
     try {
-      const res = await api(name, "POST", "/api/claude/install");
-      const c = envData.get(name)?.claude;
-      $("iOut").textContent = `${res.output.trim()}\n\nDone${c?.version ? ": " + c.version : ""}. In a new tab there, claude asks you to log in the first time.`;
+      // The installer's output comes as JSON lines while it runs.
+      const res = await fetch(`/env/${encodeURIComponent(name)}/api/claude/install`, { method: "POST" });
+      if (!res.ok) throw new Error((await res.json().catch(() => null))?.error || res.statusText);
+      const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+      let buf = "";
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += value;
+        let i;
+        while ((i = buf.indexOf("\n")) >= 0) {
+          const msg = JSON.parse(buf.slice(0, i));
+          buf = buf.slice(i + 1);
+          if (msg.out !== undefined) {
+            const out = $("iOut");
+            out.textContent += msg.out.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "");
+            out.scrollTop = out.scrollHeight;
+          } else result = msg;
+        }
+      }
     } catch (err) {
-      $("iOut").textContent = `${err.data?.output?.trim() || ""}\n\nThe installer failed: ${err.message}`;
+      result = { error: err.message };
+    }
+    clearInterval(timer);
+    const secs = Math.round((Date.now() - started) / 1000);
+    if (result.done) {
+      const c = envData.get(name)?.claude;
+      $("iState").textContent = `Done in ${secs} s${c?.version ? ": " + c.version : ""}. In a new tab there, claude asks you to log in the first time.`;
+    } else {
+      $("iState").textContent = `The installer failed after ${secs} s: ${result.error}`;
     }
     $("iRun").hidden = true;
     $("iClose").textContent = "Close";

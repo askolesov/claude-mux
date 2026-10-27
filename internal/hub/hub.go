@@ -62,13 +62,13 @@ func New(stateDir string, backends Backends, connectors Connectors, defaultCwd s
 }
 
 func (h *Hub) newEnv(cfg EnvConfig) *Env {
-	prepare := func() ([]string, error) {
+	prepare := func(step func(string)) ([]string, error) {
 		if cfg.Kind != "local" {
-			return h.connectors.Prepare(cfg, h.backends)
+			return h.connectors.Prepare(cfg, h.backends, step)
 		}
 		// Installed like any other environment's; the local backend shares
 		// the hub's state directory.
-		src, ver, err := h.backends.Build(runtime.GOOS + "-" + runtime.GOARCH)
+		src, ver, err := h.backends.Build(runtime.GOOS+"-"+runtime.GOARCH, step)
 		if err != nil {
 			return nil, err
 		}

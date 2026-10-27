@@ -1,12 +1,14 @@
 package backend
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -204,13 +206,37 @@ func (h *Handler) checkClaude(c *gin.Context) { respond(c, h.m.CheckClaude(), ni
 
 // installClaude runs the official installer; it takes a while, and the page
 // shows its output.
+// installClaude streams the installer's output as it comes, a JSON line per
+// chunk ({"out": …}), and ends with {"done": true} or {"error": …}. The
+// install goes on if the page goes away.
 func (h *Handler) installClaude(c *gin.Context) {
-	out, err := h.m.InstallClaude(c.Request.Context())
-	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error(), "output": out})
+	c.Header("Content-Type", "application/x-ndjson")
+	c.Status(http.StatusOK)
+	out := &lines{enc: json.NewEncoder(c.Writer), flush: c.Writer.Flush}
+	if err := h.m.InstallClaude(context.WithoutCancel(c.Request.Context()), out); err != nil {
+		out.send(gin.H{"error": err.Error()})
 		return
 	}
-	respond(c, gin.H{"output": out}, nil)
+	out.send(gin.H{"done": true})
+}
+
+// lines writes what it is given as JSON lines, flushing each.
+type lines struct {
+	mu    sync.Mutex
+	enc   *json.Encoder
+	flush func()
+}
+
+func (l *lines) send(v any) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	_ = l.enc.Encode(v)
+	l.flush()
+}
+
+func (l *lines) Write(p []byte) (int, error) {
+	l.send(gin.H{"out": string(p)})
+	return len(p), nil
 }
 
 func (h *Handler) close(c *gin.Context) { respond(c, nil, h.m.Close(c.Param("id"))) }
