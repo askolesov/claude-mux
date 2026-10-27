@@ -127,6 +127,10 @@
   .dot.env-connected { background: var(--ready); }
   .dot.env-connecting { background: var(--muted); animation: pulse 1.2s ease-in-out infinite; }
   .dot.env-failed { background: var(--danger); }
+  .update { margin: 0 12px 8px; padding: 8px; border: 1px solid var(--accent, var(--line)); border-radius: 6px; font-size: 12px; }
+  .update .row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  dialog label.check { display: flex; align-items: center; gap: 6px; }
+  dialog label.check input { width: auto; }
   .notice { margin: 4px 12px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; font-size: 12px; color: var(--muted); }
   .notice.err { color: var(--danger); word-break: break-word; }
   .notice .row { display: flex; gap: 6px; margin-top: 6px; }
@@ -206,7 +210,8 @@
 <body>
 <aside>
   <div class="grip" id="grip" title="Drag to resize · double-click to reset"></div>
-  <div class="brand"><b>claude-mux</b><span class="row"><button id="addHost" title="Add an environment: an SSH host, a Docker container, a WSL distro">+ Env</button><button id="new" title="New tab (⌥N)">+ New</button></span></div>
+  <div class="brand"><b>claude-mux</b><span class="row"><button id="addHost" title="Add an environment: an SSH host, a Docker container, a WSL distro">+ Env</button><button id="new" title="New tab (⌥N)">+ New</button><button id="settings" title="Settings">⚙</button></span></div>
+  <div class="update" id="update" hidden></div>
   <div class="summary" id="summary"></div>
   <div class="list" id="list"></div>
   <div class="foot">
@@ -231,6 +236,18 @@
 <div class="menu" id="menu"></div>
 
 <datalist id="groups"></datalist>
+
+<dialog id="setDlg">
+  <form method="dialog" id="setForm">
+    <h3>Settings</h3>
+    <label class="check"><input type="checkbox" id="sCheck"> Check for updates</label>
+    <label for="sDays">every … days</label>
+    <input id="sDays" type="number" min="1" max="365">
+    <div class="note" id="sState"></div>
+    <div class="err" id="sErr"></div>
+    <div class="row"><button type="button" id="sNow">Check now</button><button type="button" id="sClose">Cancel</button><button class="primary">Save</button></div>
+  </form>
+</dialog>
 
 <dialog id="msgDlg">
   <form method="dialog" id="msgForm">
@@ -309,6 +326,8 @@ const store = {
 // The hub reports the environments; each environment's backend reports its
 // tabs. A tab's key is "<environment>/<id>".
 let envs = [];                   // [{name, kind, target, state, error}]
+let update = null;               // what the hub knows about updates
+let hubVersion = "";
 const envData = new Map();       // environment -> its backend's state: {claude, sessions, defaultCwd}
 const streams = new Map();       // environment -> EventSource of its backend's state
 let tabs = [];                   // every environment's tabs in sidebar order: {...session, env, key}
@@ -715,7 +734,17 @@ function syncStreams() {
 
 function streamHub() {
   const es = new EventSource("/hub/events");
-  es.onmessage = (m) => { envs = JSON.parse(m.data) || []; syncStreams(); refresh(); };
+  es.onmessage = (m) => {
+    const hub = JSON.parse(m.data);
+    // A new hub (an update, a restart) serves a new page.
+    if (hubVersion && hub.version !== hubVersion) { location.reload(); return; }
+    hubVersion = hub.version;
+    envs = hub.envs || [];
+    update = hub.update;
+    syncStreams();
+    refresh();
+    renderUpdate();
+  };
   es.onerror = () => { $("summary").textContent = "claude-mux unreachable — retrying…"; };
 }
 
@@ -824,6 +853,99 @@ $("list").addEventListener("click", (e) => {
   if (row) select(row.dataset.key);
 });
 
+// ---------- updates ----------
+function renderUpdate() {
+  const box = $("update");
+  if (!update?.available && !update?.updating) { box.hidden = true; return; }
+  box.hidden = false;
+  if (update.updating) { box.textContent = `Updating: ${update.step || "starting"}…`; return; }
+  box.innerHTML = `claude-mux <b>${esc(update.latest)}</b> is out (you have ${esc(update.current)}).
+    <div class="row"><button class="primary" data-up="apply">Update and restart</button><button data-up="skip">Skip this version</button>${update.notes ? `<button data-up="notes">What's new</button>` : ""}</div>`;
+  // Tell once per version, even across reloads.
+  let told = "";
+  try { told = localStorage.getItem("mux.toldVersion") || ""; } catch {}
+  if (told !== update.latest) {
+    try { localStorage.setItem("mux.toldVersion", update.latest); } catch {}
+    const body = `${update.latest} is out: update and restart from the sidebar.`;
+    if (window.cmuxNotify) window.cmuxNotify("claude-mux", body);
+    else if (typeof Notification !== "undefined" && Notification.permission === "granted") new Notification("claude-mux", { body });
+  }
+}
+
+$("update").addEventListener("click", async (e) => {
+  const what = e.target.closest("button[data-up]")?.dataset.up;
+  if (what === "skip") await request("POST", "/hub/update/skip").catch((err) => say(err.message));
+  if (what === "notes") window.open(update.notes, "_blank");
+  if (what !== "apply") return;
+  const working = tabs.filter((t) => t.status === "working");
+  const text = working.length
+    ? `${working.length} tab${working.length > 1 ? "s are" : " is"} working (${working.map((t) => t.name).join(", ")}): the turn${working.length > 1 ? "s" : ""} in progress get${working.length > 1 ? "" : "s"} cut off. Every tab resumes after the restart.`
+    : "Every tab is hung up and resumes after the restart.";
+  if (!(await sure(`Update to ${update.latest} and restart?`, text, "Update and restart"))) return;
+  let result = { error: "the connection to the hub broke" };
+  try {
+    await streamLines("/hub/update/apply", (msg) => { if (!msg.step) result = msg; });
+  } catch (err) {
+    result = { error: err.message };
+  }
+  if (result.error) say(`The update failed: ${result.error}`);
+  // On success the hub restarts; the page reloads when the new one answers.
+});
+
+$("settings").onclick = () => {
+  $("sCheck").checked = update?.checkUpdates ?? true;
+  $("sDays").value = update?.everyDays || 1;
+  $("sErr").textContent = "";
+  fillUpdateState();
+  $("setDlg").showModal();
+};
+function fillUpdateState() {
+  const u = update;
+  let text = `claude-mux ${u?.current || "?"}`;
+  if (u?.dev) text += ": a development build, which doesn't update.";
+  else if (u?.latest) text += `; ${u.latest} is out.`;
+  else if (u?.lastCheck) text += `, the latest (checked ${ago(u.lastCheck)} ago).`;
+  else text += ", not checked yet.";
+  if (u?.error) text += ` The last check failed: ${u.error}`;
+  $("sState").textContent = text;
+  $("sNow").disabled = !!u?.dev;
+}
+$("sNow").onclick = async () => {
+  $("sNow").disabled = true;
+  $("sState").textContent = "Checking…";
+  await request("POST", "/hub/update/check").catch(() => {});
+  setTimeout(fillUpdateState, 100); // the event with the result comes first
+};
+$("sClose").onclick = () => $("setDlg").close();
+$("setForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  try {
+    await request("PUT", "/hub/settings", { checkUpdates: $("sCheck").checked, everyDays: Number($("sDays").value) });
+    $("setDlg").close();
+  } catch (err) {
+    $("sErr").textContent = err.message;
+  }
+});
+
+// streamLines POSTs to url and hands each JSON line of the answer to onMsg
+// as it comes.
+async function streamLines(url, onMsg) {
+  const res = await fetch(url, { method: "POST" });
+  if (!res.ok) throw new Error((await res.json().catch(() => null))?.error || res.statusText);
+  const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buf = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) return;
+    buf += value;
+    let i;
+    while ((i = buf.indexOf("\n")) >= 0) {
+      onMsg(JSON.parse(buf.slice(0, i)));
+      buf = buf.slice(i + 1);
+    }
+  }
+}
+
 // Install or look for claude again in an environment that has none.
 async function envAct(what, name) {
   if (what === "retry") {
@@ -849,25 +971,12 @@ async function envAct(what, name) {
     let result = { error: "the connection to the installer broke" };
     try {
       // The installer's output comes as JSON lines while it runs.
-      const res = await fetch(`/env/${encodeURIComponent(name)}/api/claude/install`, { method: "POST" });
-      if (!res.ok) throw new Error((await res.json().catch(() => null))?.error || res.statusText);
-      const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
-      let buf = "";
-      for (;;) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buf += value;
-        let i;
-        while ((i = buf.indexOf("\n")) >= 0) {
-          const msg = JSON.parse(buf.slice(0, i));
-          buf = buf.slice(i + 1);
-          if (msg.out !== undefined) {
-            const out = $("iOut");
-            out.textContent += msg.out.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "");
-            out.scrollTop = out.scrollHeight;
-          } else result = msg;
-        }
-      }
+      await streamLines(`/env/${encodeURIComponent(name)}/api/claude/install`, (msg) => {
+        if (msg.out === undefined) { result = msg; return; }
+        const out = $("iOut");
+        out.textContent += msg.out.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "");
+        out.scrollTop = out.scrollHeight;
+      });
     } catch (err) {
       result = { error: err.message };
     }

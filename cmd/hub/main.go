@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/askolesov/claude-mux/internal/hub"
+	"github.com/askolesov/claude-mux/internal/sysproc"
 )
 
 // version is the release tag, set by the release build; a release hub
@@ -57,6 +58,9 @@ func main() {
 		logToFile(filepath.Join(stateDir, "hub.log"))
 		loginShellEnv()
 	}
+	if exe, err := os.Executable(); err == nil {
+		_ = os.Remove(exe + ".old") // what an update on Windows moved aside
+	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -76,6 +80,7 @@ func main() {
 		}
 		fail(err)
 	}
+	go func() { <-h.Restart(); cancel() }() // an update is installed
 	switch {
 	case !*headless:
 		window(ctx, url) // until the window closes
@@ -86,6 +91,13 @@ func main() {
 		<-ctx.Done()
 	}
 	stop()
+	if argv := h.Relaunch(); argv != nil {
+		cmd := sysproc.Detach(exec.Command(argv[0], argv[1:]...))
+		cmd.Stdout, cmd.Stderr = os.Stderr, os.Stderr
+		if err := cmd.Start(); err != nil {
+			fail(fmt.Errorf("starting the update: %w", err))
+		}
+	}
 }
 
 func fail(err error) {

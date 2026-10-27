@@ -37,6 +37,7 @@ type Hub struct {
 	backends   Backends
 	connectors Connectors
 	defaultCwd string
+	updates    *updater
 
 	mu   sync.Mutex
 	envs []*Env
@@ -46,6 +47,7 @@ type Hub struct {
 func New(stateDir string, backends Backends, connectors Connectors, defaultCwd string) (*Hub, error) {
 	h := &Hub{stateDir: stateDir, file: filepath.Join(stateDir, "environments.json"), version: backends.Version,
 		backends: backends, connectors: connectors, defaultCwd: defaultCwd, subs: map[chan struct{}]struct{}{}}
+	h.updates = newUpdater(stateDir, backends.Version, h.notify)
 	var saved []EnvConfig
 	data, err := os.ReadFile(h.file)
 	if err == nil {
@@ -97,6 +99,7 @@ func (h *Hub) Start(addr string) (stop func(), err error) {
 	for _, e := range h.list() {
 		go e.Supervise()
 	}
+	go h.updates.loop()
 	srv := &http.Server{Handler: h.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		if err := srv.Serve(ln); !errors.Is(err, http.ErrServerClosed) {
@@ -116,6 +119,17 @@ func (h *Hub) Start(addr string) (stop func(), err error) {
 		defer cancel()
 		_ = srv.Shutdown(ctx)
 	}, nil
+}
+
+// Restart is closed once an update is installed: the hub should stop, and
+// Relaunch start the new one.
+func (h *Hub) Restart() <-chan struct{} { return h.updates.restart }
+
+// Relaunch is the command that starts the installed update, or nil.
+func (h *Hub) Relaunch() []string {
+	h.updates.mu.Lock()
+	defer h.updates.mu.Unlock()
+	return h.updates.relaunch
 }
 
 func (h *Hub) list() []*Env {
@@ -245,6 +259,17 @@ func (h *Hub) Handler() http.Handler {
 		respond(c, h.Add(req.Name, req.Kind, req.Target))
 	})
 	r.DELETE("/hub/environments/:name", func(c *gin.Context) { respond(c, h.Remove(c.Param("name"))) })
+	r.PUT("/hub/settings", func(c *gin.Context) {
+		var s Settings
+		if err := c.ShouldBindJSON(&s); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		respond(c, h.updates.SetSettings(s))
+	})
+	r.POST("/hub/update/check", func(c *gin.Context) { respond(c, h.updates.Check(c.Request.Context())) })
+	r.POST("/hub/update/skip", func(c *gin.Context) { h.updates.Skip(); c.Status(http.StatusNoContent) })
+	r.POST("/hub/update/apply", h.applyUpdate)
 
 	r.Any("/env/:name/*path", func(c *gin.Context) {
 		e := h.env(c.Param("name"))
@@ -267,7 +292,29 @@ func respond(c *gin.Context, err error) {
 	c.Status(http.StatusNoContent)
 }
 
-// events streams the environments on every change, as server-sent events.
+// applyUpdate installs the newest release, streaming its progress as JSON
+// lines ({"step": …}, then {"done": true} or {"error": …}), and then restarts
+// the hub into it. The update goes on if the page goes away.
+func (h *Hub) applyUpdate(c *gin.Context) {
+	c.Header("Content-Type", "application/x-ndjson")
+	c.Status(http.StatusOK)
+	var mu sync.Mutex
+	enc := json.NewEncoder(c.Writer)
+	send := func(v any) {
+		mu.Lock()
+		defer mu.Unlock()
+		_ = enc.Encode(v)
+		c.Writer.Flush()
+	}
+	if err := h.updates.Apply(func(step string) { send(gin.H{"step": step}) }); err != nil {
+		send(gin.H{"error": err.Error()})
+		return
+	}
+	send(gin.H{"done": true})
+}
+
+// events streams the environments and the update state on every change, as
+// server-sent events.
 func (h *Hub) events(c *gin.Context) {
 	sub := make(chan struct{}, 1)
 	h.mu.Lock()
@@ -283,7 +330,7 @@ func (h *Hub) events(c *gin.Context) {
 	ping := time.NewTicker(20 * time.Second)
 	defer ping.Stop()
 	for {
-		data, _ := json.Marshal(h.views())
+		data, _ := json.Marshal(gin.H{"version": h.version, "envs": h.views(), "update": h.updates.View()})
 		if _, err := c.Writer.Write(append(append([]byte("data: "), data...), '\n', '\n')); err != nil {
 			return
 		}

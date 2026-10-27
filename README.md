@@ -113,6 +113,16 @@ shown; claude running in other terminals is left alone.
   The page title and icon count what waits: `(2) claude-mux`.
 - **Notifications** when a tab becomes ready or needs you and you aren't
   looking at it (press "Enable notifications" once).
+- **Updates**: ⚙ Settings has "Check for updates" (on, every 1 day by
+  default) and Check now. When a newer release is out, the sidebar says so
+  (with a notification once per version): **Update and restart**
+  downloads it, checks it against the release's checksums, puts it in
+  place of the running hub (the whole `.app` on a Mac), and restarts into
+  it; every tab resumes, and each environment gets the new backend when it
+  connects. **Skip this version** stays quiet until a newer one. A Mac app
+  still running from its download (macOS's read-only copy) has to be moved
+  to Applications first. Development builds don't check. Kept in
+  `~/.claude-mux/hub.json`.
 - **Themes**: page theme (Auto follows macOS, Light, Dark) and terminal theme
   (Auto matches the page, or Tokyo Night, Dracula, Solarized) in the footer,
   kept per browser.
