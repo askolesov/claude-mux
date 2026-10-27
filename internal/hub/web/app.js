@@ -17,7 +17,6 @@ const streams = new Map();       // environment -> EventSource of its backend's 
 let tabs = [];                   // every environment's tabs in sidebar order: {...session, env, key}
 let selected = null;             // the selected tab's key
 let pendingSelect = store.get("mux.selected"); // the last selection, until its tab shows up
-let stripEnv = null;             // tabs on top: the environment shown
 const terms = new Map();         // tab key -> {term, fit, ws, el, closed}
 const lastStatus = new Map();    // tab key -> status, for notifications
 
@@ -32,6 +31,7 @@ const PAGE_DEFAULTS = {
   layout: "left", confirmClose: true, sort: "manual",
   theme: "auto", termTheme: "auto", termFont: "JetBrains Mono", termSize: 13,
   newEnv: "", newCwd: "", newArgs: "", newFlags: [],
+  tabRows: "two",
   notifyNeeds: true, notifyReady: true, notifyExited: false, notifyAway: true, badge: true,
 };
 let page = { ...PAGE_DEFAULTS, ...(() => { try { return JSON.parse(store.get("mux.page") || "{}"); } catch { return {}; } })() };
@@ -71,6 +71,7 @@ function applyPage() {
   if (page.theme === "auto") document.documentElement.dataset.theme = systemDark.matches ? "dark" : "light";
   else document.documentElement.dataset.theme = page.theme;
   document.body.classList.toggle("top", page.layout === "top");
+  document.body.classList.toggle("compact", page.tabRows === "one");
   const th = termTheme();
   for (const t of terms.values()) {
     t.term.options.theme = th;
@@ -151,6 +152,26 @@ function envMeta(e) {
   else if (e.state !== "connected") parts.push(e.state);
   return parts.join(" · ");
 }
+// kindTag is the small tag after an environment's name.
+function kindTag(e) {
+  if (e.kind !== "local") return e.kind;
+  return { darwin: "this Mac", windows: "this PC" }[hubPlatform.split("-")[0]] || "this machine";
+}
+// envState is the environment's state in a word or two, beside its dot.
+function envState(e) {
+  if (e.state === "connected") return envData.get(e.name) && !hasClaude(e.name) ? "no claude" : e.kind === "local" ? "connected" : `${e.latency || "<1"} ms`;
+  return e.state;
+}
+const KIND_ICON = {
+  local: `<path d="M4 5h16v11H4zM2 19h20"/>`,
+  ssh: `<rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/>`,
+  docker: `<path d="M12 3 20 7.5v9L12 21l-8-4.5v-9zM12 12l8-4.5M12 12v9M12 12 4 7.5"/>`,
+  wsl: `<path d="m5 8 4 4-4 4M12 16h7"/>`,
+};
+const kindIcon = (kind) => `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${KIND_ICON[kind] || KIND_ICON.ssh}</svg>`;
+const CHEVRON = `<svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>`;
+const PLUS = (size) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>`;
+const PLUG = (size) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 2v5M15 2v5M6 7h12v4a6 6 0 0 1-12 0zM12 17v5"/></svg>`;
 // A tab's own resume message shows as ↻; the default doesn't.
 const ownResume = (t) => t.resume === "custom" && t.resumeMessage;
 
@@ -231,12 +252,18 @@ function render() {
   renderUpdate();
 }
 
+// The sidebar: a block per environment (folds by its header), its groups
+// with their counts, its tabs.
 function renderList() {
   let html = "";
   for (const e of envs) {
     const own = tabs.filter((t) => t.env === e.name);
-    html += `<div class="envblock"><div class="envhead" data-env="${esc(e.name)}" title="${esc(envMeta(e))} · drag to reorder · right-click for actions" draggable="true">
-      <span class="ename">${esc(e.name)}</span><span class="hdot ${health(e)}"></span></div>`;
+    const eshut = collapsed.has("env:" + e.name);
+    const edot = eshut ? urgent(own) : "";
+    html += `<div class="envblock"><div class="envhead ${eshut ? "shut" : ""}" data-env="${esc(e.name)}" title="${esc(envMeta(e))} · click to ${eshut ? "show" : "hide"} · drag to reorder · right-click for actions" draggable="true">
+      ${CHEVRON}<span class="ename">${esc(e.name)}</span><span class="kind">${esc(kindTag(e))}</span>${edot ? `<span class="dot ${edot}"></span>` : ""}
+      <span class="gap"></span><span class="hdot ${health(e)}"></span><span class="estate">${esc(envState(e))}</span></div>`;
+    if (eshut) { html += `</div>`; continue; }
     html += envNote(e);
     for (const run of grouped(own, (t) => t.group)) {
       if (!run.group) { html += tabRow(run.items[0]); continue; }
@@ -244,10 +271,10 @@ function renderList() {
       const shut = collapsed.has(key);
       const dot = shut ? urgent(run.items) : "";
       html += `<div class="glabel" data-env="${esc(e.name)}" data-group="${esc(run.group)}" title="Click to ${shut ? "show" : "hide"} · right-click for actions">
-        <span class="gname">${esc(run.group)}</span>${shut ? `<span class="shut">▸</span>` : ""}${dot ? `<span class="dot ${dot}"></span>` : ""}</div>`;
+        <span class="gname">${esc(run.group)}</span>${shut ? `<span class="shut">▸</span>` : ""}${dot ? `<span class="dot ${dot}"></span>` : ""}<span class="count">${run.items.length}</span></div>`;
       if (!shut) for (const t of ordered(run.items)) html += tabRow(t);
     }
-    if (!own.length && e.state === "connected" && hasClaude(e.name)) html += `<div class="empty">No tabs. ⌥N starts one.</div>`;
+    if (!own.length && e.state === "connected" && hasClaude(e.name)) html += `<div class="empty" style="padding-left:24px">No tabs. ⌥N starts one.</div>`;
     html += `</div>`;
   }
   $("list").innerHTML = html || `<div class="empty">Connecting…</div>`;
@@ -265,35 +292,34 @@ function envNote(e) {
   return "";
 }
 
+// A tab row: its dot, then its name and, in Detailed rows, its directory.
 function tabRow(t) {
   const cls = ["tab", selected === t.key && "active", bold(t) && "bold", dead(t) && "dead"].filter(Boolean).join(" ");
+  const mark = ownResume(t) ? `<span class="mark" title="Its own message when it starts again: ${esc(t.resumeMessage)}">↻</span>` : "";
   return `<button class="${cls}" data-key="${esc(t.key)}" title="${esc(STATUS_TEXT[t.status] || t.status)} for ${ago(t.statusSince)} · ${esc(home(t.cwd))}" draggable="true">
-    <span class="dot ${esc(t.status)}"></span><span class="name">${esc(t.name)}</span>
-    ${ownResume(t) ? `<span class="mark" title="Its own message when it starts again: ${esc(t.resumeMessage)}">↻</span>` : ""}</button>`;
+    <span class="dot ${esc(t.status)}"></span><span class="lines"><span class="line1"><span class="name">${esc(t.name)}</span>${mark}</span>
+    ${page.tabRows === "one" ? "" : `<span class="cwd">${esc(home(t.cwd))}</span>`}</span></button>`;
 }
 
-// Tabs on top: one environment at a time, picked at the strip's start.
+// Tabs on top: one strip for every environment, each a chip (click for a
+// new tab there) followed by its tabs; groups don't show.
 function renderStrip() {
   if (page.layout !== "top") return;
-  const cur = tab(selected)?.env;
-  if (cur) stripEnv = cur;
-  if (!stripEnv || !env(stripEnv)) stripEnv = envs[0]?.name || null;
-  const own = visual().filter((t) => t.env === stripEnv);
-  const e = env(stripEnv);
-  let html = `<span style="margin:0 8px 0 4px;display:flex">${markSvg(20)}</span>`;
-  if (envs.length > 1) {
-    html += `<select id="stripEnv" title="Environment">${envs.map((x) => `<option value="${esc(x.name)}" ${x.name === stripEnv ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select>`;
+  let html = `<span style="margin:0 10px 0 4px;display:flex">${markSvg(20)}</span>`;
+  for (const e of envs) {
+    html += `<div class="senv"><button class="echip" data-env="${esc(e.name)}" title="${esc(envMeta(e))}${e.error ? " · " + esc(e.error) : ""} · click for a new tab here">${kindIcon(e.kind)}${esc(e.name)}<span class="hdot ${health(e)}"></span></button>`;
+    if (e.state === "connected" && envData.get(e.name) && !hasClaude(e.name)) html += `<button class="install" data-env-act="install" data-env="${esc(e.name)}">Install claude</button>`;
+    for (const t of visual().filter((x) => x.env === e.name)) {
+      const cls = ["ttab", selected === t.key && "active", bold(t) && "bold", dead(t) && "dead"].filter(Boolean).join(" ");
+      html += `<button class="${cls}" data-key="${esc(t.key)}" title="${esc(home(t.cwd))}"><span class="dot ${esc(t.status)}"></span><span class="name">${esc(t.name)}</span></button>`;
+    }
+    html += `</div>`;
   }
-  if (e && envNote(e)) html += envNote(e).replace("envnote", "envnote\" style=\"flex:none;padding:0 8px");
-  for (const t of own) {
-    const cls = ["ttab", selected === t.key && "active", bold(t) && "bold", dead(t) && "dead"].filter(Boolean).join(" ");
-    html += `<button class="${cls}" data-key="${esc(t.key)}" title="${esc(home(t.cwd))}"><span class="dot ${esc(t.status)}"></span><span class="name">${esc(t.name)}</span></button>`;
-  }
-  html += `<button class="icon-btn" data-strip="new" title="New tab (⌥N)" aria-label="New tab"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>`;
   html += `<span style="flex:1"></span>`;
-  html += `<button class="icon-btn" data-strip="jump" title="Jump to tab (${MOD}K)" aria-label="Jump to tab"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></button>`;
   if (update?.available) html += `<button class="update" data-strip="update">Update to ${esc(update.latest)}</button>`;
-  html += `<button class="icon-btn" data-strip="settings" title="Settings" aria-label="Settings"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg></button>`;
+  html += `<button class="act new sm" data-strip="new" title="New tab (⌥N)">${PLUS(13)}New tab</button>`;
+  html += `<button class="act connect sm" data-strip="connect" title="Connect an SSH host, Docker container or WSL distro">${PLUG(13)}Connect</button>`;
+  html += `<button class="icon-btn" data-strip="settings" title="Settings (${MOD},)" aria-label="Settings" style="width:32px;height:32px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg></button>`;
   $("strip").innerHTML = html;
 }
 
@@ -454,6 +480,7 @@ function select(key) {
   selected = key;
   store.set("mux.selected", key);
   if (t.group) setCollapsed(t.env + "/" + t.group, false);
+  setCollapsed("env:" + t.env, false);
   for (const [k, x] of terms) x.el.classList.toggle("shown", k === key);
   $("placeholder").style.display = "none";
   const term = ensureTerm(key);
@@ -469,7 +496,7 @@ function markSeen(key) {
 }
 
 function step(dir) {
-  const list = page.layout === "top" ? visual().filter((t) => t.env === stripEnv) : visual();
+  const list = visual();
   if (!list.length) return;
   const i = list.findIndex((t) => t.key === selected);
   select(list[(i + dir + list.length) % list.length].key);
@@ -916,7 +943,8 @@ function renderSettings() {
       }).join("")}</div>
       ${row("Terminal font", "Any monospace font installed on this machine.",
         `<select class="input" style="width:180px;margin:0" id="sFont">${TERM_FONTS.map((f) => `<option ${f === page.termFont ? "selected" : ""}>${f}</option>`).join("")}</select>
-         <span class="stepper"><button data-font="-1" aria-label="Smaller">−</button><span>${page.termSize} px</span><button data-font="1" aria-label="Larger">+</button></span>`)}`,
+         <span class="stepper"><button data-font="-1" aria-label="Smaller">−</button><span>${page.termSize} px</span><button data-font="1" aria-label="Larger">+</button></span>`)}
+      ${row("Tab rows", "Compact: one line, the name. Detailed: two lines, the name and its directory.", seg("tabRows", [["one", "Compact"], ["two", "Detailed"]]))}`,
     new: () => `<h2>New tabs</h2><p class="lead">What the New tab dialog starts from. Each tab can still change it.</p>
       <div class="grid2">
         <label class="field">Environment<select id="sNewEnv"><option value="">The one in view</option>${envs.map((e) => `<option value="${esc(e.name)}" ${e.name === page.newEnv ? "selected" : ""}>${esc(e.name)}</option>`).join("")}</select></label>
@@ -957,7 +985,7 @@ function renderSettings() {
             <button class="btn" data-env-act="reconnect" data-env="${esc(e.name)}">${e.kind === "local" ? "Restart" : "Reconnect"}</button>
             ${e.kind !== "local" ? `<button class="btn danger" data-env-act="remove" data-env="${esc(e.name)}">Remove</button>` : ""}</span></div>`;
       }).join("")}
-      <p><button class="btn primary" id="sAddEnv">Add environment…</button></p>`,
+      <p><button class="btn primary" id="sAddEnv">Connect…</button></p>`,
     updates: () => {
       const u = update || {};
       let state = `claude-mux ${esc(u.current || "?")}`;
@@ -1073,7 +1101,7 @@ function renderPalette() {
   const vis = visual();
   const found = actionsOnly ? [] : vis.filter((t) => fuzzy(`${t.name} ${t.env} ${t.group || ""} ${t.branch || ""}`, q))
     .sort((a, b) => rank(a) - rank(b) || vis.indexOf(a) - vis.indexOf(b));
-  const actions = [["new", "New tab", "⌥N"], ["tab-settings", "Tab settings", ""], ["settings", "Settings", MOD + ","], ["add-env", "Add environment", ""]]
+  const actions = [["new", "New tab", "⌥N"], ["tab-settings", "Tab settings", ""], ["settings", "Settings", MOD + ","], ["add-env", "Connect an environment", ""]]
     .filter(([k, l]) => fuzzy(l, q) && (k !== "tab-settings" || selected));
   pal.items = [...found.map((t) => ({ tab: t })), ...actions.map((a) => ({ action: a }))];
   pal.on = Math.min(pal.on, Math.max(0, pal.items.length - 1));
@@ -1116,29 +1144,41 @@ $("jumpKey").textContent = MOD + "K";
 // ---------- sidebar and strip ----------
 $("new").onclick = () => openNew();
 $("new2").onclick = () => openNew();
+$("connect").onclick = () => addEnv();
 $("settings").onclick = () => openSettings();
 $("head").addEventListener("click", (e) => { if (e.target.closest("#tabMore")) openTabSettings(selected); });
 $("strip").addEventListener("click", (e) => {
   const t = e.target.closest(".ttab");
   if (t) { select(t.dataset.key); return; }
+  const ea = e.target.closest("button[data-env-act]");
+  if (ea) { envAct(ea.dataset.envAct, ea.dataset.env); return; }
+  const chip = e.target.closest(".echip");
+  if (chip) { newIn(chip.dataset.env); return; }
   const b = e.target.closest("[data-strip]")?.dataset.strip;
-  if (b === "new") openNew({ env: stripEnv });
-  if (b === "jump") openPalette();
+  if (b === "new") openNew();
+  if (b === "connect") addEnv();
   if (b === "settings") openSettings();
   if (b === "update") applyUpdate();
-  const ea = e.target.closest("button[data-env-act]");
-  if (ea) envAct(ea.dataset.envAct, ea.dataset.env);
 });
-$("strip").addEventListener("change", (e) => {
-  if (e.target.id !== "stripEnv") return;
-  stripEnv = e.target.value;
-  const first = visual().find((t) => t.env === stripEnv);
-  if (first) select(first.key); else render();
-});
+
+// newIn opens New tab in an environment, or, while it can't take one,
+// Settings › Environments, which says why.
+function newIn(name) {
+  const e = env(name);
+  if (e?.state === "connected" && hasClaude(name)) openNew({ env: name });
+  else openSettings("environments");
+}
 
 $("list").addEventListener("click", (e) => {
   const b = e.target.closest("button[data-env-act]");
   if (b) { envAct(b.dataset.envAct, b.dataset.env); return; }
+  const eh = e.target.closest(".envhead");
+  if (eh) {
+    const key = "env:" + eh.dataset.env;
+    setCollapsed(key, !collapsed.has(key));
+    render();
+    return;
+  }
   const head = e.target.closest(".glabel");
   if (head) {
     const key = head.dataset.env + "/" + head.dataset.group;
@@ -1286,8 +1326,9 @@ $("list").addEventListener("contextmenu", (e) => {
       : { kind: "env", env: el.dataset.env });
 });
 $("strip").addEventListener("contextmenu", (e) => {
-  const el = e.target.closest(".ttab");
-  if (el) openMenu(e, { kind: "tab", key: el.dataset.key });
+  const el = e.target.closest(".ttab, .echip");
+  if (el?.classList.contains("echip")) openMenu(e, { kind: "env", env: el.dataset.env });
+  else if (el) openMenu(e, { kind: "tab", key: el.dataset.key });
 });
 window.addEventListener("pointerdown", (e) => { if (!e.target.closest("#menu")) closeMenu(); }, true);
 window.addEventListener("blur", closeMenu);
@@ -1378,8 +1419,7 @@ window.addEventListener("keydown", (e) => {
   if (!e.altKey || e.metaKey || e.ctrlKey) return;
   let handled = true;
   if (/^Digit[1-9]$/.test(e.code)) {
-    const list = page.layout === "top" ? visual().filter((t) => t.env === stripEnv) : visual();
-    const t = list[Number(e.code.slice(5)) - 1];
+    const t = visual()[Number(e.code.slice(5)) - 1];
     if (t) select(t.key);
   } else if (e.code === "KeyN") openNew();
   else if (e.code === "KeyJ") jumpWaiting();

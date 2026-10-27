@@ -90,7 +90,7 @@ body{margin:0}
 <span style="{{t.dotStyle}}"></span>
 <span style="display: flex; flex-direction: column; flex: 1; min-width: 0">
 <span style="display: flex; align-items: center; gap: 6px; min-width: 0"><span style="{{t.nameStyle}}">{{t.name}}</span><sc-if value="{{t.startup}}" hint-placeholder-val="{{ false }}"><span title="Has a startup message" style="font-size: 11px; color: {{c.muted}}">↻</span></sc-if></span>
-<span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: {{c.muted}}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{t.cwd}}</span>
+<sc-if value="{{t.twoLine}}" hint-placeholder-val="{{ true }}"><span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: {{c.muted}}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{t.cwd}}</span></sc-if>
 </span>
 </button>
 </sc-for>
@@ -138,7 +138,7 @@ body{margin:0}
 </div>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"layout":{"editor":"enum","options":["left","top"],"default":"left"},"activeTab":{"editor":"enum","options":["rpc-gateway","billing-fix","docs-site","terraform-plan","k8s-watch","release-v0.9","flaky-tests"],"default":"billing-fix"},"$preview":{"width":1440,"height":900}}'>
+<script type="text/x-dc" data-dc-script data-props='{"rows":{"editor":"enum","options":["two","one"],"default":"two"},"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"layout":{"editor":"enum","options":["left","top"],"default":"left"},"activeTab":{"editor":"enum","options":["rpc-gateway","billing-fix","docs-site","terraform-plan","k8s-watch","release-v0.9","flaky-tests"],"default":"billing-fix"},"$preview":{"width":1440,"height":900}}'>
 class Component extends DCLogic {
   renderVals() {
     const s = this.state || {};
@@ -148,6 +148,7 @@ class Component extends DCLogic {
       light: { bg: '#FFFFFF', panel: '#F6F7F9', line: '#E3E6EB', field: '#ECEEF2', sel: '#E2E7F0', term: '#FBFBFC', termLine: '#E3E6EB', boxLine: '#C9CED8', text: '#1D2129', text2: '#3D4452', muted: '#626A7A', accent: '#2F5FD0', accentSoft: '#E8EEFB', accentText: '#2A55BD', onAccent: '#FFFFFF', working: '#2F5FD0', ready: '#1F9D5C', needs: '#B86F0A', halo: 'rgba(184,111,10,0.2)', exited: '#9AA1AD', exitedText: '#7A8291', termText: '#2B303A', termDim: '#626A7A', termStrong: '#1D2129', mark: '#1D2129', markFg: '#FFFFFF' }
     };
     const c = THEMES[this.props.theme] || THEMES.dark;
+    const twoLine = (this.props.rows || 'two') === 'two';
     const activeId = s.active || this.props.activeTab || 'billing-fix';
     const COL = { working: c.working, ready: c.ready, needs: c.needs };
     const TABS = [
@@ -169,10 +170,10 @@ class Component extends DCLogic {
       const active = t.id === activeId;
       const bold = active || t.unread || t.status === 'needs';
       return Object.assign({}, t, {
-        name: t.id, startup: !!t.startup,
+        name: t.id, startup: !!t.startup, twoLine: twoLine,
         dotStyle: dot(t),
         nameStyle: 'flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:' + (bold ? '600' : '400') + ';color:' + (t.status === 'exited' ? c.exitedText : c.text),
-        rowStyle: 'display:flex;align-items:center;gap:10px;width:100%;padding:6px 10px 6px 24px;margin:1px 0;border:0;border-radius:6px;cursor:pointer;text-align:left;font:inherit;color:inherit;background:' + (active ? c.sel : 'transparent'),
+        rowStyle: 'display:flex;align-items:center;gap:10px;width:100%;padding:' + (twoLine ? '6px' : '5px') + ' 10px ' + (twoLine ? '6px' : '5px') + ' 24px;margin:1px 0;border:0;border-radius:6px;cursor:pointer;text-align:left;font:inherit;color:inherit;background:' + (active ? c.sel : 'transparent'),
         topStyle: 'display:flex;align-items:center;gap:7px;height:28px;padding:0 11px;border:0;border-radius:999px;font-size:12px;font:inherit;cursor:pointer;flex:none;color:inherit;background:' + (active ? c.sel : 'transparent'),
         crumb: t.env + (t.group ? ' / ' + t.group : '') + '  ·  ' + t.cwd + '  ·  ' + t.branch,
         select: () => this.setState({ active: t.id })

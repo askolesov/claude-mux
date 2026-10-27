@@ -9,18 +9,19 @@ WSL, all in the same window. A tab stays until you close it: quit the app,
 reboot, update, and every tab comes back with its conversation.
 
 ```
-┌──────────────┬──────────────────────────────────────────────┐
-│ claude-mux   │ api-fix   local / backend · ~/src/api · main │
-│              ├──────────────────────────────────────────────┤
-│ local      ● │                                              │
-│  backend     │  > fix the flaky test in store_test.go       │
-│   ● api-fix  │                                              │
-│   ● migrate  │  ● Reading store_test.go…                    │
-│  ● notes     │                                              │
-│ devbox     ● │                                              │
-│   ● deploy   │            (the tab's real terminal)         │
-│              │                                              │
-└──────────────┴──────────────────────────────────────────────┘
+┌─────────────────────────┬────────────────────────────────────────────┐
+│ claude-mux            ⚙ │ api-fix  local / backend · ~/src/api · main│
+│ [+ New tab] [Connect]   ├────────────────────────────────────────────┤
+│ ⌄ local  this Mac  ● ok │ > fix the flaky test in store_test.go      │
+│   backend             2 │                                            │
+│   ● api-fix             │ ● Reading store_test.go…                   │
+│     ~/src/api           │                                            │
+│   ● migrate             │                                            │
+│     ~/src/db            │       (the tab's real terminal)            │
+│ ⌄ devbox  ssh   ● 42 ms │                                            │
+│   ● deploy              │                                            │
+│     /srv/app            │                                            │
+└─────────────────────────┴────────────────────────────────────────────┘
   ● blue: working   ● green: done, ready for you   ● amber: needs you
 ```
 
@@ -94,7 +95,7 @@ back.
 
 ## Using it
 
-- **New tab** (+ or ⌥N): pick the environment and the directory. Optional:
+- **New tab** (the button, or ⌥N): pick the environment and the directory. Optional:
   a group and extra `claude` arguments. Frequent flags such as
   `--dangerously-skip-permissions` are checkboxes.
 - **The dot**:
@@ -109,8 +110,11 @@ back.
   group, directory, arguments and resume message, plus Restart and Close.
   The name belongs to claude: type `/rename <name>` in the tab.
 - **Groups**: drag a tab onto a group's label or next to its tabs. Click a
-  label to fold it, right-click it to rename it.
-- **Environments**: Settings › Environments › Add environment. You can add:
+  label to fold it, right-click it to rename it. Environments fold the
+  same way, by their headers.
+- **Tab rows** (Settings › Appearance): Detailed shows each tab's
+  directory under its name, Compact only the name.
+- **Environments**: **Connect** adds one. You can add:
   - an SSH host (it must accept your key without a password prompt)
   - a running Docker container
   - a WSL distro

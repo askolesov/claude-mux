@@ -77,7 +77,9 @@ Mockups: `V4Main.dc.html` (tabs on the left), `V4TopTabs.dc.html` (on top).
   with the tab count on the right.
 - **Tab row** (indented under the environment): the status dot, then two
   lines: the name (plus ↻ when it has a startup message) and the directory
-  in small mono. Nothing else.
+  in small mono. Nothing else. Settings › Appearance › *Tab rows* switches
+  between **Detailed** (two lines, the default) and **Compact** (name only,
+  one line); mockup `V4Compact.dc.html`.
 - At the bottom, only when a release is out: *0.9.3 is out · Update and
   restart*.
 
@@ -136,7 +138,7 @@ left; *Back to tabs* returns.
 - **Tabs & layout**: tab position (left / top, as two picture cards),
   confirm before closing, sort (manual / waiting first).
 - **Appearance**: page theme (Auto / Light / Dark), terminal theme,
-  terminal font and size.
+  terminal font and size, tab rows (Compact / Detailed).
 - **New tabs**: default environment, directory, extra arguments, and which
   of the frequent flags start checked.
 - **Notifications**: needs you, finished, exited; only when not looking;
