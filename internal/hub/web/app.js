@@ -1017,10 +1017,14 @@ const sRow = (label, control) => `<div class="srow"><span>${label}</span>${contr
 function renderSettings() {
   const u = update || {};
   const s = hubSettings || {};
-  let checked = checking ? "Checking…" : u.lastCheck ? `Last checked ${when(u.lastCheck)}` : "Not checked yet";
-  if (u.dev) checked = "A development build, which doesn't update";
+  const days = s.everyDays || 1;
+  let checked = checking ? "checking…" : u.lastCheck ? `checked ${when(u.lastCheck)}` : "not checked yet";
+  if (u.dev) checked = "a development build, which doesn't update";
+  else if (u.error && !checking) checked += ` · <span title="${esc(u.error)}">the last check failed</span>`;
   const notifyAsk = !window.cmuxNotify && typeof Notification !== "undefined" && Notification.permission === "default";
-  const stateDir = hubInfo?.stateDir ? home(hubInfo.stateDir) : "~/.claude-mux";
+  const refresh = `<button type="button" class="iconbtn ${checking ? "spin" : ""}" id="sNow" title="Check now" aria-label="Check now" ${u.dev || u.updating || checking ? "disabled" : ""}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 4v5h-5"/></svg></button>`;
+  const latest = u.updating ? `<span class="quiet">Updating: ${esc(u.step || "starting")}…</span>`
+    : u.available ? `<button type="button" class="btn small primary" id="sApply" title="Restarts claude-mux; every tab resumes">Update to ${esc(u.latest)}</button>` : "";
   $("sBody").innerHTML = `
     <div class="ssec">Appearance</div>
     ${sRow("Theme", segOf("theme", [["auto", "Auto"], ["light", "Light"], ["dark", "Dark"]]))}
@@ -1035,11 +1039,12 @@ function renderSettings() {
     ${pageSw("notifyAway", "Only while I am in another window")}
     ${notifyAsk ? sRow(`<span class="quiet">This browser asks first</span>`, `<button type="button" class="btn small" id="sAllow">Allow</button>`) : ""}
     <div class="ssec">Updates</div>
-    ${swRow("Check automatically", s.checkUpdates, `id="sCheck"`)}
-    ${s.checkUpdates ? sRow(`<label for="sDays">Every</label>`, `<input id="sDays" class="num" type="number" min="1" max="365" value="${s.everyDays || 1}"><span class="quiet">${(s.everyDays || 1) === 1 ? "day" : "days"}</span>`) : ""}
-    ${sRow(`<span class="quiet">${esc(checked)}${u.error && !checking ? ` · <span title="${esc(u.error)}">the last check failed</span>` : ""}</span>`, `<button type="button" class="btn small" id="sNow" ${u.dev || u.updating || checking ? "disabled" : ""}>Check now</button>`)}
-    ${u.updating ? sRow(`Updating: ${esc(u.step || "starting")}…`, "") : u.available ? sRow(`<span>${esc(u.latest)} is available <span class="quiet">· you have ${esc(u.current)}</span></span>`, `<button type="button" class="btn small primary" id="sApply">Update and restart</button>`) : ""}
-    <div class="sfoot"><span>${esc(hubVersion)} · state in ${esc(stateDir)}</span><button type="button" class="link" id="sLog">Open log</button></div>`;
+    <div class="srow every ${s.checkUpdates ? "" : "off"}"><span>Check every</span>
+      <input id="sDays" class="num" type="number" min="1" max="365" value="${days}" aria-label="Days between checks" ${s.checkUpdates ? "" : "disabled"}>
+      <span>${days === 1 ? "day" : "days"}</span><span class="fill"></span>
+      <button type="button" class="switchbtn" role="switch" aria-checked="${!!s.checkUpdates}" aria-label="Check automatically" id="sCheck"><span class="switch"></span></button></div>
+    <div class="srow ver"><span>${esc(u.current || hubVersion)}</span><span class="quiet">· ${checked}</span>${u.dev ? "" : refresh}<span class="fill"></span>${latest}</div>`;
+  $("sState").textContent = hubInfo?.stateDir ? home(hubInfo.stateDir) : "~/.claude-mux";
 }
 
 $("sBody").addEventListener("click", async (e) => {
@@ -1060,9 +1065,9 @@ $("sBody").addEventListener("click", async (e) => {
     setTimeout(renderSettings, 150); // the event with the result comes first
     return;
   }
-  if (t.closest("#sApply")) { $("setDlg").close(); applyUpdate(); return; }
-  if (t.closest("#sLog")) request("POST", "/hub/open-log").catch((err) => say(err.message));
+  if (t.closest("#sApply")) { $("setDlg").close(); applyUpdate(); }
 });
+$("sLog").onclick = () => request("POST", "/hub/open-log").catch((err) => say(err.message));
 $("sBody").addEventListener("change", (e) => {
   const t = e.target;
   if (t.id === "sTerm") setPage({ termTheme: t.value });
