@@ -277,8 +277,9 @@ func (m *Manager) WatchStartup(ctx context.Context) {
 }
 
 // PollNames follows the names claude reports for the tabs' processes in
-// `claude agents --json`, so /rename typed in a tab renames the tab. The
-// name is passed back as --name on the next start.
+// `claude agents --json`: claude owns the name, and /rename typed in a tab
+// is the only way to rename it. The name is passed back as --name on the
+// next start.
 func (m *Manager) PollNames(ctx context.Context, every time.Duration) {
 	for {
 		m.followNames(ctx)
@@ -311,20 +312,13 @@ func (m *Manager) followNames(ctx context.Context) {
 	}
 }
 
-// followName takes a name claude reports when it is a new one: a tab
-// renamed in the page keeps its name while its claude, until it starts
-// again, still reports the old one.
 func (m *Manager) followName(pid int, name string) {
 	m.mu.Lock()
 	sessions := append([]*Session(nil), m.sessions...)
 	m.mu.Unlock()
 	for _, s := range sessions {
 		s.mu.Lock()
-		mine := s.proc != nil && s.proc.Pid() == pid && name != ""
-		changed := mine && name != s.claudeName && name != s.Name
-		if mine {
-			s.claudeName = name
-		}
+		changed := s.proc != nil && s.proc.Pid() == pid && name != "" && name != s.Name
 		if changed {
 			s.Name = name
 		}
@@ -335,24 +329,6 @@ func (m *Manager) followName(pid int, name string) {
 			return
 		}
 	}
-}
-
-// Rename names a tab. Its claude gets the name with --name when it starts
-// again.
-func (m *Manager) Rename(id, name string) error {
-	if name = strings.TrimSpace(name); name == "" {
-		return errors.New("a tab needs a name")
-	}
-	s, err := m.Get(id)
-	if err != nil {
-		return err
-	}
-	s.mu.Lock()
-	s.Name = name
-	s.mu.Unlock()
-	m.save()
-	m.changes.Notify()
-	return nil
 }
 
 // Configure sets what a tab starts with: its directory, startup message and

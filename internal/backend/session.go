@@ -38,7 +38,6 @@ type Session struct {
 	statusSince time.Time
 	unseen      bool
 	branch      string   // the git branch of Cwd, if it is in a repository
-	claudeName  string   // the name claude last reported for it (followName)
 	restarting  bool     // the next exit starts it again
 	proc        *ptyProc // nil while claude isn't running
 	scrollback  []byte

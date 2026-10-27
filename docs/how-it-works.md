@@ -133,7 +133,6 @@ And a backend's, under `/env/<name>`:
 | `GET /api/state`, `GET /api/events` | the tabs, claude's path and version, the default directory; SSE on every change |
 | `POST /api/sessions` | new tab |
 | `PUT /api/sessions/:id` | Tab settings: directory, args, startup message |
-| `PUT /api/sessions/:id/name` | rename a tab |
 | `POST /api/groups`, `PUT /api/groups/:id`, `DELETE /api/groups/:id` | new group, rename, delete (its contents move up) |
 | `PUT /api/nodes/:id/place` | move a tab or a group: `{parent, before \| after}` |
 | `POST /api/sessions/:id/start`, `/restart`, `/seen`; `DELETE /api/sessions/:id` | lifecycle |
@@ -332,11 +331,11 @@ the watcher, as the first prompt after `--`.
 - Before v0.7 the hub kept one default for every tab. A tab that followed
   it got it as its own on upgrade.
 
-**Names.** A tab is named in New tab, Tab settings or with F2, and
-claude gets the name with `--name`. `/rename` in the tab renames it too:
-the backend polls `claude agents --json` and takes a name that changed
-since it last looked, so a name given in the page stays while the running
-claude still reports the old one.
+**Names.** A tab gets its name in New tab (the folder's, if left empty),
+and claude gets it with `--name`. After that the name is claude's:
+`/rename` typed in the tab is the only way to change it, and the backend
+follows it from `claude agents --json`. Groups and environments rename in
+the sidebar.
 
 ## The page
 
@@ -359,7 +358,7 @@ JetBrains Mono are in `vendor/`, so the page needs no internet.
   environment stay per browser.
 - The sidebar is an ARIA tree. Rows are `treeitem`s with `aria-level`, and
   containers have `aria-expanded`. The keys are ↑↓←→, Enter, Home/End, F2 to
-  rename, ⌫ to delete a group, the Menu key or ⇧F10 for the row's menu, and
+  rename a group or an environment, ⌫ to delete a group, the Menu key or ⇧F10 for the row's menu, and
   type-ahead. Drag-and-drop works out the target depth from the pointer's x.
 - New tab, Tab settings, Settings and Environment settings are one family
   of 460 px modals: rows in filled cards, × or Esc to cancel, one primary

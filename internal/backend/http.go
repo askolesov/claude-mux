@@ -36,7 +36,6 @@ func NewHandler(m *Manager, defaultCwd string) http.Handler {
 	api.GET("/events", h.events)
 	api.POST("/sessions", h.create)
 	api.PUT("/sessions/:id", h.configure)
-	api.PUT("/sessions/:id/name", h.rename)
 	api.DELETE("/sessions/:id", h.close)
 	api.POST("/sessions/:id/start", h.start)
 	api.POST("/sessions/:id/restart", h.restart)
@@ -154,17 +153,6 @@ func (h *Handler) configure(c *gin.Context) {
 		return
 	}
 	respond(c, nil, h.m.Configure(c.Param("id"), expandHome(strings.TrimSpace(req.Cwd)), req.Resume, req.ResumeMessage, strings.Fields(req.Args)))
-}
-
-func (h *Handler) rename(c *gin.Context) {
-	var req struct {
-		Name string `json:"name" binding:"required"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		respond(c, nil, err)
-		return
-	}
-	respond(c, nil, h.m.Rename(c.Param("id"), req.Name))
 }
 
 // dirs completes a directory path as it is typed in New tab: the

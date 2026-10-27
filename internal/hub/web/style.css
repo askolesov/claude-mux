@@ -115,7 +115,6 @@ body.resizing { cursor: col-resize; user-select: none; }
   flex: 1; min-width: 0; height: 24px; padding: 0 6px; border: 1px solid var(--accent); border-radius: 4px;
   background: var(--bg); font-size: 12px; font-weight: 600; outline: none; box-shadow: 0 0 0 3px var(--accent-soft);
 }
-.tab .rename { font-weight: 400; font-size: 13px; }
 .dropline { position: absolute; height: 2px; background: var(--accent); border-radius: 1px; pointer-events: none; z-index: 6; }
 .tab {
   gap: 10px; width: 100%; padding-top: 6px; padding-bottom: 6px; padding-right: 10px; margin: 1px 0;
@@ -201,7 +200,7 @@ dialog h3 { margin: 0; font-size: 15px; font-weight: 600; }
   background: var(--card-in); color: var(--text); font-size: 13px; outline: none;
 }
 .crow input:focus, .crow select:focus, .card textarea:focus, .cbody input:focus, .srow .num:focus { outline: 1px solid var(--accent); }
-.crow input:disabled { color: var(--muted); }
+.crow input:disabled, .crow input:read-only { color: var(--muted); }
 .card textarea { display: block; width: 100%; height: auto; margin: 0 0 12px; padding: 8px 10px; resize: vertical; line-height: 1.45; }
 .mono-in { font-family: var(--mono) !important; font-size: 12px !important; }
 .sqbtn {

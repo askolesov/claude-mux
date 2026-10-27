@@ -111,10 +111,10 @@ back.
   A tab that finished while you weren't looking stays bold until you open
   it. The window title and the Dock icon count the tabs that wait.
 - **Tab settings** (… above the terminal, ⌘I, or right-click a tab): its
-  name, directory, startup message and arguments. A new name applies at
-  once; the rest restarts its claude, and the conversation continues.
-  `/rename <name>` typed in the tab renames it too.
-- **Right-click** any row for what it can do. A tab: Tab settings, Rename,
+  directory, startup message and arguments. Saving restarts its claude,
+  and the conversation continues. A tab's name is claude's: type
+  `/rename <name>` in the tab to change it.
+- **Right-click** any row for what it can do. A tab: Tab settings,
   Duplicate, Move to…, Restart, Close. A group: New tab, New group,
   Rename, Collapse, Delete. An environment: New tab, New group,
   Reconnect, Environment settings, Remove. The Menu key or ⇧F10 opens it
@@ -122,7 +122,7 @@ back.
 - **Groups** hold tabs and other groups, as deep as you like. Make one
   with ⇧⌥N (next to the selected tab) or from a right-click; it starts
   named "New group" for you to type over, and Esc takes it back. Fold
-  groups and environments by their chevrons. Rename with F2 or a
+  groups and environments by their chevrons. Rename them with F2 or a
   double-click. Deleting a group moves what it held up a level; no tab is
   closed.
 - **Moving**: drag a tab or a group onto a group to put it inside, or
@@ -151,7 +151,7 @@ back.
   | ⌘I | Tab settings |
   | ⌘W | close the tab (asks first) |
   | ⌘⇧↑ / ⌘⇧↓ | move a row up / down in its group |
-  | ↑↓←→, Enter, F2, ⌫ | in the sidebar: move, fold, open, rename, delete a group |
+  | ↑↓←→, Enter, F2, ⌫ | in the sidebar: move, fold, open, rename or delete a group |
   | Menu key, ⇧F10 | in the sidebar: the row's menu |
   | ⌘, | Settings |
   | ⇧↵ | newline in the prompt |

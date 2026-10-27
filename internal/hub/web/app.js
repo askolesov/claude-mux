@@ -352,7 +352,7 @@ function tabRow(t, depth, path) {
   const fid = "t:" + t.key;
   const cls = ["trow", "tab", selected === t.key && "active", bold(t) && "bold", dead(t) && "dead"].filter(Boolean).join(" ");
   const mark = hasStartup(t) ? `<span class="mark" title="Startup message: ${esc(t.resumeMessage)}">↻</span>` : "";
-  const name = editing?.fid === fid ? renameBox(fid, t.name, "Tab name") : `<span class="name">${esc(t.name)}</span>${mark}`;
+  const name = `<span class="name">${esc(t.name)}</span>${mark}`;
   return `<div class="${cls}" role="treeitem" aria-level="${depth + 1}" aria-selected="${selected === t.key}" tabindex="-1" data-fid="${esc(fid)}" data-kind="tab" data-key="${esc(t.key)}" data-env="${esc(t.env)}" data-node="${esc(t.id)}" data-parent="${esc(t.parent || "")}" data-depth="${depth}" data-path="${esc(path.join("/"))}"
     style="padding-left:${pad(depth) + 4}px" title="${esc(STATUS_TEXT[t.status] || t.status)} for ${ago(t.statusSince)} · ${esc(home(t.cwd))}" draggable="true">${guides(depth)}
     <span class="dot ${esc(t.status)}"></span><span class="lines"><span class="line1">${name}</span>
@@ -669,7 +669,7 @@ function renderDlg() {
   $("tName").placeholder = base($("tCwd").value) || "named after the folder";
   $("tPick").hidden = env(dlg.env)?.kind !== "local";
   if (dlg.mode !== "edit") return;
-  // Only the name applies at once; the rest restarts claude.
+  // Any change restarts claude.
   const t = tab(dlg.key);
   const o = dlg.orig;
   const dirty = $("tCwd").value.trim() !== o.cwd || dlg.startup !== o.startup || (dlg.startup && $("tStartup").value.trim() !== o.message) || dlgArgs() !== o.args;
@@ -755,6 +755,8 @@ function openNew(at = {}) {
   $("tTitle").textContent = "New tab";
   $("tMeta").textContent = "in " + placeOf(where.env, dlg.parent);
   $("tName").value = "";
+  $("tName").readOnly = false;
+  $("tName").title = "";
   $("tCwd").value = store.get("mux.lastCwd." + where.env) || home(envData.get(where.env)?.defaultCwd || "");
   $("tStartup").value = last.message || "";
   $("tArgs").value = last.args || "";
@@ -775,6 +777,8 @@ function openTabSettings(key) {
   $("tTitle").textContent = t.name;
   $("tMeta").textContent = [crumbOf(t), t.claudeSessionId && "session " + t.claudeSessionId.slice(0, 8)].filter(Boolean).join(" · ");
   $("tName").value = t.name;
+  $("tName").readOnly = true;
+  $("tName").title = "Type /rename <name> in the tab to rename it";
   $("tCwd").value = home(t.cwd);
   $("tStartup").value = t.resumeMessage || "";
   $("tArgs").value = rest;
@@ -782,7 +786,7 @@ function openTabSettings(key) {
   $("tClose").hidden = false;
   $("tFootNote").textContent = "";
   showDlg();
-  $("tName").focus();
+  $("tCwd").focus();
 }
 
 $("tabForm").addEventListener("submit", async (e) => {
@@ -793,8 +797,6 @@ $("tabForm").addEventListener("submit", async (e) => {
   try {
     if (dlg.mode === "edit") {
       const t = tab(dlg.key);
-      const name = $("tName").value.trim();
-      if (name && name !== t.name) await api(t.env, "PUT", `/api/sessions/${t.id}/name`, { name });
       const o = dlg.orig;
       if (body.cwd !== o.cwd || dlg.startup !== o.startup || message !== o.message || body.args !== o.args) {
         if (dlg.restart && t.status === "working" && !(await sure(`Restart ${t.name}?`, "It is working: the turn in progress is cut off. Its conversation continues.", "Save and restart"))) return;
@@ -1240,9 +1242,9 @@ function newGroupNear() {
 }
 
 // ---------- renaming ----------
-// Groups, tabs and environments rename in place; local keeps its name. A
-// tab renamed here keeps the name until /rename in it gives another.
-const canRename = (row) => row.dataset.kind !== "env" || env(row.dataset.env)?.kind !== "local";
+// Groups and environments rename in place; local keeps its name. A tab's
+// name is claude's: /rename typed in the tab is the only way to rename one.
+const canRename = (row) => row.dataset.kind === "group" || (row.dataset.kind === "env" && env(row.dataset.env)?.kind !== "local");
 function startRename(fid, fresh = false) {
   editing = { fid, fresh };
   render();
@@ -1255,12 +1257,6 @@ async function finishRename(input, save) {
     if (fid.startsWith("env:")) {
       const from = fid.slice(4);
       if (save && to && to !== from) await renameEnv(from, to);
-    } else if (fid.startsWith("t:")) {
-      const t = tab(fid.slice(2));
-      if (save && t && to && to !== t.name) {
-        t.name = to;
-        await api(t.env, "PUT", `/api/sessions/${t.id}/name`, { name: to });
-      }
     } else {
       const [name, id] = fid.slice(2).split("/");
       if (!save && fresh) await api(name, "DELETE", `/api/groups/${id}`);
@@ -1463,7 +1459,7 @@ function menuItems(target) {
   }
   const t = tab(target.key);
   if (!t) return [];
-  return [["tab-settings", "Tab settings…", MOD + "I"], ["rename", "Rename", "F2"], ["duplicate", "Duplicate", ""], ["move", "Move to…", ""], null,
+  return [["tab-settings", "Tab settings…", MOD + "I"], ["duplicate", "Duplicate", ""], ["move", "Move to…", ""], null,
     dead(t) ? ["start", "Resume", "↵"] : ["restart", "Restart", ""], ["close", "Close tab", MOD + "W", "danger"]];
 }
 
