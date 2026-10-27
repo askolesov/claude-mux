@@ -253,7 +253,7 @@ function render() {
 }
 
 // The sidebar: a block per environment (folds by its header), its groups
-// with their counts, its tabs.
+// with their counts, its tabs and a New tab row; Connect after the last.
 function renderList() {
   let html = "";
   for (const e of envs) {
@@ -274,10 +274,12 @@ function renderList() {
         <span class="gname">${esc(run.group)}</span>${shut ? `<span class="shut">▸</span>` : ""}${dot ? `<span class="dot ${dot}"></span>` : ""}<span class="count">${run.items.length}</span></div>`;
       if (!shut) for (const t of ordered(run.items)) html += tabRow(t);
     }
-    if (!own.length && e.state === "connected" && hasClaude(e.name)) html += `<div class="empty" style="padding-left:24px">No tabs. ⌥N starts one.</div>`;
+    // A new tab opens where it was asked for; without claude, envNote offers Install.
+    if (e.state === "connected" && hasClaude(e.name)) html += `<button class="newrow" data-new-env="${esc(e.name)}" title="New tab in ${esc(e.name)}">${PLUS(13)}New tab</button>`;
     html += `</div>`;
   }
-  $("list").innerHTML = html || `<div class="empty">Connecting…</div>`;
+  html += `<button class="connectrow" data-connect title="An SSH host, a Docker container or a WSL distro">${PLUG(13)}Connect environment…</button>`;
+  $("list").innerHTML = html;
 }
 
 // envNote says what's wrong with an environment, if anything, with what
@@ -302,7 +304,7 @@ function tabRow(t) {
 }
 
 // Tabs on top: one strip for every environment, each a chip (click for a
-// new tab there) followed by its tabs; groups don't show.
+// new tab there), its tabs and a +; Connect after the last. Groups don't show.
 function renderStrip() {
   if (page.layout !== "top") return;
   let html = `<span style="margin:0 10px 0 4px;display:flex">${markSvg(20)}</span>`;
@@ -313,12 +315,12 @@ function renderStrip() {
       const cls = ["ttab", selected === t.key && "active", bold(t) && "bold", dead(t) && "dead"].filter(Boolean).join(" ");
       html += `<button class="${cls}" data-key="${esc(t.key)}" title="${esc(home(t.cwd))}"><span class="dot ${esc(t.status)}"></span><span class="name">${esc(t.name)}</span></button>`;
     }
+    if (e.state === "connected" && hasClaude(e.name)) html += `<button class="plus" data-new-env="${esc(e.name)}" title="New tab in ${esc(e.name)}" aria-label="New tab in ${esc(e.name)}">${PLUS(13)}</button>`;
     html += `</div>`;
   }
+  html += `<button class="sconnect" data-connect title="An SSH host, a Docker container or a WSL distro">${PLUG(13)}Connect</button>`;
   html += `<span style="flex:1"></span>`;
   if (update?.available) html += `<button class="update" data-strip="update">Update to ${esc(update.latest)}</button>`;
-  html += `<button class="act new sm" data-strip="new" title="New tab (⌥N)">${PLUS(13)}New tab</button>`;
-  html += `<button class="act connect sm" data-strip="connect" title="Connect an SSH host, Docker container or WSL distro">${PLUG(13)}Connect</button>`;
   html += `<button class="icon-btn" data-strip="settings" title="Settings (${MOD},)" aria-label="Settings" style="width:32px;height:32px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg></button>`;
   $("strip").innerHTML = html;
 }
@@ -1142,9 +1144,7 @@ $("jump").onclick = openPalette;
 $("jumpKey").textContent = MOD + "K";
 
 // ---------- sidebar and strip ----------
-$("new").onclick = () => openNew();
 $("new2").onclick = () => openNew();
-$("connect").onclick = () => addEnv();
 $("settings").onclick = () => openSettings();
 $("head").addEventListener("click", (e) => { if (e.target.closest("#tabMore")) openTabSettings(selected); });
 $("strip").addEventListener("click", (e) => {
@@ -1154,9 +1154,10 @@ $("strip").addEventListener("click", (e) => {
   if (ea) { envAct(ea.dataset.envAct, ea.dataset.env); return; }
   const chip = e.target.closest(".echip");
   if (chip) { newIn(chip.dataset.env); return; }
+  const plus = e.target.closest("[data-new-env]");
+  if (plus) { openNew({ env: plus.dataset.newEnv }); return; }
+  if (e.target.closest("[data-connect]")) { addEnv(); return; }
   const b = e.target.closest("[data-strip]")?.dataset.strip;
-  if (b === "new") openNew();
-  if (b === "connect") addEnv();
   if (b === "settings") openSettings();
   if (b === "update") applyUpdate();
 });
@@ -1172,6 +1173,9 @@ function newIn(name) {
 $("list").addEventListener("click", (e) => {
   const b = e.target.closest("button[data-env-act]");
   if (b) { envAct(b.dataset.envAct, b.dataset.env); return; }
+  const nr = e.target.closest("[data-new-env]");
+  if (nr) { openNew({ env: nr.dataset.newEnv }); return; }
+  if (e.target.closest("[data-connect]")) { addEnv(); return; }
   const eh = e.target.closest(".envhead");
   if (eh) {
     const key = "env:" + eh.dataset.env;

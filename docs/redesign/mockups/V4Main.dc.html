@@ -34,11 +34,11 @@ body{margin:0}
 <span style="{{t.nameStyle}}">{{t.name}}</span>
 </button>
 </sc-for>
+<sc-if value="{{e.hasClaude}}" hint-placeholder-val="{{ true }}"><button type="button" aria-label="New tab in {{e.label}}" style="width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: 999px; background: transparent; color: {{c.muted}}; cursor: pointer; flex: none"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button></sc-if>
 </div>
 </sc-for>
+<button type="button" title="An SSH host, a Docker container or a WSL distro" style="display: flex; align-items: center; gap: 6px; height: 26px; margin-left: 10px; padding: 0 10px; border: 1px dashed {{c.line}}; border-radius: 4px; background: transparent; color: {{c.muted}}; font: inherit; font-size: 12px; cursor: pointer; flex: none"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 2v5M15 2v5M6 7h12v4a6 6 0 0 1-12 0zM12 17v5"></path></svg>Connect</button>
 <div style="flex: 1"></div>
-<button type="button" style="display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 0; border-radius: 6px; background: {{c.accent}}; color: {{c.onAccent}}; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; flex: none"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>New tab</button>
-<button type="button" style="display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 1px solid {{c.line}}; border-radius: 6px; background: transparent; color: {{c.text2}}; font: inherit; font-size: 12px; cursor: pointer; flex: none"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 2v5M15 2v5M6 7h12v4a6 6 0 0 1-12 0zM12 17v5"></path></svg>Connect</button>
 <button type="button" style="height: 28px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: {{c.accent}}; font: inherit; font-size: 12px; cursor: pointer; flex: none">Update to 0.9.3</button>
 <a href="Settings.dc.html" aria-label="Settings" style="width: 32px; height: 32px; display: grid; place-items: center; border-radius: 6px; color: {{c.muted}}; flex: none"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"></path><circle cx="15" cy="6" r="2"></circle><circle cx="9" cy="12" r="2"></circle><circle cx="17" cy="18" r="2"></circle></svg></a>
 </div>
@@ -52,10 +52,6 @@ body{margin:0}
 <svg width="20" height="20" viewBox="0 0 64 64" aria-hidden="true" style="flex: none"><rect width="64" height="64" rx="14" fill="#161A21"></rect><rect x="20" y="10" width="34" height="27" rx="5" fill="#2E3542"></rect><rect x="10" y="22" width="36" height="30" rx="5" fill="#0B0D10" stroke="#7AA2F7" stroke-width="4"></rect><path d="M17 31l6 5-6 5" fill="none" stroke="#E6E8EC" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"></path></svg>
 <span style="font-weight: 700; font-size: 14px; letter-spacing: -0.01em; flex: 1">claude-mux</span>
 <a href="Settings.dc.html" aria-label="Settings" style="width: 28px; height: 28px; display: grid; place-items: center; border-radius: 6px; color: {{c.muted}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"></path><circle cx="15" cy="6" r="2"></circle><circle cx="9" cy="12" r="2"></circle><circle cx="17" cy="18" r="2"></circle></svg></a>
-</div>
-<div style="display: flex; gap: 6px; padding: 0 10px 8px">
-<button type="button" style="flex: 1 1 auto; display: flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 10px; border: 0; border-radius: 6px; background: {{c.accent}}; color: {{c.onAccent}}; font: inherit; font-weight: 600; cursor: pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>New tab</button>
-<button type="button" title="Connect an SSH host, Docker container or WSL distro" style="flex: none; display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border: 1px solid {{c.line}}; border-radius: 6px; background: transparent; color: {{c.text2}}; font: inherit; cursor: pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 2v5M15 2v5M6 7h12v4a6 6 0 0 1-12 0zM12 17v5"></path></svg>Connect</button>
 </div>
 <div style="padding: 0 10px 6px">
 <a href="Palette.dc.html" style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border-radius: 6px; background: {{c.field}}; color: {{c.muted}}; text-decoration: none; font-size: 12px">
@@ -96,8 +92,10 @@ body{margin:0}
 </sc-for>
 </div>
 </sc-for>
+<sc-if value="{{e.hasClaude}}" hint-placeholder-val="{{ true }}"><button type="button" aria-label="New tab in {{e.label}}" style="display: flex; align-items: center; gap: 8px; width: 100%; height: 28px; padding: 0 10px 0 24px; margin-top: 1px; border: 0; border-radius: 6px; background: transparent; color: {{c.muted}}; font: inherit; font-size: 12px; text-align: left; cursor: pointer"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>New tab</button></sc-if>
 </div>
 </sc-for>
+<button type="button" title="An SSH host, a Docker container or a WSL distro" style="display: flex; align-items: center; gap: 8px; width: 100%; height: 34px; margin-top: 14px; padding: 0 10px; border: 1px dashed {{c.line}}; border-radius: 6px; background: transparent; color: {{c.muted}}; font: inherit; font-size: 12px; text-align: left; cursor: pointer"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 2v5M15 2v5M6 7h12v4a6 6 0 0 1-12 0zM12 17v5"></path></svg>Connect environment…</button>
 </div>
 <div style="display: flex; align-items: center; gap: 8px; margin: 0 10px 10px; padding: 8px 10px; border-radius: 6px; background: {{c.accentSoft}}; font-size: 12px">
 <span style="flex: 1; color: {{c.text2}}">0.9.3 is out</span>
@@ -189,7 +187,7 @@ class Component extends DCLogic {
       const gs = [];
       tabs.forEach((t) => { if (gs.indexOf(t.group) < 0) gs.push(t.group); });
       return Object.assign({}, e, {
-        noClaude: !!e.noClaude, isLocal: !!e.isLocal, isSsh: !!e.isSsh, isDocker: !!e.isDocker,
+        noClaude: !!e.noClaude, hasClaude: !e.noClaude, isLocal: !!e.isLocal, isSsh: !!e.isSsh, isDocker: !!e.isDocker,
         flat: tabs.map(dec),
         topSep: 'display:flex;align-items:center;gap:2px;flex:none;' + (ei === 0 ? '' : 'margin-left:8px;padding-left:10px;border-left:1px solid ' + c.line),
         sepStyle: ei === 0 ? 'padding:2px 0 8px' : 'padding:8px 0;margin-top:2px;border-top:1px solid ' + c.line,

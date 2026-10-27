@@ -11,16 +11,18 @@ reboot, update, and every tab comes back with its conversation.
 ```
 ┌─────────────────────────┬────────────────────────────────────────────┐
 │ claude-mux            ⚙ │ api-fix  local / backend · ~/src/api · main│
-│ [+ New tab] [Connect]   ├────────────────────────────────────────────┤
-│ ⌄ local  this Mac  ● ok │ > fix the flaky test in store_test.go      │
-│   backend             2 │                                            │
-│   ● api-fix             │ ● Reading store_test.go…                   │
-│     ~/src/api           │                                            │
+│ ⌄ local  this Mac  ● ok ├────────────────────────────────────────────┤
+│   backend             2 │ > fix the flaky test in store_test.go      │
+│   ● api-fix             │                                            │
+│     ~/src/api           │ ● Reading store_test.go…                   │
 │   ● migrate             │                                            │
-│     ~/src/db            │       (the tab's real terminal)            │
+│     ~/src/db            │                                            │
+│   + New tab             │       (the tab's real terminal)            │
 │ ⌄ devbox  ssh   ● 42 ms │                                            │
 │   ● deploy              │                                            │
 │     /srv/app            │                                            │
+│   + New tab             │                                            │
+│ ┆ Connect environment…┆ │                                            │
 └─────────────────────────┴────────────────────────────────────────────┘
   ● blue: working   ● green: done, ready for you   ● amber: needs you
 ```
@@ -95,7 +97,8 @@ back.
 
 ## Using it
 
-- **New tab** (the button, or ⌥N): pick the environment and the directory. Optional:
+- **New tab** (the + New tab row under an environment, or ⌥N for the
+  current tab's environment): pick the directory. Optional:
   a group and extra `claude` arguments. Frequent flags such as
   `--dangerously-skip-permissions` are checkboxes.
 - **The dot**:
@@ -114,7 +117,8 @@ back.
   same way, by their headers.
 - **Tab rows** (Settings › Appearance): Detailed shows each tab's
   directory under its name, Compact only the name.
-- **Environments**: **Connect** adds one. You can add:
+- **Environments**: **Connect environment…**, under the last one, adds one.
+  You can add:
   - an SSH host (it must accept your key without a password prompt)
   - a running Docker container
   - a WSL distro

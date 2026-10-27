@@ -64,9 +64,6 @@ Mockups: `V4Main.dc.html` (tabs on the left), `V4TopTabs.dc.html` (on top).
 **Sidebar (tabs on the left)**
 
 - Top row: logo mark, `claude-mux`, settings.
-- The two main actions, always visible: **New tab** (primary, ⌥N) and
-  **Connect** (an SSH host, Docker container or WSL distro). Not hidden in
-  settings or menus.
 - **Jump to tab ⌘K**: the only search; opens the switcher.
 - **Environment header**: a collapse chevron, the name (semibold, main
   text colour), the kind in a small outlined tag (`this Mac`, `ssh`,
@@ -80,6 +77,12 @@ Mockups: `V4Main.dc.html` (tabs on the left), `V4TopTabs.dc.html` (on top).
   in small mono. Nothing else. Settings › Appearance › *Tab rows* switches
   between **Detailed** (two lines, the default) and **Compact** (name only,
   one line); mockup `V4Compact.dc.html`.
+- **New tab** lives with its environment: a quiet *+ New tab* row ends
+  each environment's list, so a new tab always opens where you clicked
+  (⌥N opens one in the current tab's environment). An environment without
+  claude shows *Install* instead.
+- **Connect environment…** is a dashed row after the last environment:
+  adding an environment extends the list it belongs to.
 - At the bottom, only when a release is out: *0.9.3 is out · Update and
   restart*.
 
@@ -87,8 +90,9 @@ Mockups: `V4Main.dc.html` (tabs on the left), `V4TopTabs.dc.html` (on top).
 `[env] (tab) (tab) [env] (tab) …`. An environment is a small square-cornered
 chip (kind icon, name, health dot; click for a new tab there), separated
 from the one before by a divider; its tabs follow as rounded pills (dot +
-name). Groups don't show in the strip. On the right: *Update to …* when one
-is out, **New tab**, **Connect** and settings.
+name), then a round **+** for a new tab in that environment. After the last
+environment, a dashed **Connect** chip. Groups don't show in the strip. On
+the right: *Update to …* when one is out, and settings.
 
 **Above the terminal**: the tab's name, then
 `env / group · directory · branch` in mono, and **…**, which opens Tab
