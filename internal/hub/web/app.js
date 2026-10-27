@@ -440,7 +440,11 @@ function ensureTerm(key) {
   el.style.background = termTheme().background;
   const fit = new FitAddon.FitAddon();
   term.loadAddon(fit);
-  term.loadAddon(new WebLinksAddon.WebLinksAddon());
+  // A link opens in the browser; in claude-mux's own window the hub opens it.
+  term.loadAddon(new WebLinksAddon.WebLinksAddon((e, uri) => {
+    if (window.cmuxOpen) window.cmuxOpen(uri).catch((err) => say(err.message));
+    else window.open(uri, "_blank", "noopener");
+  }));
   term.open(el);
   const t = { term, fit, el, ws: null, closed: false, retry: 0 };
 
