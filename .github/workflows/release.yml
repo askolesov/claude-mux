@@ -23,11 +23,10 @@ jobs:
           CGO_ENABLED: "0"
         run: |
           mkdir dist
-          for p in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64; do
-            GOOS=${p%-*} GOARCH=${p#*-} go build -trimpath -ldflags=-s -o dist/claude-mux-backend-$p ./cmd/backend
-          done
-          for p in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64; do
-            GOOS=${p%-*} GOARCH=${p#*-} go build -trimpath -ldflags="-s -X main.version=$GITHUB_REF_NAME" -o dist/claude-mux-$p ./cmd/hub
+          for p in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 windows-amd64 windows-arm64; do
+            ext=; [ "${p%-*}" = windows ] && ext=.exe
+            GOOS=${p%-*} GOARCH=${p#*-} go build -trimpath -ldflags=-s -o dist/claude-mux-backend-$p$ext ./cmd/backend
+            GOOS=${p%-*} GOARCH=${p#*-} go build -trimpath -ldflags="-s -X main.version=$GITHUB_REF_NAME" -o dist/claude-mux-$p$ext ./cmd/hub
           done
           cd dist && sha256sum * > checksums.txt
       - name: Publish

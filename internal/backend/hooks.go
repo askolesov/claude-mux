@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -17,7 +18,8 @@ var hookEvents = []string{"SessionStart", "UserPromptSubmit", "PreToolUse", "Pos
 // manager starts: each hook event runs this backend's binary as `hook`,
 // which posts the payload back to the backend (see Hook).
 func writeHookSettings(path, exe string) error {
-	cmd := shellQuote(exe) + " hook"
+	// Claude runs hooks with sh, Git Bash on Windows, which takes C:/… paths.
+	cmd := shellQuote(filepath.ToSlash(exe)) + " hook"
 	hooks := map[string]any{}
 	for _, e := range hookEvents {
 		hooks[e] = []any{map[string]any{"hooks": []any{map[string]any{"type": "command", "command": cmd}}}}

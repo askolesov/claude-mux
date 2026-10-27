@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"regexp"
@@ -35,8 +36,9 @@ var validName = regexp.MustCompile(`^[A-Za-z0-9._-]{1,40}$`)
 type Hub struct {
 	stateDir   string
 	file       string
+	version    string
 	backends   Backends
-	ssh        SSH
+	connectors Connectors
 	defaultCwd string
 
 	mu   sync.Mutex
@@ -44,8 +46,9 @@ type Hub struct {
 	subs map[chan struct{}]struct{}
 }
 
-func New(stateDir string, backends Backends, ssh SSH, defaultCwd string) (*Hub, error) {
-	h := &Hub{stateDir: stateDir, file: filepath.Join(stateDir, "environments.json"), backends: backends, ssh: ssh, defaultCwd: defaultCwd, subs: map[chan struct{}]struct{}{}}
+func New(stateDir string, backends Backends, connectors Connectors, defaultCwd string) (*Hub, error) {
+	h := &Hub{stateDir: stateDir, file: filepath.Join(stateDir, "environments.json"), version: backends.Version,
+		backends: backends, connectors: connectors, defaultCwd: defaultCwd, subs: map[chan struct{}]struct{}{}}
 	var saved []EnvConfig
 	data, err := os.ReadFile(h.file)
 	if err == nil {
@@ -63,8 +66,8 @@ func New(stateDir string, backends Backends, ssh SSH, defaultCwd string) (*Hub, 
 
 func (h *Hub) newEnv(cfg EnvConfig) *Env {
 	prepare := func() ([]string, error) {
-		if cfg.Kind == "ssh" {
-			return h.ssh.Prepare(cfg.Host, h.backends)
+		if cfg.Kind != "local" {
+			return h.connectors.Prepare(cfg, h.backends)
 		}
 		// Installed like any other environment's; the local backend shares
 		// the hub's state directory.
@@ -79,9 +82,10 @@ func (h *Hub) newEnv(cfg EnvConfig) *Env {
 }
 
 // Run serves the page on addr and the environments' backends until
-// interrupted. On the way out it closes the backends, which hang up their
-// sessions and resume them on the next start.
-func (h *Hub) Run(addr string) error {
+// interrupted, opening the page in the browser if asked. On the way out it
+// closes the backends, which hang up their sessions and resume them on the
+// next start.
+func (h *Hub) Run(addr string, open bool) error {
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
 		return err
@@ -95,10 +99,18 @@ func (h *Hub) Run(addr string) error {
 	for _, e := range h.list() {
 		go e.Supervise()
 	}
-	srv := &http.Server{Addr: addr, Handler: h.Handler(), ReadHeaderTimeout: 10 * time.Second}
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return err
+	}
+	srv := &http.Server{Handler: h.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	errc := make(chan error, 1)
-	go func() { errc <- srv.ListenAndServe() }()
-	fmt.Fprintf(os.Stderr, "claude-mux on http://%s\n", addr)
+	go func() { errc <- srv.Serve(ln) }()
+	url := "http://" + addr
+	fmt.Fprintf(os.Stderr, "claude-mux %s on %s\n", h.version, url)
+	if open {
+		openBrowser(url)
+	}
 
 	select {
 	case err = <-errc:
@@ -116,6 +128,21 @@ func (h *Hub) Run(addr string) error {
 	return err
 }
 
+func openBrowser(url string) {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", url)
+	case "windows":
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
+	default:
+		cmd = exec.Command("xdg-open", url)
+	}
+	if err := cmd.Start(); err == nil {
+		go func() { _ = cmd.Wait() }()
+	}
+}
+
 func (h *Hub) list() []*Env {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -131,14 +158,18 @@ func (h *Hub) env(name string) *Env {
 	return nil
 }
 
-// Add adds an SSH environment and connects it.
-func (h *Hub) Add(name, host string) error {
-	host = strings.TrimSpace(host)
+// Add adds an environment of a kind (ssh, docker, wsl) for a target (a
+// host, a container, a distro) and connects it.
+func (h *Hub) Add(name, kind, target string) error {
+	target = strings.TrimSpace(target)
 	if name = strings.TrimSpace(name); name == "" {
-		name = host
+		name = target
 	}
-	if host == "" || strings.HasPrefix(host, "-") || strings.ContainsAny(host, " \t\n") {
-		return errors.New("give the host as ssh takes it: host, user@host or an alias from ~/.ssh/config")
+	if !slices.Contains(h.connectors.Kinds(), kind) {
+		return fmt.Errorf("this machine can't add a %s environment", kind)
+	}
+	if target == "" || strings.HasPrefix(target, "-") || strings.ContainsAny(target, " \t\n") {
+		return errors.New("give the host as ssh takes it (host, user@host, an alias from ~/.ssh/config), the container or the distro")
 	}
 	if !validName.MatchString(name) {
 		return errors.New("a name is up to 40 letters, digits, dots, dashes and underscores")
@@ -146,7 +177,7 @@ func (h *Hub) Add(name, host string) error {
 	if h.env(name) != nil {
 		return fmt.Errorf("there is already an environment named %s", name)
 	}
-	e := h.newEnv(EnvConfig{Name: name, Kind: "ssh", Host: host})
+	e := h.newEnv(EnvConfig{Name: name, Kind: kind, Target: target})
 	h.mu.Lock()
 	h.envs = append(h.envs, e)
 	h.mu.Unlock()
@@ -222,16 +253,21 @@ func (h *Hub) Handler() http.Handler {
 	r.GET("/", func(c *gin.Context) { c.FileFromFS("/", http.FS(web)) })
 
 	r.GET("/hub/events", h.events)
+	r.GET("/hub/info", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"version": h.version, "kinds": h.connectors.Kinds()})
+	})
+	r.GET("/hub/targets/:kind", func(c *gin.Context) { c.JSON(http.StatusOK, h.connectors.Targets(c.Param("kind"))) })
 	r.POST("/hub/environments", func(c *gin.Context) {
 		var req struct {
-			Name string `json:"name"`
-			Host string `json:"host" binding:"required"`
+			Name   string `json:"name"`
+			Kind   string `json:"kind" binding:"required"`
+			Target string `json:"target" binding:"required"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		respond(c, h.Add(req.Name, req.Host))
+		respond(c, h.Add(req.Name, req.Kind, req.Target))
 	})
 	r.DELETE("/hub/environments/:name", func(c *gin.Context) { respond(c, h.Remove(c.Param("name"))) })
 

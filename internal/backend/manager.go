@@ -289,7 +289,7 @@ func (m *Manager) WatchStartup(ctx context.Context) {
 		m.mu.Unlock()
 		for _, s := range sessions {
 			s.mu.Lock()
-			stuck := s.status == StatusStarting && s.ptmx != nil && time.Since(s.lastOutput) > 2*time.Second
+			stuck := s.status == StatusStarting && s.proc != nil && time.Since(s.lastOutput) > 2*time.Second
 			s.mu.Unlock()
 			if stuck && s.setStatus(StatusNeedsYou) {
 				m.notify()
@@ -339,7 +339,7 @@ func (m *Manager) followName(pid int, name string) {
 	m.mu.Unlock()
 	for _, s := range sessions {
 		s.mu.Lock()
-		changed := s.cmd != nil && s.cmd.Process != nil && s.cmd.Process.Pid == pid && name != "" && name != s.Name
+		changed := s.proc != nil && s.proc.Pid() == pid && name != "" && name != s.Name
 		if changed {
 			s.Name = name
 		}

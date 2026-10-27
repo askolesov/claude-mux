@@ -205,7 +205,7 @@
 <body>
 <aside>
   <div class="grip" id="grip" title="Drag to resize · double-click to reset"></div>
-  <div class="brand"><b>claude-mux</b><span class="row"><button id="addHost" title="Add an SSH host">+ Host</button><button id="new" title="New tab (⌥N)">+ New</button></span></div>
+  <div class="brand"><b>claude-mux</b><span class="row"><button id="addHost" title="Add an environment: an SSH host, a Docker container, a WSL distro">+ Env</button><button id="new" title="New tab (⌥N)">+ New</button></span></div>
   <div class="summary" id="summary"></div>
   <div class="list" id="list"></div>
   <div class="foot">
@@ -241,11 +241,15 @@
   </form>
 </dialog>
 
+<datalist id="targets"></datalist>
+
 <dialog id="hostDlg">
   <form method="dialog" id="hostForm">
-    <h3>Add an SSH host</h3>
-    <label for="hHost">Host, as ssh takes it: host, user@host or an alias from ~/.ssh/config. It must take your key without a password prompt.</label>
-    <input id="hHost" placeholder="devbox" autocomplete="off">
+    <h3>Add an environment</h3>
+    <label for="hKind">Kind</label>
+    <select id="hKind"></select>
+    <label for="hHost" id="hHint"></label>
+    <input id="hHost" list="targets" autocomplete="off">
     <label for="hName">Name</label>
     <input id="hName" placeholder="defaults to the host" autocomplete="off">
     <div class="err" id="hostErr"></div>
@@ -294,7 +298,7 @@ const store = {
 
 // The hub reports the environments; each environment's backend reports its
 // tabs. A tab's key is "<environment>/<id>".
-let envs = [];                   // [{name, kind, host, state, error}]
+let envs = [];                   // [{name, kind, target, state, error}]
 const envData = new Map();       // environment -> its backend's state: {claude, sessions, defaultCwd}
 const streams = new Map();       // environment -> EventSource of its backend's state
 let tabs = [];                   // every environment's tabs in sidebar order: {...session, env, key}
@@ -436,7 +440,7 @@ function render() {
 }
 
 function envHeader(e) {
-  const where = e.kind === "local" ? "this machine" : e.host;
+  const where = e.kind === "local" ? "this machine" : `${e.kind} ${e.target}`;
   return `<div class="env" data-env="${esc(e.name)}" title="Right-click for actions">
     <span class="dot env-${esc(e.state)}"></span><b>${esc(e.name)}</b><span class="where">${esc(where)}</span>
     ${e.state !== "connected" ? `<span class="estate">${esc(e.state)}</span>` : ""}</div>`;
@@ -757,10 +761,26 @@ $("dlgForm").addEventListener("submit", async (e) => {
 $("dlgCancel").onclick = () => $("dlg").close();
 $("new").onclick = () => openNew();
 $("new2").onclick = () => openNew();
-$("addHost").onclick = () => {
+const kindHints = {
+  ssh: ["Host, as ssh takes it: host, user@host or an alias from ~/.ssh/config. It must take your key without a password prompt.", "devbox"],
+  docker: ["Container, running, with sh in it. Its tabs live as long as the container.", "my-container"],
+  wsl: ["WSL distro, as wsl -l lists it.", "Ubuntu"],
+};
+let hubInfo = null;
+async function fillTargets() {
+  const kind = $("hKind").value;
+  [$("hHint").textContent, $("hHost").placeholder] = kindHints[kind] || ["", ""];
+  const names = await request("GET", `/hub/targets/${encodeURIComponent(kind)}`).catch(() => []);
+  $("targets").innerHTML = (names || []).map((n) => `<option value="${esc(n)}">`).join("");
+}
+$("hKind").onchange = fillTargets;
+$("addHost").onclick = async () => {
+  hubInfo ||= await request("GET", "/hub/info").catch(() => ({ kinds: ["ssh"] }));
+  $("hKind").innerHTML = hubInfo.kinds.map((k) => `<option value="${k}">${{ ssh: "SSH host", docker: "Docker container", wsl: "WSL distro" }[k] || k}</option>`).join("");
   $("hHost").value = "";
   $("hName").value = "";
   $("hostErr").textContent = "";
+  fillTargets();
   $("hostDlg").showModal();
   $("hHost").focus();
 };
@@ -768,7 +788,7 @@ $("hostCancel").onclick = () => $("hostDlg").close();
 $("hostForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   try {
-    await request("POST", "/hub/environments", { host: $("hHost").value, name: $("hName").value });
+    await request("POST", "/hub/environments", { kind: $("hKind").value, target: $("hHost").value, name: $("hName").value });
     $("hostDlg").close();
   } catch (err) {
     $("hostErr").textContent = err.message;

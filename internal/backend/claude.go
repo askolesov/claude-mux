@@ -27,7 +27,11 @@ func findClaude() Claude {
 	path, err := exec.LookPath("claude")
 	if err != nil {
 		home, _ := os.UserHomeDir()
-		for _, p := range []string{filepath.Join(home, ".local", "bin", "claude"), filepath.Join(home, ".claude", "local", "claude")} {
+		exe := ""
+		if runtime.GOOS == "windows" {
+			exe = ".exe"
+		}
+		for _, p := range []string{filepath.Join(home, ".local", "bin", "claude"+exe), filepath.Join(home, ".claude", "local", "claude"+exe)} {
 			if st, err := os.Stat(p); err == nil && !st.IsDir() {
 				path = p
 				break

@@ -5,16 +5,15 @@ terminal on the right, and a dot per session that says whether it is
 working, ready for input, or waiting on you.
 
 Two programs: the **hub** (`cmd/hub`, the page) and the **backend**
-(`cmd/backend`, the sessions), which the hub runs as its child and talks to
-over the backend's stdin and stdout. See [docs/design.md](docs/design.md)
-for where this is going: backends over SSH, in Docker, in WSL and on
-Windows.
+(`cmd/backend`, the tabs), which the hub runs as its child and talks to
+over the backend's stdin and stdout: on this machine, over SSH, in a Docker
+container or in a WSL distro. See [docs/design.md](docs/design.md).
 
 ## Install
 
 Download the hub for your machine from the
 [latest release](https://github.com/askolesov/claude-mux/releases/latest)
-and run it:
+and run it. On a Mac or Linux:
 
 ```sh
 curl -fsSLo ~/.local/bin/claude-mux https://github.com/askolesov/claude-mux/releases/latest/download/claude-mux-darwin-arm64
@@ -22,7 +21,12 @@ chmod +x ~/.local/bin/claude-mux
 claude-mux -cwd ~/projects   # → http://127.0.0.1:7777
 ```
 
-Builds: `claude-mux-{darwin,linux}-{arm64,amd64}`. The hub downloads the
+On Windows, download `claude-mux-windows-amd64.exe` and run it; it opens
+the page in the browser. The builds aren't signed yet: SmartScreen wants
+"More info → Run anyway" (a Mac doesn't ask when the file came with curl).
+Claude Code on Windows needs Git for Windows, as its own setup says.
+
+Builds: `claude-mux-{darwin,linux,windows}-{arm64,amd64}`. The hub downloads the
 backend of its own release for each environment it connects to, this
 machine included, checks it against the release's `checksums.txt`, keeps it
 in `~/.claude-mux/cache/<version>/`, and installs it in
@@ -69,20 +73,28 @@ shown; claude running in other terminals is left alone.
   header to start a new tab in it, rename it (an existing name merges the
   two) or ungroup it. Collapsing is kept per browser.
 - **Resume** restarts a tab whose claude exited (`/exit`, a crash).
-- **Environments**: **+ Host** adds an SSH host (as ssh takes it: host,
-  user@host or a `~/.ssh/config` alias; it must take your key without a
-  password prompt). The sidebar then shows a block per environment, each
-  with its own tabs and groups; New asks where. On connect the hub checks
-  the host's platform (`uname -sm`) and, if the right backend build isn't
-  in `~/.claude-mux/bin/<version>/` there yet, copies it over the same ssh.
-  The remote backend lives as long as the connection: when the hub quits or
-  ssh drops, it hangs up its tabs, and the next connect resumes them. Right-
-  click an environment's header to open a tab there or remove it (its tabs
-  stay on the host for when it's added again). Hosts are kept in
-  `~/.claude-mux/environments.json`.
+- **Environments**: **+ Env** adds one of a kind:
+  - an **SSH host**, as ssh takes it: host, user@host or a `~/.ssh/config`
+    alias (offered from there); it must take your key without a password
+    prompt;
+  - a **Docker container**, running, with `sh` in it (running ones are
+    offered); its tabs live as long as the container;
+  - a **WSL distro** (on Windows; installed ones are offered).
+
+  The sidebar then shows a block per environment, each with its own tabs
+  and groups; New asks where. On connect the hub checks the platform
+  (`uname -sm`) and, if the right backend isn't in
+  `~/.claude-mux/bin/<version>/` there yet, copies it over the same
+  connection, so the environment needs no internet for it. The backend
+  lives as long as the connection: when the hub quits or the connection
+  drops, it hangs up its tabs, and the next connect resumes them.
+  Right-click an environment's header to open a tab there or remove it
+  (its tabs stay there for when it's added again). Environments are kept
+  in `~/.claude-mux/environments.json`.
 - **No claude in an environment**: its block says so, with **Install…**
   (runs Anthropic's official installer there, `curl -fsSL
-  https://claude.ai/install.sh | bash`, and shows its output) and **Retry**
+  https://claude.ai/install.sh | bash`, or `irm https://claude.ai/install.ps1
+  | iex` on Windows, and shows its output) and **Retry**
   (looks again, after you installed it yourself). The backend also finds
   claude in `~/.local/bin`, which a non-interactive ssh usually leaves off
   the PATH. The first tab in a fresh environment walks through claude's
@@ -104,8 +116,9 @@ shown; claude running in other terminals is left alone.
 
 - The page talks to the hub, which forwards `/env/<name>/…` to that
   environment's backend over one pipe: the backend's stdin and stdout,
-  directly for local and through `ssh -T` for a host, split into streams by
-  yamux. A backend's API listens on no port. The hub's own API is `/hub/`
+  directly for local, through `ssh -T`, `docker exec -i` or `wsl.exe
+  --exec`, split into streams by yamux. Tabs run in a pty (ConPTY on
+  Windows). A backend's API listens on no port. The hub's own API is `/hub/`
   (the environments, as server-sent events; add, remove).
 - State is one file, `~/.claude-mux/state.json`: the tabs in sidebar order,
   each with its name, group, directory, args, claude session id and startup

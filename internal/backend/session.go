@@ -1,13 +1,8 @@
 package backend
 
 import (
-	"os"
-	"os/exec"
 	"sync"
-	"syscall"
 	"time"
-
-	"github.com/creack/pty"
 )
 
 // Status is what a session is doing, as far as its hooks have told us.
@@ -40,11 +35,10 @@ type Session struct {
 	status      Status
 	statusSince time.Time
 	unseen      bool
-	cmd         *exec.Cmd
-	ptmx        *os.File
+	proc        *ptyProc // nil while claude isn't running
 	scrollback  []byte
 	lastOutput  time.Time
-	size        pty.Winsize // the browser's last size; a resumed pty starts with it
+	cols, rows  uint16 // the browser's last size; a resumed pty starts with it
 	clients     map[chan []byte]struct{}
 }
 
@@ -98,27 +92,24 @@ func (s *Session) setStatus(st Status) bool {
 func (s *Session) running() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.ptmx != nil
+	return s.proc != nil
 }
 
 // start runs claude (its path) with args in a new pty and pumps its output
 // until it exits, then calls onExit.
 func (s *Session) start(claude string, claudeArgs []string, env []string, onExit func()) error {
-	cmd := exec.Command(claude, claudeArgs...)
-	cmd.Dir = s.Cwd
-	cmd.Env = env
 	s.mu.Lock()
-	size := s.size
+	cols, rows := s.cols, s.rows
 	s.mu.Unlock()
-	if size.Cols == 0 {
-		size = pty.Winsize{Cols: 120, Rows: 40}
+	if cols == 0 {
+		cols, rows = 120, 40
 	}
-	ptmx, err := pty.StartWithSize(cmd, &size)
+	proc, err := startPty(claude, claudeArgs, env, s.Cwd, cols, rows)
 	if err != nil {
 		return err
 	}
 	s.mu.Lock()
-	s.cmd, s.ptmx = cmd, ptmx
+	s.proc = proc
 	s.scrollback = nil
 	s.mu.Unlock()
 	s.setStatus(StatusStarting)
@@ -126,7 +117,7 @@ func (s *Session) start(claude string, claudeArgs []string, env []string, onExit
 	go func() {
 		buf := make([]byte, 32*1024)
 		for {
-			n, err := ptmx.Read(buf)
+			n, err := proc.Read(buf)
 			if n > 0 {
 				s.broadcast(buf[:n])
 			}
@@ -134,10 +125,9 @@ func (s *Session) start(claude string, claudeArgs []string, env []string, onExit
 				break
 			}
 		}
-		_ = cmd.Wait()
+		_ = proc.Wait()
 		s.mu.Lock()
-		_ = s.ptmx.Close()
-		s.ptmx = nil
+		s.proc = nil
 		s.mu.Unlock()
 		onExit()
 	}()
@@ -181,10 +171,10 @@ func (s *Session) detach(c chan []byte) {
 
 func (s *Session) write(p []byte) {
 	s.mu.Lock()
-	ptmx := s.ptmx
+	proc := s.proc
 	s.mu.Unlock()
-	if ptmx != nil {
-		_, _ = ptmx.Write(p)
+	if proc != nil {
+		_, _ = proc.Write(p)
 	}
 }
 
@@ -193,11 +183,11 @@ func (s *Session) resize(cols, rows uint16) {
 		return
 	}
 	s.mu.Lock()
-	s.size = pty.Winsize{Cols: cols, Rows: rows}
-	ptmx := s.ptmx
+	s.cols, s.rows = cols, rows
+	proc := s.proc
 	s.mu.Unlock()
-	if ptmx != nil {
-		_ = pty.Setsize(ptmx, &pty.Winsize{Cols: cols, Rows: rows})
+	if proc != nil {
+		_ = proc.Resize(cols, rows)
 	}
 }
 
@@ -205,17 +195,16 @@ func (s *Session) resize(cols, rows uint16) {
 // kills it if it is still there after a few seconds.
 func (s *Session) kill() {
 	s.mu.Lock()
-	cmd := s.cmd
-	running := s.ptmx != nil
+	proc := s.proc
 	s.mu.Unlock()
-	if !running || cmd.Process == nil {
+	if proc == nil {
 		return
 	}
-	_ = cmd.Process.Signal(syscall.SIGHUP)
+	proc.Hangup()
 	go func() {
 		time.Sleep(3 * time.Second)
 		if s.running() {
-			_ = cmd.Process.Kill()
+			proc.Kill()
 		}
 	}()
 }

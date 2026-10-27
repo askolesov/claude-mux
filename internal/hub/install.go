@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -31,6 +32,9 @@ type Backends struct {
 // Build is the build for a platform ("linux-arm64") and its version.
 func (b Backends) Build(platform string) (path, ver string, err error) {
 	name := "claude-mux-backend-" + platform
+	if strings.HasPrefix(platform, "windows") {
+		name += ".exe"
+	}
 	if b.Dir != "" {
 		path = filepath.Join(b.Dir, name)
 		if _, err := os.Stat(path); err != nil {
@@ -126,6 +130,9 @@ func checksum(sums, name string) string {
 // SSH bootstrap does on a host, and removes the other versions.
 func installLocal(src, dir, ver string) (string, error) {
 	dst := filepath.Join(dir, ver, "claude-mux-backend")
+	if runtime.GOOS == "windows" {
+		dst += ".exe"
+	}
 	if _, err := os.Stat(dst); err == nil {
 		return dst, nil
 	}
@@ -199,21 +206,82 @@ func platform(uname string) (string, error) {
 	return f[0] + "-" + arch, nil
 }
 
-// SSH reaches hosts with the user's ssh: keys and ~/.ssh/config as they are.
+// Connectors are the commands that reach environments, the user's own:
+// ssh with its keys and ~/.ssh/config, docker, wsl.exe.
+type Connectors struct {
+	SSH    []string // "ssh", or a replacement such as "ssh -F <config>"
+	Docker []string
+	WSL    []string
+}
+
+// Kinds are the kinds of environment this machine can add.
+func (c Connectors) Kinds() []string {
+	kinds := []string{"ssh"}
+	if _, err := exec.LookPath(c.Docker[0]); err == nil {
+		kinds = append(kinds, "docker")
+	}
+	if _, err := exec.LookPath(c.WSL[0]); err == nil && runtime.GOOS == "windows" {
+		kinds = append(kinds, "wsl")
+	}
+	return kinds
+}
+
+// shell is the command that runs a sh command line in an environment.
 // BatchMode makes a host that wants a password fail instead of waiting for
 // one; the keepalives notice a dead connection.
-type SSH struct {
-	Command []string // "ssh", or a replacement such as "ssh -F <config>"
+func (c Connectors) shell(cfg EnvConfig) (func(line string) []string, error) {
+	with := func(base []string, args ...string) []string { return append(append([]string{}, base...), args...) }
+	switch cfg.Kind {
+	case "ssh":
+		return func(line string) []string {
+			return with(c.SSH, "-T", "-o", "BatchMode=yes", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3", cfg.Target, line)
+		}, nil
+	case "docker":
+		return func(line string) []string { return with(c.Docker, "exec", "-i", cfg.Target, "sh", "-c", line) }, nil
+	case "wsl":
+		return func(line string) []string { return with(c.WSL, "-d", cfg.Target, "--exec", "sh", "-c", line) }, nil
+	}
+	return nil, fmt.Errorf("unknown kind of environment %q", cfg.Kind)
 }
 
-func (s SSH) argv(host string, remote ...string) []string {
-	argv := append([]string{}, s.Command...)
-	argv = append(argv, "-T", "-o", "BatchMode=yes", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3", host)
-	return append(argv, remote...)
+// Targets lists what an environment of a kind can be added for: the hosts
+// in ~/.ssh/config, the running containers, the WSL distros.
+func (c Connectors) Targets(kind string) []string {
+	var out []byte
+	switch kind {
+	case "ssh":
+		home, _ := os.UserHomeDir()
+		out, _ = os.ReadFile(filepath.Join(home, ".ssh", "config"))
+		var hosts []string
+		for line := range strings.Lines(string(out)) {
+			f := strings.Fields(line)
+			if len(f) < 2 || !strings.EqualFold(f[0], "host") {
+				continue
+			}
+			for _, h := range f[1:] {
+				if !strings.ContainsAny(h, "*?!") {
+					hosts = append(hosts, h)
+				}
+			}
+		}
+		return hosts
+	case "docker":
+		out, _ = exec.Command(c.Docker[0], append(c.Docker[1:], "ps", "--format", "{{.Names}}")...).Output()
+	case "wsl":
+		out, _ = exec.Command(c.WSL[0], append(c.WSL[1:], "-l", "-q")...).Output()
+		// wsl.exe prints UTF-16.
+		out = bytes.ReplaceAll(bytes.TrimPrefix(out, []byte{0xff, 0xfe}), []byte{0}, nil)
+	}
+	var names []string
+	for _, n := range strings.Fields(string(out)) {
+		if !strings.HasPrefix(n, "docker-desktop") {
+			names = append(names, n)
+		}
+	}
+	return names
 }
 
-func (s SSH) run(host string, stdin io.Reader, remote string) ([]byte, error) {
-	argv := s.argv(host, remote)
+func run(argv []string, stdin io.Reader) ([]byte, error) {
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Stdin = stdin
 	var stderr bytes.Buffer
@@ -227,12 +295,17 @@ func (s SSH) run(host string, stdin io.Reader, remote string) ([]byte, error) {
 	return out, err
 }
 
-// Prepare installs the backend on host if the right build isn't there yet,
-// under ~/.claude-mux/bin/<version>/, and returns the command that runs it.
-func (s SSH) Prepare(host string, b Backends) ([]string, error) {
-	uname, err := s.run(host, nil, "uname -sm")
+// Prepare installs the backend in an environment if the right build isn't
+// there yet, under ~/.claude-mux/bin/<version>/, and returns the command that
+// runs it.
+func (c Connectors) Prepare(cfg EnvConfig, b Backends) ([]string, error) {
+	shell, err := c.shell(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("ssh %s: %w", host, err)
+		return nil, err
+	}
+	uname, err := run(shell("uname -sm"), nil)
+	if err != nil {
+		return nil, fmt.Errorf("%s %s: %w", cfg.Kind, cfg.Target, err)
 	}
 	p, err := platform(string(uname))
 	if err != nil {
@@ -244,7 +317,7 @@ func (s SSH) Prepare(host string, b Backends) ([]string, error) {
 	}
 	dir := "$HOME/.claude-mux/bin/" + ver
 	bin := dir + "/claude-mux-backend"
-	if _, err := s.run(host, nil, "test -x "+bin); err != nil {
+	if _, err := run(shell("test -x "+bin), nil); err != nil {
 		f, err := os.Open(file)
 		if err != nil {
 			return nil, err
@@ -253,9 +326,9 @@ func (s SSH) Prepare(host string, b Backends) ([]string, error) {
 		// Install, then remove the versions nothing uses anymore.
 		install := fmt.Sprintf("mkdir -p %s && cat > %s.tmp && chmod +x %s.tmp && mv %s.tmp %s && "+
 			"find $HOME/.claude-mux/bin -mindepth 1 -maxdepth 1 ! -name %s -exec rm -rf {} +", dir, bin, bin, bin, bin, ver)
-		if _, err := s.run(host, f, install); err != nil {
-			return nil, fmt.Errorf("installing the backend on %s: %w", host, err)
+		if _, err := run(shell(install), f); err != nil {
+			return nil, fmt.Errorf("installing the backend in %s: %w", cfg.Target, err)
 		}
 	}
-	return s.argv(host, "exec "+bin), nil
+	return shell("exec " + bin), nil
 }

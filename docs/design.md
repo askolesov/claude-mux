@@ -1,6 +1,6 @@
 # claude-mux: hub and backends
 
-Status: steps 1–3 done (2026-10-27); the rest is design. Today claude-mux is one Mac program that runs
+Status: steps 1–5 done (2026-10-27), Windows untested on a real machine yet; step 6 is design. Today claude-mux is one Mac program that runs
 claude sessions on this machine. This design splits it into a **hub** (the
 window and the page) and **backends** (the sessions), so one window can
 show sessions running here, over SSH, in Docker, in WSL and on Windows.
@@ -174,8 +174,8 @@ A tag builds, in CI:
   and arm64, plus `checksums.txt`;
 - the hub for Mac (an `.app`, arm64 and amd64) and Windows (`.exe`).
 
-Step 3 ships the part that runs today: backends and plain hub binaries for
-darwin and linux. Windows builds come with step 5, the `.app` with step 6.
+Today they are plain binaries for darwin, linux and windows; the `.app`
+comes with step 6.
 
 Unsigned at first: the first launch needs right-click → Open on Mac and
 "Run anyway" on Windows.
@@ -193,7 +193,8 @@ Each step ships something that runs.
 3. **Releases.** The CI matrix, install from GitHub releases, the local
    backend installed the same way.
 4. **Docker and WSL** kinds.
-5. **Windows.** ConPTY in the backend, the Windows hub, `wt.exe`.
+5. **Windows.** ConPTY in the backend (go-pty), the Windows hub, which
+   opens the page itself. (`wt.exe` turned out unneeded: tabs are in the page.)
 6. **A native window** for the hub on Mac and Windows (until then the hub
    opens the page in the browser).
 

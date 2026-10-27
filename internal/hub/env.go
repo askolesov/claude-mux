@@ -22,9 +22,9 @@ var errNotConnected = errors.New("the environment's backend isn't running")
 
 // EnvConfig is an environment as environments.json keeps it.
 type EnvConfig struct {
-	Name string `json:"name"`
-	Kind string `json:"kind"`           // local, ssh
-	Host string `json:"host,omitempty"` // ssh: the host as ssh takes it, an alias from ~/.ssh/config included
+	Name   string `json:"name"`
+	Kind   string `json:"kind"`             // local, ssh, docker, wsl
+	Target string `json:"target,omitempty"` // the host as ssh takes it, the container, the WSL distro
 }
 
 // Connection states, as the page shows them.
