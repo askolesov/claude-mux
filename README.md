@@ -96,8 +96,9 @@ shown; claude running in other terminals is left alone.
   lives as long as the connection: when the hub quits or the connection
   drops, it hangs up its tabs, and the next connect resumes them.
   Right-click an environment's header to open a tab there or remove it
-  (its tabs stay there for when it's added again). Environments are kept
-  in `~/.claude-mux/environments.json`.
+  (its tabs stay there for when it's added again). Drag a header to
+  reorder the environments; this machine (`local`) is one of them, and
+  can't be removed.
 - **No claude in an environment**: its block says so, with **Install…**
   (runs Anthropic's official installer there, `curl -fsSL
   https://claude.ai/install.sh | bash`, or `irm https://claude.ai/install.ps1
@@ -121,8 +122,7 @@ shown; claude running in other terminals is left alone.
   it; every tab resumes, and each environment gets the new backend when it
   connects. **Skip this version** stays quiet until a newer one. A Mac app
   still running from its download (macOS's read-only copy) has to be moved
-  to Applications first. Development builds don't check. Kept in
-  `~/.claude-mux/hub.json`.
+  to Applications first. Development builds don't check.
 - **Themes**: page theme (Auto follows macOS, Light, Dark) and terminal theme
   (Auto matches the page, or Tokyo Night, Dracula, Solarized) in the footer,
   kept per browser.
@@ -137,12 +137,17 @@ shown; claude running in other terminals is left alone.
   --exec`, split into streams by yamux. Tabs run in a pty (ConPTY on
   Windows). A backend's API listens on no port. The hub's own API is `/hub/`
   (the environments, as server-sent events; add, remove).
-- State is one file, `~/.claude-mux/state.json`: the tabs in sidebar order,
-  each with its name, group, directory, args, claude session id and startup
-  message. (Older versions' `sessions.json` and `favourites.json` are
-  migrated into it once.)
+- Files, all in `~/.claude-mux/`:
+  - `hub.json`, the hub's: settings, the environments in sidebar order,
+    the last update check and a skipped version. `hub.log` when it runs
+    from Finder or Explorer (or `restart.sh`).
+  - `backend.json`, each environment's own (on this machine and on every
+    host and container): the tabs in sidebar order, each with its name,
+    group, directory, args, claude session id and startup message.
+    `backend-hooks.json` (the hooks, rewritten every start),
+    `backend.lock` (one backend per environment), `bin/<version>/`.
 - Status comes from Claude Code hooks. Each tab's claude gets
-  `--settings ~/.claude-mux/hooks.json`, whose hooks run
+  `--settings ~/.claude-mux/backend-hooks.json`, whose hooks run
   `claude-mux-backend hook`; it posts the payload to the backend's hook-only
   loopback port, given to the session in `CLAUDE_MUX_HOOK` with a token
   that changes every start: SessionStart/Stop → ready,

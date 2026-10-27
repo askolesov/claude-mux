@@ -49,8 +49,8 @@ func NewManager(stateDir, hookURL, exe string) (*Manager, error) {
 		return nil, err
 	}
 	m := &Manager{
-		stateFile: filepath.Join(stateDir, "state.json"),
-		hooksFile: filepath.Join(stateDir, "hooks.json"),
+		stateFile: filepath.Join(stateDir, "backend.json"),
+		hooksFile: filepath.Join(stateDir, "backend-hooks.json"),
 		hookURL:   hookURL,
 		subs:      map[chan struct{}]struct{}{},
 	}
@@ -72,7 +72,18 @@ func NewManager(stateDir, hookURL, exe string) (*Manager, error) {
 func (m *Manager) load(stateDir string) error {
 	data, err := os.ReadFile(m.stateFile)
 	if errors.Is(err, os.ErrNotExist) {
-		return m.migrate(stateDir)
+		// Before v0.4 the state was state.json and the hooks hooks.json.
+		old := filepath.Join(stateDir, "state.json")
+		if data, err = os.ReadFile(old); err == nil {
+			defer func() {
+				m.save()
+				_ = os.Remove(old)
+				_ = os.Remove(filepath.Join(stateDir, "hooks.json"))
+			}()
+		}
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
 	}
 	if err != nil {
 		return err
@@ -84,45 +95,6 @@ func (m *Manager) load(stateDir string) error {
 	m.sessions = st.Sessions
 	for _, s := range m.sessions {
 		s.status, s.statusSince = StatusStopped, time.Now()
-	}
-	return nil
-}
-
-// migrate builds the state file from the two files of earlier versions: the
-// tabs (sessions.json) and the saved conversations (favourites.json), whose
-// restore messages become the tabs' startup messages. A saved conversation
-// no tab holds is dropped, not opened: it may run in a terminal, and a
-// second claude on it would fork its transcript. The old files are kept as
-// *.migrated.
-func (m *Manager) migrate(stateDir string) error {
-	var tabs []*Session
-	var saved []struct {
-		ClaudeSessionID string `json:"claudeSessionId"`
-		OnRestore       string `json:"onRestore"`
-	}
-	old := map[string]any{"sessions.json": &tabs, "favourites.json": &saved}
-	for name, v := range old {
-		if data, err := os.ReadFile(filepath.Join(stateDir, name)); err == nil {
-			if err := json.Unmarshal(data, v); err != nil {
-				return fmt.Errorf("%s: %w", name, err)
-			}
-		}
-	}
-	for _, f := range saved {
-		for _, t := range tabs {
-			if f.ClaudeSessionID != "" && t.ClaudeSessionID == f.ClaudeSessionID {
-				t.StartupMessage = f.OnRestore
-			}
-		}
-	}
-	m.sessions = tabs
-	for _, s := range m.sessions {
-		s.status, s.statusSince = StatusStopped, time.Now()
-	}
-	m.groupTogether()
-	m.save()
-	for name := range old {
-		_ = os.Rename(filepath.Join(stateDir, name), filepath.Join(stateDir, name+".migrated"))
 	}
 	return nil
 }

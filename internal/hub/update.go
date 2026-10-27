@@ -25,13 +25,6 @@ type Settings struct {
 	EveryDays    int  `json:"everyDays"`
 }
 
-// hubFile is hub.json: the settings and what the update check last found.
-type hubFile struct {
-	Settings
-	LastCheck time.Time `json:"lastCheck,omitzero"`
-	Skip      string    `json:"skip,omitempty"` // a version not to offer again
-}
-
 // UpdateView is what the page sees of updates.
 type UpdateView struct {
 	Settings
@@ -49,13 +42,12 @@ type UpdateView struct {
 // updater checks GitHub for a newer release, every few days if the
 // settings say so, and installs it in place of the running hub.
 type updater struct {
-	file     string
+	st       *store
 	dir      string // downloads
 	current  string
 	onChange func()
 
 	mu       sync.Mutex
-	f        hubFile
 	latest   string
 	notes    string
 	err      string
@@ -65,45 +57,27 @@ type updater struct {
 	restart  chan struct{} // closed then
 }
 
-func newUpdater(stateDir, current string, onChange func()) *updater {
-	u := &updater{file: filepath.Join(stateDir, "hub.json"), dir: filepath.Join(stateDir, "update"),
+func newUpdater(st *store, stateDir, current string, onChange func()) *updater {
+	return &updater{st: st, dir: filepath.Join(stateDir, "update"),
 		current: current, onChange: onChange, restart: make(chan struct{})}
-	u.f.Settings = Settings{CheckUpdates: true, EveryDays: 1}
-	if data, err := os.ReadFile(u.file); err == nil {
-		_ = json.Unmarshal(data, &u.f)
-	}
-	return u
 }
 
 func (u *updater) dev() bool { _, ok := semver(u.current); return !ok }
 
 func (u *updater) View() UpdateView {
+	kept := u.st.get()
 	u.mu.Lock()
 	defer u.mu.Unlock()
-	return UpdateView{Settings: u.f.Settings, Current: u.current, Dev: u.dev(), LastCheck: u.f.LastCheck,
-		Latest: u.latest, Notes: u.notes, Available: u.latest != "" && u.latest != u.f.Skip,
+	return UpdateView{Settings: kept.Settings, Current: u.current, Dev: u.dev(), LastCheck: kept.Update.LastCheck,
+		Latest: u.latest, Notes: u.notes, Available: u.latest != "" && u.latest != kept.Update.Skip,
 		Error: u.err, Step: u.step, Updating: u.updating}
-}
-
-// save writes hub.json; the caller holds mu.
-func (u *updater) save() {
-	data, err := json.MarshalIndent(u.f, "", "  ")
-	if err == nil {
-		err = os.WriteFile(u.file, data, 0o600)
-	}
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "save hub.json:", err)
-	}
 }
 
 func (u *updater) SetSettings(s Settings) error {
 	if s.EveryDays < 1 || s.EveryDays > 365 {
 		return errors.New("check every 1 to 365 days")
 	}
-	u.mu.Lock()
-	u.f.Settings = s
-	u.save()
-	u.mu.Unlock()
+	u.st.change(func(h *hubState) { h.Settings = s })
 	u.onChange()
 	return nil
 }
@@ -111,18 +85,17 @@ func (u *updater) SetSettings(s Settings) error {
 // Skip stops offering the newest release; a newer one is offered again.
 func (u *updater) Skip() {
 	u.mu.Lock()
-	u.f.Skip = u.latest
-	u.save()
+	latest := u.latest
 	u.mu.Unlock()
+	u.st.change(func(h *hubState) { h.Update.Skip = latest })
 	u.onChange()
 }
 
 // loop checks when a check is due: on start, then every hour.
 func (u *updater) loop() {
 	for {
-		u.mu.Lock()
-		due := u.f.CheckUpdates && time.Since(u.f.LastCheck) >= time.Duration(u.f.EveryDays)*24*time.Hour
-		u.mu.Unlock()
+		kept := u.st.get()
+		due := kept.Settings.CheckUpdates && time.Since(kept.Update.LastCheck) >= time.Duration(kept.Settings.EveryDays)*24*time.Hour
 		if due && !u.dev() {
 			_ = u.Check(context.Background())
 		}
@@ -141,14 +114,15 @@ func (u *updater) Check(ctx context.Context) error {
 	if err != nil {
 		u.err = err.Error()
 	} else {
-		u.f.LastCheck = time.Now()
 		u.latest, u.notes = "", ""
 		if newer(tag, u.current) {
 			u.latest, u.notes = tag, notes
 		}
-		u.save()
 	}
 	u.mu.Unlock()
+	if err == nil {
+		u.st.change(func(h *hubState) { h.Update.LastCheck = time.Now() })
+	}
 	u.onChange()
 	return err
 }

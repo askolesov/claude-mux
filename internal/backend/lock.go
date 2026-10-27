@@ -10,7 +10,7 @@ import (
 
 // lockState makes this the only backend of the environment: two would both
 // resume every tab, forking its conversation, and overwrite each other's
-// state.json. The lock is the OS's, so it goes with the process however it
+// backend.json. The lock is the OS's, so it goes with the process however it
 // ends, and the hub that lost retries until it's free. Keep the file open
 // for as long as the backend runs.
 func lockState(stateDir string) (*os.File, error) {

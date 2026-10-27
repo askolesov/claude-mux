@@ -115,6 +115,8 @@
   .group .gcount { font-weight: 400; font-size: 11px; }
   .group .dot { width: 8px; height: 8px; margin-left: auto; }
   .group.drop-into { border-color: var(--accent); }
+  .env.drop-before { box-shadow: inset 0 2px 0 var(--accent); }
+  .env.drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
   .tab.in-group { margin-left: 18px; }
   .env {
     display: flex; align-items: center; gap: 7px; padding: 12px 12px 4px; font-size: 12px; color: var(--text);
@@ -426,10 +428,11 @@ function favicon(dot) {
 
 // ---------- rendering ----------
 let dragKey = null;       // the tab being dragged; renders wait for the drop
+let dragEnv = null;       // the environment being dragged, by its header
 let renderPending = false;
 
 function render() {
-  if (dragKey) { renderPending = true; return; }
+  if (dragKey || dragEnv) { renderPending = true; return; }
   const needs = tabs.filter((t) => t.status === "needs-you").length;
   const ready = tabs.filter((t) => t.status === "ready").length;
   const working = tabs.filter((t) => t.status === "working" || t.status === "starting").length;
@@ -470,7 +473,7 @@ function render() {
 
 function envHeader(e) {
   const where = e.kind === "local" ? "this machine" : `${e.kind} ${e.target}`;
-  return `<div class="env" data-env="${esc(e.name)}" title="Right-click for actions">
+  return `<div class="env" data-env="${esc(e.name)}" title="Drag to reorder · right-click for actions" draggable="true">
     <span class="dot env-${esc(e.state)}"></span><b>${esc(e.name)}</b><span class="where">${esc(where)}</span>
     ${e.state !== "connected" ? `<span class="estate">${esc(e.state === "connecting" && e.step ? e.step + "…" : e.state)}</span>` : ""}</div>`;
 }
@@ -1058,7 +1061,39 @@ $("list").addEventListener("drop", async (e) => {
     say(err.message);
   }
 });
+// Environments reorder by their headers: dropped on the top half of another
+// header goes before it, on the bottom half after.
+const envTarget = (e) => (dragEnv ? e.target.closest(".env") : null);
+$("list").addEventListener("dragstart", (e) => {
+  const head = e.target.closest(".env");
+  if (!head) return;
+  dragEnv = head.dataset.env;
+  e.dataTransfer.effectAllowed = "move";
+  e.dataTransfer.setData("text/plain", dragEnv);
+});
+$("list").addEventListener("dragover", (e) => {
+  const el = envTarget(e);
+  if (!el) return;
+  e.preventDefault();
+  clearDrop();
+  if (el.dataset.env !== dragEnv) el.classList.add("drop-" + dropSide(el, e));
+});
+$("list").addEventListener("drop", async (e) => {
+  const el = envTarget(e);
+  if (!el || el.dataset.env === dragEnv) return;
+  e.preventDefault();
+  const names = envs.map((x) => x.name).filter((n) => n !== dragEnv);
+  names.splice(names.indexOf(el.dataset.env) + (dropSide(el, e) === "after" ? 1 : 0), 0, dragEnv);
+  envs = names.map((n) => envs.find((x) => x.name === n));
+  try {
+    await request("PUT", "/hub/environments/order", { names });
+  } catch (err) {
+    say(err.message);
+  }
+});
+
 $("list").addEventListener("dragend", () => {
+  dragEnv = null;
   dragKey = null;
   renderPending = false;
   clearDrop();

@@ -51,7 +51,8 @@ window.
 ## Environments
 
 An environment is a name, a kind, and the command that reaches it. The hub
-keeps them in `~/.claude-mux/environments.json`.
+keeps them in `~/.claude-mux/hub.json`, `local` among them, in the
+order the page shows them.
 
 | Kind | Reached with | Example |
 |---|---|---|

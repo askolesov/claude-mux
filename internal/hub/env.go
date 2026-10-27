@@ -21,7 +21,7 @@ import (
 
 var errNotConnected = errors.New("the environment's backend isn't running")
 
-// EnvConfig is an environment as environments.json keeps it.
+// EnvConfig is an environment as hub.json keeps it.
 type EnvConfig struct {
 	Name   string `json:"name"`
 	Kind   string `json:"kind"`             // local, ssh, docker, wsl

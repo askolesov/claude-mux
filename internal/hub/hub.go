@@ -28,11 +28,11 @@ var webFS embed.FS
 
 var validName = regexp.MustCompile(`^[A-Za-z0-9._-]{1,40}$`)
 
-// Hub runs the environments: local, always first, and the ones added in the
-// page, kept in environments.json.
+// Hub runs the environments: local, which is always there, and the ones
+// added in the page, in the order the page shows them, kept in hub.json.
 type Hub struct {
 	stateDir   string
-	file       string
+	st         *store
 	version    string
 	backends   Backends
 	connectors Connectors
@@ -45,19 +45,14 @@ type Hub struct {
 }
 
 func New(stateDir string, backends Backends, connectors Connectors, defaultCwd string) (*Hub, error) {
-	h := &Hub{stateDir: stateDir, file: filepath.Join(stateDir, "environments.json"), version: backends.Version,
+	st, err := openStore(stateDir)
+	if err != nil {
+		return nil, err
+	}
+	h := &Hub{stateDir: stateDir, st: st, version: backends.Version,
 		backends: backends, connectors: connectors, defaultCwd: defaultCwd, subs: map[chan struct{}]struct{}{}}
-	h.updates = newUpdater(stateDir, backends.Version, h.notify)
-	var saved []EnvConfig
-	data, err := os.ReadFile(h.file)
-	if err == nil {
-		err = json.Unmarshal(data, &saved)
-	}
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return nil, fmt.Errorf("%s: %w", h.file, err)
-	}
-	h.envs = append(h.envs, h.newEnv(EnvConfig{Name: "local", Kind: "local"}))
-	for _, cfg := range saved {
+	h.updates = newUpdater(st, stateDir, backends.Version, h.notify)
+	for _, cfg := range st.get().Environments {
 		h.envs = append(h.envs, h.newEnv(cfg))
 	}
 	return h, nil
@@ -196,19 +191,37 @@ func (h *Hub) Remove(name string) error {
 }
 
 func (h *Hub) save() {
-	saved := []EnvConfig{}
+	var envs []EnvConfig
 	for _, e := range h.list() {
-		if e.Kind != "local" {
-			saved = append(saved, e.EnvConfig)
+		envs = append(envs, e.EnvConfig)
+	}
+	h.st.change(func(st *hubState) { st.Environments = envs })
+}
+
+// Reorder puts the environments in the order of names, which lists each of
+// them once.
+func (h *Hub) Reorder(names []string) error {
+	h.mu.Lock()
+	byName := map[string]*Env{}
+	for _, e := range h.envs {
+		byName[e.Name] = e
+	}
+	var envs []*Env
+	for _, n := range names {
+		if e := byName[n]; e != nil {
+			envs = append(envs, e)
+			delete(byName, n)
 		}
 	}
-	data, err := json.MarshalIndent(saved, "", "  ")
-	if err == nil {
-		err = os.WriteFile(h.file, data, 0o600)
+	if len(byName) > 0 || len(envs) != len(h.envs) {
+		h.mu.Unlock()
+		return errors.New("give every environment once")
 	}
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "save environments:", err)
-	}
+	h.envs = envs
+	h.mu.Unlock()
+	h.save()
+	h.notify()
+	return nil
 }
 
 func (h *Hub) notify() {
@@ -257,6 +270,16 @@ func (h *Hub) Handler() http.Handler {
 			return
 		}
 		respond(c, h.Add(req.Name, req.Kind, req.Target))
+	})
+	r.PUT("/hub/environments/order", func(c *gin.Context) {
+		var req struct {
+			Names []string `json:"names" binding:"required"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		respond(c, h.Reorder(req.Names))
 	})
 	r.DELETE("/hub/environments/:name", func(c *gin.Context) { respond(c, h.Remove(c.Param("name"))) })
 	r.PUT("/hub/settings", func(c *gin.Context) {

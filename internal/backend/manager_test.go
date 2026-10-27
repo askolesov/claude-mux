@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -44,36 +45,29 @@ func TestGroupTogether(t *testing.T) {
 	}
 }
 
-func TestMigrate(t *testing.T) {
+func TestLoadOldName(t *testing.T) {
 	dir := t.TempDir()
-	write := func(name, data string) {
+	for name, data := range map[string]string{
+		"state.json": `{"sessions":[{"id":"t1","name":"ops","cwd":"/w","startupMessage":"restart the watch"}]}`,
+		"hooks.json": `{}`,
+	} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(data), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
-	write("sessions.json", `[
-		{"id":"t1","name":"ops","cwd":"/w","claudeSessionId":"s1","wasRunning":true},
-		{"id":"t2","name":"dev","group":"g","cwd":"/w","claudeSessionId":"s2"}
-	]`)
-	write("favourites.json", `[
-		{"claudeSessionId":"s1","name":"ops","onRestore":"restart the watch"},
-		{"claudeSessionId":"s9","name":"elsewhere","onRestore":"never opened"}
-	]`)
-
-	m := &Manager{stateFile: filepath.Join(dir, "state.json")}
+	m := &Manager{stateFile: filepath.Join(dir, "backend.json")}
 	if err := m.load(dir); err != nil {
 		t.Fatal(err)
 	}
-	var got []string
-	for _, s := range m.sessions {
-		got = append(got, s.ID+"|"+s.Group+"|"+s.StartupMessage)
+	if len(m.sessions) != 1 || m.sessions[0].StartupMessage != "restart the watch" {
+		t.Fatalf("sessions %+v", m.sessions)
 	}
-	if want := []string{"t1||restart the watch", "t2|g|"}; !slices.Equal(got, want) {
-		t.Errorf("tabs %v, want %v", got, want)
+	if _, err := os.Stat(filepath.Join(dir, "backend.json")); err != nil {
+		t.Error(err)
 	}
-	for _, name := range []string{"state.json", "sessions.json.migrated", "favourites.json.migrated"} {
-		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
-			t.Errorf("%s: %v", name, err)
+	for _, name := range []string{"state.json", "hooks.json"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("%s still there: %v", name, err)
 		}
 	}
 }

@@ -45,7 +45,7 @@ func main() {
 	ssh := flag.String("ssh", "ssh", "the ssh command, with any options of its own")
 	docker := flag.String("docker", "docker", "the docker command")
 	wsl := flag.String("wsl", "wsl.exe", "the WSL command")
-	flag.StringVar(&stateDir, "state", stateDir, "where environments.json and the local backend's state are kept")
+	flag.StringVar(&stateDir, "state", stateDir, "where hub.json and the local backend's files are kept")
 	headless := flag.Bool("headless", false, "no window: serve the page until interrupted")
 	open := flag.Bool("open", false, "with -headless, open the page in the browser")
 	printVersion := flag.Bool("version", false, "print the version and exit")
