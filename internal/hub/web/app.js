@@ -51,7 +51,6 @@ const PAGE_STEPS = [
         flags: flags.filter((f) => FLAGS.includes(f)),
       };
     }
-    if (p.termTheme === "light" || p.termTheme === "dark") p.termTheme = "auto";
     if (p.termSize > 20) p.termSize = 20;
     for (const k of ["layout", "sort", "termFont", "newEnv", "newCwd", "newArgs", "newFlags", "notifyExited", "badge"]) delete p[k];
   },
@@ -412,7 +411,7 @@ const TERM_THEMES = {
     brightBlack: "#586e75", brightRed: "#cb4b16", brightGreen: "#859900", brightYellow: "#b58900", brightBlue: "#268bd2", brightMagenta: "#6c71c4", brightCyan: "#2aa198", brightWhite: "#073642",
   },
 };
-const TERM_THEME_NAMES = [["auto", "Match theme"], ["tokyo", "Tokyo Night"], ["dracula", "Dracula"], ["solarized-dark", "Solarized Dark"], ["solarized-light", "Solarized Light"]];
+const TERM_THEME_NAMES = [["auto", "Match theme"], ["dark", "Dark"], ["light", "Light"], ["tokyo", "Tokyo Night"], ["dracula", "Dracula"], ["solarized-dark", "Solarized Dark"], ["solarized-light", "Solarized Light"]];
 const TERM_FONT = `"JetBrains Mono", "SF Mono", Menlo, Consolas, monospace`;
 const systemDark = matchMedia("(prefers-color-scheme: dark)");
 const pageIsDark = () => document.documentElement.dataset.theme !== "light";
