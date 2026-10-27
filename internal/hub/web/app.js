@@ -2,6 +2,7 @@ const $ = (id) => document.getElementById(id);
 const store = {
   get(k) { try { return localStorage.getItem(k); } catch { return null; } },
   set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+  remove(k) { try { localStorage.removeItem(k); } catch {} },
 };
 const isMac = /Mac/.test(navigator.platform);
 const MOD = isMac ? "⌘" : "Ctrl+";
@@ -365,13 +366,13 @@ function renderHead() {
   if (!t) { $("head").innerHTML = `<span class="crumb">Pick a tab on the left.</span>`; return; }
   const crumb = [crumbOf(t), home(t.cwd), t.branch].filter(Boolean).join("  ·  ");
   $("head").innerHTML = `<span class="tname">${esc(t.name)}</span><span class="crumb" title="${esc(t.cwd)}">${esc(crumb)}</span>
-    <button class="icon-btn" id="tabMore" title="Tab settings (${MOD}I)" aria-label="Tab settings" style="width:32px;height:32px"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button>`;
+    <button class="icon-btn" id="tabMore" title="Tab settings (${MOD}I)" aria-label="Tab settings"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button>`;
 }
 
 function renderUpdate() {
   const box = $("updatebar");
   if (update?.updating) { box.hidden = false; box.innerHTML = `<span>Updating: ${esc(update.step || "starting")}…</span>`; return; }
-  box.hidden = !update?.available;
+  box.hidden = !update?.latest;
   if (box.hidden) return;
   box.innerHTML = `<span>${esc(update.latest)} is out</span><button class="link" data-up="apply">Update and restart</button>`;
   // Tell once per version, even across reloads.
@@ -1023,9 +1024,9 @@ function renderSettings() {
   if (u.dev) checked = "a development build, which doesn't update";
   else if (u.error && !checking) checked += ` · <span title="${esc(u.error)}">the last check failed</span>`;
   const notifyAsk = !window.cmuxNotify && typeof Notification !== "undefined" && Notification.permission === "default";
-  const refresh = `<button type="button" class="iconbtn ${checking ? "spin" : ""}" id="sNow" title="Check now" aria-label="Check now" ${u.dev || u.updating || checking ? "disabled" : ""}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 4v5h-5"/></svg></button>`;
+  const refresh = `<button type="button" class="icon-btn small ${checking ? "spin" : ""}" id="sNow" title="Check now" aria-label="Check now" ${u.dev || u.updating || checking ? "disabled" : ""}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 4v5h-5"/></svg></button>`;
   const latest = u.updating ? `<span class="quiet">Updating: ${esc(u.step || "starting")}…</span>`
-    : u.available ? `<button type="button" class="btn small primary" id="sApply" title="Restarts claude-mux; every tab resumes">Update to ${esc(u.latest)}</button>` : "";
+    : u.latest ? `<button type="button" class="btn small primary" id="sApply" title="Restarts claude-mux; every tab resumes">Update to ${esc(u.latest)}</button>` : "";
   $("sBody").innerHTML = `
     <div class="ssec">Appearance</div>
     ${sRow("Theme", segOf("theme", [["auto", "Auto"], ["light", "Light"], ["dark", "Dark"]]))}
@@ -1061,7 +1062,7 @@ $("sBody").addEventListener("click", async (e) => {
   if (t.closest("#sNow")) {
     checking = true;
     renderSettings();
-    await request("POST", "/hub/update/check").catch(() => {});
+    await request("POST", "/hub/update/check").catch(() => {}); // a failed check shows as update.error
     checking = false;
     setTimeout(renderSettings, 150); // the event with the result comes first
     return;
@@ -1283,11 +1284,11 @@ $("list").addEventListener("focusout", (e) => { if (e.target.matches?.(".rename"
 // to the new one.
 function renameEnvKeys(from, to) {
   for (const k of [...collapsed]) {
-    if (k === "env:" + from) setCollapsed("env:" + to, true);
-    if (k.startsWith("g:" + from + "/")) setCollapsed("g:" + to + k.slice(2 + from.length), true);
+    if (k === "env:" + from) { setCollapsed(k, false); setCollapsed("env:" + to, true); }
+    if (k.startsWith("g:" + from + "/")) { setCollapsed(k, false); setCollapsed("g:" + to + k.slice(2 + from.length), true); }
   }
   const cwd = store.get("mux.lastCwd." + from);
-  if (cwd) store.set("mux.lastCwd." + to, cwd);
+  if (cwd) { store.set("mux.lastCwd." + to, cwd); store.remove("mux.lastCwd." + from); }
   if (selected?.startsWith(from + "/")) selected = to + selected.slice(from.length);
 }
 

@@ -2,6 +2,7 @@ package hub
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 
@@ -37,8 +38,11 @@ func hubSteps(dir string) []migrate.Step {
 				doc["update"] = update
 			}
 			data, err := os.ReadFile(filepath.Join(dir, "environments.json"))
-			if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
 				return nil
+			}
+			if err != nil {
+				return err
 			}
 			var envs []map[string]any
 			if err := json.Unmarshal(data, &envs); err != nil {

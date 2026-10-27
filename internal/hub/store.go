@@ -90,16 +90,13 @@ func (st *store) get() hubState {
 	return s
 }
 
-// change applies f and writes hub.json.
+// change applies f and writes hub.json. A write that fails is logged: the
+// change holds in memory, and the next one writes it again.
 func (st *store) change(f func(*hubState)) {
 	st.mu.Lock()
 	defer st.mu.Unlock()
 	f(&st.s)
-	data, err := json.MarshalIndent(st.s, "", "  ")
-	if err == nil {
-		err = os.WriteFile(st.path, data, 0o600)
-	}
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "save hub.json:", err)
+	if err := migrate.Save(st.path, st.s); err != nil {
+		fmt.Fprintln(os.Stderr, "claude-mux: saving hub.json:", err)
 	}
 }

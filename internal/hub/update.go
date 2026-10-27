@@ -26,7 +26,6 @@ type UpdateView struct {
 	LastCheck time.Time `json:"lastCheck,omitzero"`
 	Latest    string    `json:"latest,omitempty"` // the newest release, when newer than this one
 	Notes     string    `json:"notes,omitempty"`  // its release page
-	Available bool      `json:"available"`        // Latest, unless skipped
 	Error     string    `json:"error,omitempty"`  // why the last check failed
 	Step      string    `json:"step,omitempty"`   // while updating
 	Updating  bool      `json:"updating,omitempty"`
@@ -55,8 +54,8 @@ func newUpdater(st *store, stateDir, current string, onChange func()) *updater {
 		current: current, onChange: onChange, restart: make(chan struct{})}
 }
 
-// Restart is closed once an update is installed; Relaunch is then the
-// command that starts it.
+// Relaunch is the command that starts the installed update, once restart
+// is closed; nil before.
 func (u *updater) Relaunch() []string {
 	u.mu.Lock()
 	defer u.mu.Unlock()
@@ -70,11 +69,12 @@ func (u *updater) View() UpdateView {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	return UpdateView{Current: u.current, Dev: u.dev(), LastCheck: kept.Update.LastCheck,
-		Latest: u.latest, Notes: u.notes, Available: u.latest != "",
+		Latest: u.latest, Notes: u.notes,
 		Error: u.err, Step: u.step, Updating: u.updating}
 }
 
-// loop checks when a check is due: on start, then every hour.
+// loop checks when a check is due: on start, then every hour. A check that
+// fails shows in the page (UpdateView.Error) and is tried again next hour.
 func (u *updater) loop() {
 	for {
 		kept := u.st.get()

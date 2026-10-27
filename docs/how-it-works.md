@@ -40,6 +40,7 @@ internal/hub/         environments, connectors, backend install, routing, update
 internal/hub/web/     the page: index.html, style.css, app.js, vendor/ (xterm.js, fonts)
 internal/backend/     tabs (Manager, Session), ptys, hooks, resume messages, the API
 internal/stream/      server-sent events and JSON-line progress, shared by both
+internal/migrate/     the state files: versioned upgrade steps, atomic writes
 internal/lockfile/    one process per state directory (flock / LockFileEx)
 internal/sysproc/     starting helper processes: no console window on Windows, detached relaunch
 assets/icon/          the icon: SVG sources, rendered PNGs, AppIcon.icns, Windows resources
@@ -357,9 +358,10 @@ JetBrains Mono are in `vendor/`, so the page needs no internet.
   frame. Folded groups, the sidebar width and the last directory per
   environment stay per browser.
 - The sidebar is an ARIA tree. Rows are `treeitem`s with `aria-level`, and
-  containers have `aria-expanded`. The keys are ↑↓←→, Enter, Home/End, F2 to
-  rename a group or an environment, ⌫ to delete a group, the Menu key or ⇧F10 for the row's menu, and
-  type-ahead. Drag-and-drop works out the target depth from the pointer's x.
+  containers have `aria-expanded`. The keys are ↑↓←→, Enter, Home/End, F2
+  to rename a group or an environment, ⌫ to delete a group, the Menu key or
+  ⇧F10 for the row's menu, and type-ahead. Drag-and-drop works out the
+  target depth from the pointer's x.
 - New tab, Tab settings, Settings and Environment settings are one family
   of 440 px modals. New tab's directory completes from the environment's
   backend (`/api/dirs`); its folder button, local only, asks the hub for
@@ -432,6 +434,8 @@ numbered step in that file's migrations (`internal/backend/migrations.go`,
   release reads in the current one.
 - Before writing an upgraded file, the old one is kept as
   `<file>.v<version>.bak`.
+- Every write is a new file renamed over the old one, so a crash mid-write
+  leaves the old file whole.
 - A file from a newer release is refused, never overwritten.
 - Steps are never removed or changed once released, and each has a test
   with a file of the version before it.

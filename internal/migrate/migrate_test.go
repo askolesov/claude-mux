@@ -3,6 +3,8 @@ package migrate
 import (
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -31,5 +33,26 @@ func TestUpgrade(t *testing.T) {
 	}
 	if _, _, err := Upgrade([]byte(`{"version":3}`), steps); !errors.Is(err, ErrNewer) {
 		t.Errorf("newer: %v", err)
+	}
+}
+
+func TestSave(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "x.json")
+	if err := os.WriteFile(path, []byte("old"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := Save(path, map[string]int{"version": 2}); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil || string(data) != "{\n  \"version\": 2\n}" {
+		t.Errorf("got %q, %v", data, err)
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 1 {
+		t.Errorf("left behind: %v", entries)
+	}
+	if err := Save(path, func() {}); err == nil {
+		t.Error("saved what JSON can't hold")
 	}
 }

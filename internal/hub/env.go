@@ -95,6 +95,7 @@ func newEnv(cfg EnvConfig, prepare func(step func(string)) ([]string, string, er
 	return e
 }
 
+// Config is the environment as hub.json keeps it.
 func (e *Env) Config() EnvConfig {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -107,6 +108,7 @@ func (e *Env) rename(name string) {
 	e.mu.Unlock()
 }
 
+// View is what the page sees of the environment now.
 func (e *Env) View() EnvView {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -344,6 +346,7 @@ func (l *lastLine) Write(p []byte) (int, error) {
 	}
 }
 
+// Last is the last line that wasn't empty.
 func (l *lastLine) Last() string {
 	l.mu.Lock()
 	defer l.mu.Unlock()

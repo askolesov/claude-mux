@@ -63,6 +63,7 @@ type SessionView struct {
 	Branch          string     `json:"branch"`
 }
 
+// View is the tab as the page sees it.
 func (s *Session) View() SessionView {
 	s.mu.Lock()
 	defer s.mu.Unlock()

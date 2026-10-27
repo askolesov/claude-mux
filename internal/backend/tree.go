@@ -168,6 +168,7 @@ func (m *Manager) CreateGroup(name, parent, after string) (Group, error) {
 	return *g, nil
 }
 
+// RenameGroup gives a group a new name.
 func (m *Manager) RenameGroup(id, name string) error {
 	if name = strings.TrimSpace(name); name == "" {
 		return errors.New("a group needs a name")
@@ -198,7 +199,7 @@ func (m *Manager) DeleteGroup(id string) error {
 	kids := m.siblings(id, "")
 	after := g.ID
 	for _, k := range kids {
-		key, _ := m.place(k.id, g.Parent, "", after)
+		key, _ := m.place(k.id, g.Parent, "", after) // after is always a sibling there: g, then the kid before
 		*k.parent, *k.order = g.Parent, key
 		after = k.id
 	}
@@ -209,6 +210,7 @@ func (m *Manager) DeleteGroup(id string) error {
 	return nil
 }
 
+// Groups is every group, in no order: each has its parent and order key.
 func (m *Manager) Groups() []Group {
 	m.mu.Lock()
 	defer m.mu.Unlock()

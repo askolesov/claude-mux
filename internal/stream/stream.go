@@ -78,12 +78,15 @@ type Lines struct {
 	c  *gin.Context
 }
 
+// NewLines starts the answer: 200, and JSON lines from here on.
 func NewLines(c *gin.Context) *Lines {
 	c.Header("Content-Type", "application/x-ndjson")
 	c.Status(http.StatusOK)
 	return &Lines{c: c}
 }
 
+// Send sends v as one line. A page that went away misses it; the work it
+// reports on goes on regardless.
 func (l *Lines) Send(v any) {
 	l.mu.Lock()
 	defer l.mu.Unlock()

@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/askolesov/claude-mux/internal/stream"
@@ -18,6 +16,7 @@ import (
 // open in the browser can't reach a terminal.
 var upgrader = websocket.Upgrader{}
 
+// Handler is the backend's API, over its Manager.
 type Handler struct {
 	m          *Manager
 	defaultCwd string
@@ -87,6 +86,7 @@ func respond(c *gin.Context, v any, err error) {
 	}
 }
 
+// StateView is the backend's whole state, as the page gets it.
 type StateView struct {
 	Claude     Claude        `json:"claude"`
 	Sessions   []SessionView `json:"sessions"`
@@ -103,15 +103,6 @@ func (h *Handler) state(c *gin.Context) { c.JSON(http.StatusOK, h.snapshot()) }
 // events streams the whole state on every change.
 func (h *Handler) events(c *gin.Context) {
 	stream.Events(c, &h.m.changes, func() any { return h.snapshot() })
-}
-
-func expandHome(p string) string {
-	if p == "~" || strings.HasPrefix(p, "~/") {
-		if home, err := os.UserHomeDir(); err == nil {
-			return filepath.Join(home, p[1:])
-		}
-	}
-	return p
 }
 
 func (h *Handler) create(c *gin.Context) {

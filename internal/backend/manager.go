@@ -21,8 +21,8 @@ import (
 )
 
 var (
-	errNotFound = errors.New("session not found")
-	errRunning  = errors.New("session is still running")
+	errNotFound = errors.New("no such tab or group")
+	errRunning  = errors.New("the tab's claude is still running")
 )
 
 // Manager owns the tabs, one claude each, and the groups they sit in (see
@@ -107,18 +107,22 @@ func (m *Manager) load(stateDir string, steps []migrate.Step) error {
 	return nil
 }
 
+// save writes backend.json, with every tab locked while it is read. A write
+// that fails is logged: the change holds in memory, and the next save
+// writes it again.
 func (m *Manager) save() {
 	m.mu.Lock()
-	data, err := json.MarshalIndent(State{Version: m.version, Sessions: m.sessions, Groups: m.groups}, "", "  ")
-	m.mu.Unlock()
-	if err == nil {
-		err = os.WriteFile(m.stateFile, data, 0o600)
+	defer m.mu.Unlock()
+	for _, s := range m.sessions {
+		s.mu.Lock()
+		defer s.mu.Unlock()
 	}
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "save state:", err)
+	if err := migrate.Save(m.stateFile, State{Version: m.version, Sessions: m.sessions, Groups: m.groups}); err != nil {
+		fmt.Fprintln(os.Stderr, "saving backend.json:", err)
 	}
 }
 
+// List is every tab, as the page sees it.
 func (m *Manager) List() []SessionView {
 	m.mu.Lock()
 	sessions := append([]*Session(nil), m.sessions...)
@@ -130,6 +134,7 @@ func (m *Manager) List() []SessionView {
 	return views
 }
 
+// Get finds a tab by its id.
 func (m *Manager) Get(id string) (*Session, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -404,6 +409,7 @@ func (m *Manager) refreshBranch(s *Session) {
 	}
 }
 
+// MarkSeen notes that the page has shown the tab since its last change.
 func (m *Manager) MarkSeen(id string) error {
 	s, err := m.Get(id)
 	if err != nil {
@@ -434,6 +440,7 @@ func (m *Manager) Close(id string) error {
 	return nil
 }
 
+// Claude is what the backend last found of claude here.
 func (m *Manager) Claude() Claude {
 	m.mu.Lock()
 	defer m.mu.Unlock()

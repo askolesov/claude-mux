@@ -28,6 +28,8 @@ var webFS embed.FS
 
 var validName = regexp.MustCompile(`^[A-Za-z0-9._-]{1,40}$`)
 
+var errNoEnv = errors.New("no such environment")
+
 // Hub runs the environments: local, which is always there, and the ones
 // added in the page, in the order the page shows them, kept in hub.json.
 type Hub struct {
@@ -45,6 +47,7 @@ type Hub struct {
 	envs []*Env
 }
 
+// New loads hub.json from stateDir; Start then runs it.
 func New(stateDir string, backends Backends, connectors Connectors, defaultCwd string) (*Hub, error) {
 	st, err := openStore(stateDir)
 	if err != nil {
@@ -126,8 +129,7 @@ func (h *Hub) Restart() <-chan struct{} { return h.updates.restart }
 // Relaunch is the command that starts the installed update, or nil.
 func (h *Hub) Relaunch() []string { return h.updates.Relaunch() }
 
-// SetSettings saves the settings and gives every backend the resume
-// message, which may have changed.
+// SetSettings saves the settings, the page's own among them.
 func (h *Hub) SetSettings(s Settings) error {
 	if err := s.validate(); err != nil {
 		return err
@@ -194,7 +196,7 @@ func (h *Hub) Rename(name, to string) error {
 	e := h.env(name)
 	switch {
 	case e == nil:
-		return errors.New("no such environment")
+		return errNoEnv
 	case e.Config().Kind == KindLocal:
 		return errors.New("the local environment keeps its name")
 	case to == name:
@@ -214,7 +216,7 @@ func (h *Hub) Rename(name, to string) error {
 func (h *Hub) Remove(name string) error {
 	e := h.env(name)
 	if e == nil {
-		return errors.New("no such environment")
+		return errNoEnv
 	}
 	if e.Config().Kind == KindLocal {
 		return errors.New("the local environment stays")
@@ -225,6 +227,16 @@ func (h *Hub) Remove(name string) error {
 	go e.Close()
 	h.save()
 	h.changes.Notify()
+	return nil
+}
+
+// Reconnect starts an environment's backend again.
+func (h *Hub) Reconnect(name string) error {
+	e := h.env(name)
+	if e == nil {
+		return errNoEnv
+	}
+	e.Reconnect()
 	return nil
 }
 
@@ -287,82 +299,61 @@ func (h *Hub) Handler() http.Handler {
 
 	r.GET("/hub/events", h.events)
 	r.GET("/hub/info", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"version": h.version, "kinds": h.connectors.Kinds(), "stateDir": h.stateDir})
+		respond(c, gin.H{"version": h.version, "kinds": h.connectors.Kinds(), "stateDir": h.stateDir}, nil)
 	})
-	r.POST("/hub/open-log", func(c *gin.Context) { respond(c, h.OpenLog()) })
+	r.POST("/hub/open-log", func(c *gin.Context) { respond(c, nil, h.OpenLog()) })
 	r.POST("/hub/pick-folder", func(c *gin.Context) {
 		var req struct {
 			Start string `json:"start"`
 		}
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		if !bind(c, &req) {
 			return
 		}
 		path, err := pickFolder(c.Request.Context(), req.Start)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{"path": path})
+		respond(c, gin.H{"path": path}, err)
 	})
-	r.GET("/hub/targets/:kind", func(c *gin.Context) { c.JSON(http.StatusOK, h.connectors.Targets(Kind(c.Param("kind")))) })
+	r.GET("/hub/targets/:kind", func(c *gin.Context) { respond(c, h.connectors.Targets(Kind(c.Param("kind"))), nil) })
 	r.POST("/hub/environments", func(c *gin.Context) {
 		var req struct {
 			Name   string `json:"name"`
 			Kind   Kind   `json:"kind" binding:"required"`
 			Target string `json:"target" binding:"required"`
 		}
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
+		if bind(c, &req) {
+			respond(c, nil, h.Add(req.Name, req.Kind, req.Target))
 		}
-		respond(c, h.Add(req.Name, req.Kind, req.Target))
 	})
 	r.PUT("/hub/environments/order", func(c *gin.Context) {
 		var req struct {
 			Names []string `json:"names" binding:"required"`
 		}
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
+		if bind(c, &req) {
+			respond(c, nil, h.Reorder(req.Names))
 		}
-		respond(c, h.Reorder(req.Names))
 	})
-	r.POST("/hub/environments/:name/reconnect", func(c *gin.Context) {
-		e := h.env(c.Param("name"))
-		if e == nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "no such environment"})
-			return
-		}
-		e.Reconnect()
-		c.Status(http.StatusNoContent)
-	})
+	r.POST("/hub/environments/:name/reconnect", func(c *gin.Context) { respond(c, nil, h.Reconnect(c.Param("name"))) })
 	r.PUT("/hub/environments/:name", func(c *gin.Context) {
 		var req struct {
 			Name string `json:"name" binding:"required"`
 		}
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
+		if bind(c, &req) {
+			respond(c, nil, h.Rename(c.Param("name"), strings.TrimSpace(req.Name)))
 		}
-		respond(c, h.Rename(c.Param("name"), strings.TrimSpace(req.Name)))
 	})
-	r.DELETE("/hub/environments/:name", func(c *gin.Context) { respond(c, h.Remove(c.Param("name"))) })
+	r.DELETE("/hub/environments/:name", func(c *gin.Context) { respond(c, nil, h.Remove(c.Param("name"))) })
 	r.PUT("/hub/settings", func(c *gin.Context) {
 		var s Settings
-		if err := c.ShouldBindJSON(&s); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
+		if bind(c, &s) {
+			respond(c, nil, h.SetSettings(s))
 		}
-		respond(c, h.SetSettings(s))
 	})
-	r.POST("/hub/update/check", func(c *gin.Context) { respond(c, h.updates.Check(c.Request.Context())) })
+	r.POST("/hub/update/check", func(c *gin.Context) { respond(c, nil, h.updates.Check(c.Request.Context())) })
 	r.POST("/hub/update/apply", h.applyUpdate)
 
 	r.Any("/env/:name/*path", func(c *gin.Context) {
 		e := h.env(c.Param("name"))
 		if e == nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "no such environment"})
+			respond(c, nil, errNoEnv)
 			return
 		}
 		c.Request.URL.Path = c.Param("path")
@@ -372,12 +363,27 @@ func (h *Hub) Handler() http.Handler {
 	return r
 }
 
-func respond(c *gin.Context, err error) {
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
+// bind reads the request's JSON body into v, or answers 400 and says so.
+func bind(c *gin.Context, v any) bool {
+	if err := c.ShouldBindJSON(v); err != nil {
+		respond(c, nil, err)
+		return false
 	}
-	c.Status(http.StatusNoContent)
+	return true
+}
+
+// respond writes v, or maps err to its status, as the backend's API does.
+func respond(c *gin.Context, v any, err error) {
+	switch {
+	case errors.Is(err, errNoEnv):
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+	case err != nil:
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	case v == nil:
+		c.Status(http.StatusNoContent)
+	default:
+		c.JSON(http.StatusOK, v)
+	}
 }
 
 // applyUpdate installs the newest release, streaming its progress

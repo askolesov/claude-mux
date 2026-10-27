@@ -96,3 +96,34 @@ func TestRename(t *testing.T) {
 		t.Errorf("saved %+v", envs)
 	}
 }
+
+func TestRespond(t *testing.T) {
+	h, err := New(t.TempDir(), Backends{}, Connectors{}, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := h.Handler()
+	for _, c := range []struct {
+		name, method, path, body string
+		want                     int
+	}{
+		{"a missing environment", "GET", "/env/nope/api/state", "", http.StatusNotFound},
+		{"reconnecting a missing one", "POST", "/hub/environments/nope/reconnect", "", http.StatusNotFound},
+		{"renaming local", "PUT", "/hub/environments/local", `{"name":"x"}`, http.StatusBadRequest},
+		{"a body that isn't the request", "PUT", "/hub/settings", `{"everyDays":"often"}`, http.StatusBadRequest},
+		{"settings out of range", "PUT", "/hub/settings", `{"everyDays":0}`, http.StatusBadRequest},
+		{"settings", "PUT", "/hub/settings", `{"checkUpdates":true,"everyDays":3}`, http.StatusNoContent},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			req := httptest.NewRequest(c.method, "http://127.0.0.1:7777"+c.path, strings.NewReader(c.body))
+			if c.body != "" {
+				req.Header.Set("Content-Type", "application/json")
+			}
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+			if rec.Code != c.want {
+				t.Errorf("got %d %s, want %d", rec.Code, rec.Body, c.want)
+			}
+		})
+	}
+}

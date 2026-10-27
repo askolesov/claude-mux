@@ -46,3 +46,13 @@ func completeDir(prefix string) []string {
 	}
 	return out
 }
+
+// expandHome turns a leading "~" into the home directory.
+func expandHome(p string) string {
+	if p == "~" || strings.HasPrefix(p, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(home, p[1:])
+		}
+	}
+	return p
+}

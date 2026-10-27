@@ -8,24 +8,10 @@ The tabs can run on this machine, on SSH hosts, in Docker containers and in
 WSL, all in the same window. A tab stays until you close it: quit the app,
 reboot, update, and every tab comes back with its conversation.
 
-```
-┌─────────────────────────┬────────────────────────────────────────────┐
-│ claude-mux            ⚙ │ api-fix  local / backend · ~/src/api · main│
-│ ⌄ local  this Mac  ● ok ├────────────────────────────────────────────┤
-│   backend             2 │ > fix the flaky test in store_test.go      │
-│   ● api-fix             │                                            │
-│     ~/src/api           │ ● Reading store_test.go…                   │
-│   ● migrate             │                                            │
-│     ~/src/db            │                                            │
-│   + New tab             │       (the tab's real terminal)            │
-│ ⌄ devbox  ssh   ● 42 ms │                                            │
-│   ● deploy              │                                            │
-│     /srv/app            │                                            │
-│   + New tab             │                                            │
-│ ┆ Connect environment…┆ │                                            │
-└─────────────────────────┴────────────────────────────────────────────┘
-  ● blue: working   ● green: done, ready for you   ● amber: needs you
-```
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/redesign/screenshots/main-light.png">
+  <img alt="claude-mux: environments, groups and tabs on the left, each with its status dot; the selected tab's terminal on the right, waiting on a permission prompt" src="docs/redesign/screenshots/main-dark.png">
+</picture>
 
 ## How it works, in short
 

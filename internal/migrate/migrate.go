@@ -1,8 +1,9 @@
-// Package migrate keeps claude-mux's state files readable across versions.
-// Each file carries a "version"; each change to its shape is a numbered step
-// that upgrades the JSON from one version to the next. Steps are never
-// removed, so a file from any release upgrades to the current one, and a
-// file from a newer release is refused rather than overwritten.
+// Package migrate reads and writes claude-mux's state files and keeps them
+// readable across versions. Each file carries a "version"; each change to
+// its shape is a numbered step that upgrades the JSON from one version to
+// the next. Steps are never removed, so a file from any release upgrades to
+// the current one, and a file from a newer release is refused rather than
+// overwritten.
 package migrate
 
 import (
@@ -10,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 )
 
 // A Step upgrades a document by one version, in place.
@@ -71,6 +73,31 @@ func Load(path string, steps []Step) ([]byte, bool, error) {
 		}
 	}
 	return out, changed, nil
+}
+
+// Save writes v to path as indented JSON: into a new file renamed over the
+// old one, so that a crash mid-write leaves the old file whole.
+func Save(path string, v any) error {
+	data, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return err
+	}
+	f, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*.tmp")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.Remove(f.Name()) }()
+	_, err = f.Write(data)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil {
+		err = os.Chmod(f.Name(), 0o600)
+	}
+	if err != nil {
+		return err
+	}
+	return os.Rename(f.Name(), path)
 }
 
 // List reads doc[key] as a list of objects; a missing key is an empty list.
