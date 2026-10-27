@@ -1,6 +1,6 @@
 # claude-mux: hub and backends
 
-Status: steps 1 and 2 done (2026-10-27); the rest is design. Today claude-mux is one Mac program that runs
+Status: steps 1–3 done (2026-10-27); the rest is design. Today claude-mux is one Mac program that runs
 claude sessions on this machine. This design splits it into a **hub** (the
 window and the page) and **backends** (the sessions), so one window can
 show sessions running here, over SSH, in Docker, in WSL and on Windows.
@@ -105,16 +105,15 @@ Where the file comes from:
   `~/.claude-mux/cache/<version>/`, and streams it through the command
   (`sh -c 'mkdir -p … && cat > ….tmp && chmod +x ….tmp && mv ….tmp …'`).
   This works without internet in the environment. The repository is
-  private, so the hub downloads with the user's GitHub token
-  (`gh auth token` or `GITHUB_TOKEN`).
-- **From the environment itself (later).** With public releases, the
-  bootstrap fetches the file with `curl` or `wget` and skips the stream.
+  public, so no token is needed.
+- **From the environment itself (later).** The bootstrap could fetch the
+  file with `curl` or `wget` and skip the stream.
 
 The backend is always exactly the hub's version, so the two never speak
 different protocols. A version directory nothing uses is deleted.
 
 **Development:** `claude-mux -backend-dir dist/` takes the builds from a
-local directory (`make backends` cross-compiles them) instead of a release,
+local directory (`restart.sh` cross-compiles them) instead of a release,
 so unreleased versions can be tried in every environment.
 
 ## Lifecycle
@@ -175,6 +174,9 @@ A tag builds, in CI:
   and arm64, plus `checksums.txt`;
 - the hub for Mac (an `.app`, arm64 and amd64) and Windows (`.exe`).
 
+Step 3 ships the part that runs today: backends and plain hub binaries for
+darwin and linux. Windows builds come with step 5, the `.app` with step 6.
+
 Unsigned at first: the first launch needs right-click → Open on Mac and
 "Run anyway" on Windows.
 
@@ -199,7 +201,8 @@ Each step ships something that runs.
 
 - The hub's window: `webview/webview_go` (small, C bindings) or Wails (more
   framework than needed)? Decided in step 6.
-- Public releases, so environments download for themselves?
+- ~~Public releases?~~ The repository is public since step 3; whether
+  environments download for themselves is still open.
 - ~~What the page shows when an environment has no claude.~~ Done in
   step 2: the environment's block offers Install (the official installer,
   `install.sh` or `install.ps1` by platform) and Retry. Logging in happens

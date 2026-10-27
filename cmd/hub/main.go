@@ -14,18 +14,28 @@ import (
 	"github.com/askolesov/claude-mux/internal/hub"
 )
 
+// version is the release tag, set by the release build; a release hub
+// installs the backends of the same release.
+var version = "dev"
+
 func main() {
 	home, _ := os.UserHomeDir()
 	cwd, _ := os.Getwd()
 	stateDir := filepath.Join(home, ".claude-mux")
 	addr := flag.String("addr", "127.0.0.1:7777", "listen address; keep it on loopback, the page can start processes")
-	backendDir := flag.String("backend-dir", filepath.Join(stateDir, "bin", "dev"), "backend builds, claude-mux-backend-<os>-<arch>")
+	backendDir := flag.String("backend-dir", "", "take the backend builds, claude-mux-backend-<os>-<arch>, from this directory instead of the release")
 	defaultCwd := flag.String("cwd", cwd, "default directory for new local tabs")
 	ssh := flag.String("ssh", "ssh", "the ssh command, with any options of its own")
 	flag.StringVar(&stateDir, "state", stateDir, "where environments.json and the local backend's state are kept")
+	printVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Parse()
+	if *printVersion {
+		fmt.Println(version)
+		return
+	}
 
-	h, err := hub.New(stateDir, hub.Backends{Dir: *backendDir}, hub.SSH{Command: strings.Fields(*ssh)}, *defaultCwd)
+	backends := hub.Backends{Dir: *backendDir, Version: version, Cache: filepath.Join(stateDir, "cache")}
+	h, err := hub.New(stateDir, backends, hub.SSH{Command: strings.Fields(*ssh)}, *defaultCwd)
 	if err == nil {
 		err = h.Run(*addr)
 	}

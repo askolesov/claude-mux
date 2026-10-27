@@ -15,6 +15,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -65,8 +66,13 @@ func (h *Hub) newEnv(cfg EnvConfig) *Env {
 		if cfg.Kind == "ssh" {
 			return h.ssh.Prepare(cfg.Host, h.backends)
 		}
-		// The local backend shares the hub's state directory.
-		bin, err := h.backends.Local()
+		// Installed like any other environment's; the local backend shares
+		// the hub's state directory.
+		src, ver, err := h.backends.Build(runtime.GOOS + "-" + runtime.GOARCH)
+		if err != nil {
+			return nil, err
+		}
+		bin, err := installLocal(src, filepath.Join(h.stateDir, "bin"), ver)
 		return []string{bin, "-state", h.stateDir, "-cwd", h.defaultCwd}, err
 	}
 	return NewEnv(cfg, prepare, h.notify)

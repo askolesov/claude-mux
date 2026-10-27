@@ -1,0 +1,36 @@
+# A v* tag builds the hub and the backends and publishes them as a release.
+# A hub downloads the backends from the release of its own version.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go vet ./... && go test ./...
+      - name: Build
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          mkdir dist
+          for p in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64; do
+            GOOS=${p%-*} GOARCH=${p#*-} go build -trimpath -ldflags=-s -o dist/claude-mux-backend-$p ./cmd/backend
+          done
+          for p in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64; do
+            GOOS=${p%-*} GOARCH=${p#*-} go build -trimpath -ldflags="-s -X main.version=$GITHUB_REF_NAME" -o dist/claude-mux-$p ./cmd/hub
+          done
+          cd dist && sha256sum * > checksums.txt
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --generate-notes

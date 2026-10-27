@@ -10,15 +10,35 @@ over the backend's stdin and stdout. See [docs/design.md](docs/design.md)
 for where this is going: backends over SSH, in Docker, in WSL and on
 Windows.
 
+## Install
+
+Download the hub for your machine from the
+[latest release](https://github.com/askolesov/claude-mux/releases/latest)
+and run it:
+
+```sh
+curl -fsSLo ~/.local/bin/claude-mux https://github.com/askolesov/claude-mux/releases/latest/download/claude-mux-darwin-arm64
+chmod +x ~/.local/bin/claude-mux
+claude-mux -cwd ~/projects   # → http://127.0.0.1:7777
+```
+
+Builds: `claude-mux-{darwin,linux}-{arm64,amd64}`. The hub downloads the
+backend of its own release for each environment it connects to, this
+machine included, checks it against the release's `checksums.txt`, keeps it
+in `~/.claude-mux/cache/<version>/`, and installs it in
+`~/.claude-mux/bin/<version>/` there. Older versions are removed.
+Releases are made by pushing a `v*` tag.
+
+From a checkout, give the hub the backend builds yourself:
+
 ```sh
 mkdir -p /tmp/backends
 go build -o /tmp/backends/claude-mux-backend-$(go env GOOS)-$(go env GOARCH) ./cmd/backend
-go run ./cmd/hub -backend-dir /tmp/backends -cwd ~/Documents/@Ankr/codespace
-# → http://127.0.0.1:7777
+go run ./cmd/hub -backend-dir /tmp/backends -cwd ~/projects
 ```
 
-`./restart.sh` rebuilds both, restarts them and resumes the sessions that
-were running. Run it from a regular terminal, because a session inside
+`./restart.sh` rebuilds both (backends for every platform), restarts them
+and resumes the tabs. Run it from a regular terminal, because a tab inside
 claude-mux is hung up by the restart.
 
 Start it from a normal terminal. Starting it from inside a claude session also

@@ -7,34 +7,172 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
+	"time"
 )
 
-// Backends holds the backend builds the hub installs, one per platform:
-// claude-mux-backend-<os>-<arch>. For now they come from a local directory
-// (restart.sh builds them); releases come later.
+const releases = "https://github.com/askolesov/claude-mux/releases/download/"
+
+// Backends finds the backend build the hub installs in an environment, one
+// per platform: claude-mux-backend-<os>-<arch>. A released hub downloads it
+// from the GitHub release of its own version, so the two always speak the
+// same protocol; a development hub takes it from a directory of builds
+// (restart.sh makes them).
 type Backends struct {
-	Dir string
+	Dir     string // development builds; "" to download from the release
+	Version string // the hub's version, a release tag
+	Cache   string // downloads, by version
 }
 
-// File is the build for a platform ("linux-arm64").
-func (b Backends) File(platform string) (string, error) {
-	path := filepath.Join(b.Dir, "claude-mux-backend-"+platform)
-	if _, err := os.Stat(path); err != nil {
-		return "", fmt.Errorf("no backend build for %s in %s", platform, b.Dir)
+// Build is the build for a platform ("linux-arm64") and its version.
+func (b Backends) Build(platform string) (path, ver string, err error) {
+	name := "claude-mux-backend-" + platform
+	if b.Dir != "" {
+		path = filepath.Join(b.Dir, name)
+		if _, err := os.Stat(path); err != nil {
+			return "", "", fmt.Errorf("no backend build for %s in %s", platform, b.Dir)
+		}
+		ver, err = version(path)
+		return path, ver, err
 	}
-	return path, nil
+	if b.Version == "" || b.Version == "dev" {
+		return "", "", errors.New("this hub is a development build: give it the backend builds with -backend-dir")
+	}
+	path = filepath.Join(b.Cache, b.Version, name)
+	if _, err := os.Stat(path); err == nil {
+		return path, b.Version, nil
+	}
+	if err := download(b.Version, name, path); err != nil {
+		return "", "", fmt.Errorf("downloading the %s backend: %w", platform, err)
+	}
+	prune(b.Cache, b.Version)
+	return path, b.Version, nil
 }
 
-// Local is the build for the hub's own machine.
-func (b Backends) Local() (string, error) { return b.File(runtime.GOOS + "-" + runtime.GOARCH) }
+// download fetches a release file and checks it against the release's
+// checksums.txt before putting it at dst.
+func download(ver, name, dst string) error {
+	client := &http.Client{Timeout: 5 * time.Minute}
+	get := func(file string) (io.ReadCloser, error) {
+		resp, err := client.Get(releases + ver + "/" + file)
+		if err != nil {
+			return nil, err
+		}
+		if resp.StatusCode != http.StatusOK {
+			_ = resp.Body.Close()
+			return nil, fmt.Errorf("%s: %s", resp.Request.URL, resp.Status)
+		}
+		return resp.Body, nil
+	}
+	body, err := get("checksums.txt")
+	if err != nil {
+		return err
+	}
+	sums, err := io.ReadAll(io.LimitReader(body, 1<<16))
+	_ = body.Close()
+	if err != nil {
+		return err
+	}
+	want := checksum(string(sums), name)
+	if want == "" {
+		return fmt.Errorf("release %s has no %s", ver, name)
+	}
 
-// version names a build by its content, so a changed build is installed
-// again and an unchanged one never is.
+	body, err = get(name)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = body.Close() }()
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return err
+	}
+	f, err := os.CreateTemp(filepath.Dir(dst), name+".*.tmp")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.Remove(f.Name()) }()
+	h := sha256.New()
+	_, err = io.Copy(io.MultiWriter(f, h), body)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		return err
+	}
+	if got := hex.EncodeToString(h.Sum(nil)); got != want {
+		return fmt.Errorf("%s: checksum %s, the release says %s", name, got, want)
+	}
+	if err := os.Chmod(f.Name(), 0o755); err != nil {
+		return err
+	}
+	return os.Rename(f.Name(), dst)
+}
+
+// checksum finds a file's sha256 in sha256sum's output.
+func checksum(sums, name string) string {
+	for line := range strings.Lines(sums) {
+		if f := strings.Fields(line); len(f) == 2 && strings.TrimPrefix(f[1], "*") == name {
+			return f[0]
+		}
+	}
+	return ""
+}
+
+// installLocal puts a build at <dir>/<version>/claude-mux-backend, as the
+// SSH bootstrap does on a host, and removes the other versions.
+func installLocal(src, dir, ver string) (string, error) {
+	dst := filepath.Join(dir, ver, "claude-mux-backend")
+	if _, err := os.Stat(dst); err == nil {
+		return dst, nil
+	}
+	in, err := os.Open(src)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = in.Close() }()
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return "", err
+	}
+	// A new file renamed into place, never one rewritten: macOS kills a
+	// binary whose code signature went stale.
+	out, err := os.CreateTemp(filepath.Dir(dst), "claude-mux-backend.*.tmp")
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = os.Remove(out.Name()) }()
+	_, err = io.Copy(out, in)
+	if cerr := out.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil {
+		err = os.Chmod(out.Name(), 0o755)
+	}
+	if err == nil {
+		err = os.Rename(out.Name(), dst)
+	}
+	if err != nil {
+		return "", err
+	}
+	prune(dir, ver)
+	return dst, nil
+}
+
+// prune removes every entry of dir but keep: versions nothing uses anymore.
+func prune(dir, keep string) {
+	entries, _ := os.ReadDir(dir)
+	for _, e := range entries {
+		if e.Name() != keep {
+			_ = os.RemoveAll(filepath.Join(dir, e.Name()))
+		}
+	}
+}
+
+// version names a development build by its content, so a changed build is
+// installed again and an unchanged one never is.
 func version(path string) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -100,11 +238,7 @@ func (s SSH) Prepare(host string, b Backends) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	file, err := b.File(p)
-	if err != nil {
-		return nil, err
-	}
-	ver, err := version(file)
+	file, ver, err := b.Build(p)
 	if err != nil {
 		return nil, err
 	}
@@ -116,7 +250,9 @@ func (s SSH) Prepare(host string, b Backends) ([]string, error) {
 			return nil, err
 		}
 		defer func() { _ = f.Close() }()
-		install := fmt.Sprintf("mkdir -p %s && cat > %s.tmp && chmod +x %s.tmp && mv %s.tmp %s", dir, bin, bin, bin, bin)
+		// Install, then remove the versions nothing uses anymore.
+		install := fmt.Sprintf("mkdir -p %s && cat > %s.tmp && chmod +x %s.tmp && mv %s.tmp %s && "+
+			"find $HOME/.claude-mux/bin -mindepth 1 -maxdepth 1 ! -name %s -exec rm -rf {} +", dir, bin, bin, bin, bin, ver)
 		if _, err := s.run(host, f, install); err != nil {
 			return nil, fmt.Errorf("installing the backend on %s: %w", host, err)
 		}
