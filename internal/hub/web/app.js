@@ -664,9 +664,7 @@ function renderDlg() {
   $("tArgsSum").textContent = [...dlgFlags().map((f) => FLAG_SHORT[f]), ...($("tArgs").value.trim() ? [$("tArgs").value.trim()] : [])].join(" · ") || "none";
   $("tArgsBtn").setAttribute("aria-expanded", dlg.argsOpen);
   $("tArgsBody").hidden = !dlg.argsOpen;
-  $("tStartupSw").setAttribute("aria-checked", dlg.startup);
-  $("tStartupBtn").setAttribute("aria-expanded", dlg.startup);
-  $("tStartupSum").hidden = dlg.startup;
+  $("tStartupBtn").setAttribute("aria-checked", dlg.startup);
   $("tStartup").hidden = !dlg.startup;
   $("tName").placeholder = base($("tCwd").value) || "named after the folder";
   $("tPick").hidden = env(dlg.env)?.kind !== "local";
@@ -816,7 +814,6 @@ $("tabForm").addEventListener("submit", async (e) => {
     $("tErr").textContent = err.message;
   }
 });
-$("tCancel").onclick = () => $("tabDlg").close();
 $("tClose").onclick = async () => { const key = dlg.key; $("tabDlg").close(); await closeTab(key, false); };
 
 // added shows a tab the backend just made, before its state comes round.
@@ -838,13 +835,13 @@ async function duplicate(t) {
 
 // ---------- environments ----------
 const kindHints = {
-  ssh: ["Host, as ssh takes it: host, user@host or an alias from ~/.ssh/config. It must take your key without a password prompt.", "devbox"],
-  docker: ["Container, running, with sh in it. Its tabs live as long as the container.", "my-container"],
-  wsl: ["WSL distro, as wsl -l lists it.", "Ubuntu"],
+  ssh: ["The host as ssh takes it: host, user@host or an alias from ~/.ssh/config. It must take your key without a password prompt.", "devbox", "Host"],
+  docker: ["A running container with sh in it. Its tabs live as long as the container.", "my-container", "Container"],
+  wsl: ["The distro as wsl -l lists it.", "Ubuntu", "Distro"],
 };
 async function fillTargets() {
   const kind = $("hKind").value;
-  [$("hHint").textContent, $("hHost").placeholder] = kindHints[kind] || ["", ""];
+  [$("hHint").textContent, $("hHost").placeholder, $("hLabel").textContent] = kindHints[kind] || ["", "", "Target"];
   const names = await request("GET", `/hub/targets/${encodeURIComponent(kind)}`).catch(() => []);
   $("targets").innerHTML = (names || []).map((n) => `<option value="${esc(n)}">`).join("");
 }
@@ -859,7 +856,6 @@ async function addEnv() {
   $("hostDlg").showModal();
   $("hHost").focus();
 }
-$("hostCancel").onclick = () => $("hostDlg").close();
 $("hostForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   try {
@@ -902,7 +898,6 @@ $("eFacts").addEventListener("click", (e) => {
   const b = e.target.closest("[data-env-act]");
   if (b) { $("envDlg").close(); envAct(b.dataset.envAct, b.dataset.env); }
 });
-$("eCancel").onclick = () => $("envDlg").close();
 $("eRemove").onclick = async () => { $("envDlg").close(); await envAct("remove", envDlgName); };
 $("envForm").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -941,7 +936,6 @@ async function envAct(what, name) {
   $("iOut").hidden = true;
   $("iRun").hidden = false;
   $("iRun").disabled = false;
-  $("iClose").textContent = "Cancel";
   $("iState").textContent = "";
   $("iRun").onclick = async () => {
     $("iRun").disabled = true;
@@ -972,9 +966,7 @@ async function envAct(what, name) {
       $("iState").textContent = `The installer failed after ${secs} s: ${result.error}`;
     }
     $("iRun").hidden = true;
-    $("iClose").textContent = "Close";
   };
-  $("iClose").onclick = () => $("installDlg").close();
   $("installDlg").showModal();
 }
 
@@ -1005,7 +997,6 @@ function openSettings() {
   renderSettings();
   $("setDlg").showModal();
 }
-$("sX").onclick = () => $("setDlg").close();
 $("setDlg").addEventListener("close", () => terms.get(selected)?.term.focus());
 
 const swRow = (label, on, attrs) => `<button type="button" class="srow" role="switch" aria-checked="${!!on}" ${attrs}><span>${label}</span><span class="switch"></span></button>`;
@@ -1017,32 +1008,38 @@ function renderSettings() {
   const u = update || {};
   const s = hubSettings || {};
   const days = s.everyDays || 1;
-  let checked = checking ? "checking…" : u.lastCheck ? `checked ${when(u.lastCheck)}` : "not checked yet";
-  if (u.dev) checked = "a development build, which doesn't update";
-  else if (u.error && !checking) checked += ` · <span title="${esc(u.error)}">the last check failed</span>`;
-  const notifyAsk = !window.cmuxNotify && typeof Notification !== "undefined" && Notification.permission === "default";
-  const refresh = `<button type="button" class="iconbtn ${checking ? "spin" : ""}" id="sNow" title="Check now" aria-label="Check now" ${u.dev || u.updating || checking ? "disabled" : ""}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 4v5h-5"/></svg></button>`;
+  let checked = checking ? "Checking…" : u.lastCheck ? `Checked ${when(u.lastCheck)}` : "Not checked yet";
+  if (u.error && !checking && !u.dev) checked += ` · <span title="${esc(u.error)}">the last check failed</span>`;
+  const now = u.dev ? "A development build, which doesn't update" : `${checked} · <button type="button" class="link" id="sNow" ${u.updating || checking ? "disabled" : ""}>Check now</button>`;
   const latest = u.updating ? `<span class="quiet">Updating: ${esc(u.step || "starting")}…</span>`
-    : u.available ? `<button type="button" class="btn small primary" id="sApply" title="Restarts claude-mux; every tab resumes">Update to ${esc(u.latest)}</button>` : "";
+    : u.available ? `<button type="button" class="btn primary" id="sApply" title="Restarts claude-mux; every tab resumes">Update to ${esc(u.latest)}</button>` : "";
+  const notifyAsk = !window.cmuxNotify && typeof Notification !== "undefined" && Notification.permission === "default";
+  const themes = [["auto", "Auto"], ["light", "Light"], ["dark", "Dark"]].map(([v, l]) =>
+    `<button type="button" data-page-set="theme" data-v="${v}" aria-pressed="${page.theme === v}"><span class="pic ${v}"><i></i><b></b></span>${l}</button>`).join("");
   $("sBody").innerHTML = `
     <div class="ssec">Appearance</div>
-    ${sRow("Theme", segOf("theme", [["auto", "Auto"], ["light", "Light"], ["dark", "Dark"]]))}
-    ${sRow(`<label for="sTerm">Terminal colours</label>`, `<select id="sTerm">${TERM_THEME_NAMES.map(([k, l]) => `<option value="${k}" ${page.termTheme === k ? "selected" : ""}>${l}</option>`).join("")}</select>`)}
-    ${sRow("Terminal font size", `<div class="stepper"><button type="button" data-font="-1" aria-label="Smaller">−</button><span>${page.termSize}</span><button type="button" data-font="1" aria-label="Larger">+</button></div>`)}
-    ${sRow("Tab rows", segOf("tabRows", [["two", "Detailed"], ["one", "Compact"]]))}
-    <div class="ssec">Tabs</div>
-    ${pageSw("confirmClose", "Ask before closing a tab")}
-    <div class="ssec">Notifications</div>
-    ${pageSw("notifyNeeds", "When a tab needs me")}
-    ${pageSw("notifyReady", "When a tab finishes")}
-    ${pageSw("notifyAway", "Only while I am in another window")}
-    ${notifyAsk ? sRow(`<span class="quiet">This browser asks first</span>`, `<button type="button" class="btn small" id="sAllow">Allow</button>`) : ""}
+    <div class="card">
+      <div class="themes">${themes}</div>
+      ${sRow(`<label for="sTerm">Terminal colours</label>`, `<select id="sTerm">${TERM_THEME_NAMES.map(([k, l]) => `<option value="${k}" ${page.termTheme === k ? "selected" : ""}>${l}</option>`).join("")}</select>`)}
+      ${sRow("Terminal font size", `<div class="stepper"><button type="button" data-font="-1" aria-label="Smaller">−</button><span>${page.termSize}</span><button type="button" data-font="1" aria-label="Larger">+</button></div>`)}
+      ${sRow("Tab rows", segOf("tabRows", [["two", "Detailed"], ["one", "Compact"]]))}
+    </div>
+    <div class="ssec">Tabs and notifications</div>
+    <div class="card">
+      ${pageSw("confirmClose", "Ask before closing a tab")}
+      ${pageSw("notifyNeeds", "Notify when a tab needs me")}
+      ${pageSw("notifyReady", "Notify when a tab finishes")}
+      ${pageSw("notifyAway", "Only when the window is in the background")}
+      ${notifyAsk ? sRow(`<span class="quiet">This browser asks before it notifies</span>`, `<button type="button" class="link" id="sAllow">Allow</button>`) : ""}
+    </div>
     <div class="ssec">Updates</div>
-    <div class="srow every ${s.checkUpdates ? "" : "off"}"><span>Check every</span>
-      <input id="sDays" class="num" type="number" min="1" max="365" value="${days}" aria-label="Days between checks" ${s.checkUpdates ? "" : "disabled"}>
-      <span>${days === 1 ? "day" : "days"}</span><span class="fill"></span>
-      <button type="button" class="switchbtn" role="switch" aria-checked="${!!s.checkUpdates}" aria-label="Check automatically" id="sCheck"><span class="switch"></span></button></div>
-    <div class="srow ver"><span>${esc(u.current || hubVersion)}</span><span class="quiet">· ${checked}</span>${u.dev ? "" : refresh}<span class="fill"></span>${latest}</div>`;
+    <div class="card">
+      <div class="upd">${markSvg(36)}<div class="what"><b>claude-mux ${esc(u.current || hubVersion)}</b><span>${now}</span></div>${latest}</div>
+      <div class="srow every ${s.checkUpdates ? "" : "off"}"><span>Check every</span>
+        <input id="sDays" class="num" type="number" min="1" max="365" value="${days}" aria-label="Days between checks" ${s.checkUpdates ? "" : "disabled"}>
+        <span>${days === 1 ? "day" : "days"}</span><span class="fill"></span>
+        <button type="button" class="switchbtn" role="switch" aria-checked="${!!s.checkUpdates}" aria-label="Check automatically" id="sCheck"><span class="switch"></span></button></div>
+    </div>`;
   $("sState").textContent = hubInfo?.stateDir ? home(hubInfo.stateDir) : "~/.claude-mux";
 }
 
@@ -1565,24 +1562,21 @@ async function act(what, target) {
 // (a bare web view) answers without showing anything.
 function sure(title, text, ok = "OK") {
   $("mTitle").textContent = title;
-  $("mTitle").parentElement.hidden = !title;
   $("mText").textContent = text;
   $("mOk").textContent = ok;
-  $("mCancel").hidden = false;
   return new Promise((resolve) => {
-    const done = (v) => { $("msgDlg").close(); resolve(v); };
-    $("msgForm").onsubmit = (e) => { e.preventDefault(); done(true); };
-    $("mCancel").onclick = () => done(false);
-    $("msgDlg").oncancel = () => resolve(false);
-    $("msgDlg").showModal();
+    const d = $("msgDlg");
+    d.returnValue = "";
+    $("msgForm").onsubmit = (e) => { e.preventDefault(); d.close("ok"); };
+    d.onclose = () => resolve(d.returnValue === "ok");
+    d.showModal();
     $("mOk").focus();
   });
 }
-function say(text) {
-  const shown = sure("", text);
-  $("mCancel").hidden = true;
-  return shown;
-}
+const say = (text) => sure("", text);
+
+// × in any dialog's header cancels it, like Esc.
+document.addEventListener("click", (e) => { if (e.target.closest(".dx")) e.target.closest("dialog")?.close(); });
 
 // ---------- keys ----------
 // Caught before the terminal sees them.

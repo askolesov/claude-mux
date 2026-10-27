@@ -49,59 +49,59 @@
 <datalist id="dirs"></datalist>
 <datalist id="targets"></datalist>
 
-<!-- New tab, and Tab settings, which shares its fields. -->
+<!-- The dialogs are one family: a header with ×, cards of rows, a footer
+     strip with the one primary button. Esc or × cancels. -->
+
+<!-- New tab, and Tab settings, which shares its cards. -->
 <dialog id="tabDlg">
   <form method="dialog" id="tabForm">
-    <div class="dhead"><h3 id="tTitle"></h3><div class="dmeta" id="tMeta"></div></div>
+    <div class="dhead"><div class="dtitle"><h3 id="tTitle"></h3><div class="dmeta" id="tMeta"></div></div><button type="button" class="icon-btn dx" aria-label="Close" title="Close (Esc)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
     <div class="dbody">
-      <label class="field">Name<input id="tName" autocomplete="off" spellcheck="false"></label>
-      <label class="field">Directory
-        <span class="withbtn"><input id="tCwd" class="mono-in" list="dirs" autocomplete="off" spellcheck="false">
-          <button type="button" class="sqbtn" id="tPick" title="Choose folder" aria-label="Choose folder"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 6.5h6l2 2h10V19H3z"/></svg></button></span>
-      </label>
-    </div>
-    <div class="fold first">
-      <button type="button" class="foldhead" id="tStartupBtn" aria-expanded="false"><span>Startup message</span><span class="sum" id="tStartupSum">none</span><span class="switch" role="switch" aria-checked="false" id="tStartupSw" aria-label="Startup message"></span></button>
-      <textarea id="tStartup" rows="2" aria-label="Startup message text" placeholder="Sent as its first prompt whenever claude starts again in this tab" hidden></textarea>
-    </div>
-    <div class="fold">
-      <button type="button" class="foldhead" id="tArgsBtn" aria-expanded="false"><span>Arguments</span><span class="sum" id="tArgsSum"></span><svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
-      <div class="foldbody" id="tArgsBody" hidden>
-        <input id="tArgs" class="input mono-in" aria-label="Extra arguments" placeholder="e.g. --model opus" autocomplete="off" spellcheck="false">
-        <div class="checks" id="tChecks"></div>
+      <div class="card">
+        <label class="crow"><span class="clabel">Name</span><input id="tName" autocomplete="off" spellcheck="false"></label>
+        <div class="crow"><label class="clabel" for="tCwd">Directory</label><input id="tCwd" class="mono-in" list="dirs" autocomplete="off" spellcheck="false">
+          <button type="button" class="sqbtn" id="tPick" title="Choose folder" aria-label="Choose folder"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 6.5h6l2 2h10V19H3z"/></svg></button></div>
       </div>
+      <div class="card">
+        <button type="button" class="crow btnrow" id="tStartupBtn" role="switch" aria-checked="false"><span>Startup message</span><span class="switch"></span></button>
+        <textarea id="tStartup" rows="2" aria-label="Startup message text" placeholder="Sent as its first prompt whenever claude starts again in this tab" hidden></textarea>
+        <button type="button" class="crow btnrow" id="tArgsBtn" aria-expanded="false"><span>Arguments</span><span class="sum" id="tArgsSum"></span><svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+        <div class="cbody" id="tArgsBody" hidden>
+          <input id="tArgs" class="mono-in" aria-label="Extra arguments" placeholder="e.g. --model opus" autocomplete="off" spellcheck="false">
+          <div class="checks" id="tChecks"></div>
+        </div>
+      </div>
+      <div class="notice" id="tNotice" role="status" hidden><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg><span>Saving restarts claude in this tab. The conversation continues where it was.</span></div>
+      <div class="err" id="tErr"></div>
     </div>
-    <div class="notice" id="tNotice" role="status" hidden><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg><span>Saving restarts claude in this tab. The conversation continues where it was.</span></div>
-    <div class="err" id="tErr"></div>
     <div class="dfoot">
       <button type="button" class="btn danger" id="tClose">Close tab</button>
       <span class="gap" id="tFootNote"></span>
-      <button type="button" class="btn" id="tCancel">Cancel</button>
       <button class="btn primary" id="tOk">Start</button>
     </div>
   </form>
 </dialog>
 
-<!-- Settings: a scrolling modal, short sections, one row per setting. -->
+<!-- Settings: short sections, each a heading over one card; every change
+     applies at once. -->
 <dialog id="setDlg" class="tall">
-  <div class="dhead row"><h3>Settings</h3><button type="button" class="icon-btn" id="sX" aria-label="Close"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
-  <div class="sbody" id="sBody"></div>
-  <div class="sfoot"><span>State in <span class="mono" id="sState"></span></span><button type="button" class="link" id="sLog">Open log</button></div>
+  <div class="dhead"><div class="dtitle"><h3>Settings</h3></div><button type="button" class="icon-btn dx" aria-label="Close" title="Close (Esc)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+  <div class="dbody scroll" id="sBody"></div>
+  <div class="dfoot"><span class="gap mono" id="sState"></span><button type="button" class="link" id="sLog">Open log</button></div>
 </dialog>
 
 <!-- Environment settings -->
 <dialog id="envDlg">
   <form method="dialog" id="envForm">
-    <div class="dhead"><h3 id="eTitle"></h3><div class="dmeta" id="eMeta"></div></div>
+    <div class="dhead"><div class="dtitle"><h3 id="eTitle"></h3><div class="dmeta" id="eMeta"></div></div><button type="button" class="icon-btn dx" aria-label="Close" title="Close (Esc)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
     <div class="dbody">
-      <label class="field">Name<input id="eName" autocomplete="off" spellcheck="false"></label>
-      <div class="facts" id="eFacts"></div>
+      <div class="card"><label class="crow"><span class="clabel">Name</span><input id="eName" autocomplete="off" spellcheck="false"></label></div>
+      <div class="card facts" id="eFacts"></div>
+      <div class="err" id="eErr"></div>
     </div>
-    <div class="err" id="eErr"></div>
     <div class="dfoot">
       <button type="button" class="btn danger" id="eRemove">Remove</button>
       <span class="gap"></span>
-      <button type="button" class="btn" id="eCancel">Cancel</button>
       <button class="btn primary">Save</button>
     </div>
   </form>
@@ -109,33 +109,35 @@
 
 <dialog id="msgDlg">
   <form method="dialog" id="msgForm">
-    <div class="dhead"><h3 id="mTitle"></h3></div>
+    <div class="dhead"><div class="dtitle"><h3 id="mTitle"></h3></div><button type="button" class="icon-btn dx" aria-label="Close" title="Close (Esc)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
     <div class="dbody"><div class="note" id="mText"></div></div>
-    <div class="dfoot"><span class="gap"></span><button type="button" class="btn" id="mCancel">Cancel</button><button class="btn primary" id="mOk">OK</button></div>
+    <div class="dfoot"><span class="gap"></span><button class="btn primary" id="mOk">OK</button></div>
   </form>
 </dialog>
 
 <dialog id="hostDlg">
   <form method="dialog" id="hostForm">
-    <div class="dhead"><h3>Connect environment</h3><div class="dmeta">An SSH host, a Docker container or a WSL distro</div></div>
+    <div class="dhead"><div class="dtitle"><h3>Connect environment</h3><div class="dmeta">An SSH host, a Docker container or a WSL distro</div></div><button type="button" class="icon-btn dx" aria-label="Close" title="Close (Esc)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
     <div class="dbody">
-      <label class="field">Kind<select id="hKind"></select></label>
-      <label class="field"><span id="hHint"></span><input id="hHost" class="mono-in" list="targets" autocomplete="off" spellcheck="false"></label>
-      <label class="field">Name<input id="hName" placeholder="defaults to the host" autocomplete="off" spellcheck="false"></label>
+      <div class="card">
+        <label class="crow"><span class="clabel">Kind</span><select id="hKind"></select></label>
+        <label class="crow"><span class="clabel" id="hLabel">Host</span><input id="hHost" class="mono-in" list="targets" autocomplete="off" spellcheck="false"></label>
+        <label class="crow"><span class="clabel">Name</span><input id="hName" placeholder="defaults to the host" autocomplete="off" spellcheck="false"></label>
+      </div>
+      <div class="hint" id="hHint"></div>
+      <div class="err" id="hostErr"></div>
     </div>
-    <div class="err" id="hostErr"></div>
-    <div class="dfoot"><span class="gap"></span><button type="button" class="btn" id="hostCancel">Cancel</button><button class="btn primary">Connect</button></div>
+    <div class="dfoot"><span class="gap"></span><button class="btn primary">Connect</button></div>
   </form>
 </dialog>
 
 <dialog id="installDlg">
-  <div class="dhead"><h3 id="iTitle"></h3><div class="dmeta">Runs Anthropic's official installer there</div></div>
+  <div class="dhead"><div class="dtitle"><h3 id="iTitle"></h3><div class="dmeta">Runs Anthropic's official installer there</div></div><button type="button" class="icon-btn dx" aria-label="Close" title="Close (Esc)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
   <div class="dbody">
-    <code id="iCmd"></code>
-    <div class="note" id="iState"></div>
+    <div class="card pad"><code id="iCmd"></code></div>
     <pre id="iOut" hidden></pre>
   </div>
-  <div class="dfoot"><span class="gap"></span><button type="button" class="btn" id="iClose">Cancel</button><button class="btn primary" id="iRun">Install</button></div>
+  <div class="dfoot"><span class="gap" id="iState"></span><button type="button" class="btn primary" id="iRun">Install</button></div>
 </dialog>
 
 <script src="app.js"></script>
