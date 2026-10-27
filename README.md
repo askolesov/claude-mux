@@ -12,21 +12,27 @@ container or in a WSL distro. See [docs/design.md](docs/design.md).
 ## Install
 
 Download the hub for your machine from the
-[latest release](https://github.com/askolesov/claude-mux/releases/latest)
-and run it. On a Mac or Linux:
+[latest release](https://github.com/askolesov/claude-mux/releases/latest).
+It shows the page in a window of its own (the system's web view); closing
+the window quits it, and the tabs resume on the next start.
 
-```sh
-curl -fsSLo ~/.local/bin/claude-mux https://github.com/askolesov/claude-mux/releases/latest/download/claude-mux-darwin-arm64
-chmod +x ~/.local/bin/claude-mux
-claude-mux -cwd ~/projects   # → http://127.0.0.1:7777
-```
+- **Mac:** `claude-mux-mac.zip`, a universal `claude-mux.app`. Unzip it into
+  Applications. It isn't signed yet: the first start needs right-click →
+  Open (or System Settings → Privacy & Security → Open Anyway).
+- **Windows:** `claude-mux-windows-amd64.exe`. Unsigned too: SmartScreen
+  wants "More info → Run anyway". It needs the WebView2 runtime, which
+  Windows 11 has. Claude Code on Windows needs Git for Windows, as its own
+  setup says.
+- **Linux:** `claude-mux-linux-amd64` / `-arm64`, which needs WebKitGTK 4.1
+  (`libwebkit2gtk-4.1-0`).
 
-On Windows, download `claude-mux-windows-amd64.exe` and run it; it opens
-the page in the browser. The builds aren't signed yet: SmartScreen wants
-"More info → Run anyway" (a Mac doesn't ask when the file came with curl).
-Claude Code on Windows needs Git for Windows, as its own setup says.
+`-headless` serves the page without a window, for the browser, until
+interrupted (`-open` opens it). Started from Finder, the hub takes the
+login shell's environment, so tabs see the PATH a terminal would, and logs
+to `~/.claude-mux/hub.log`. A second start opens a window onto the hub
+already running.
 
-Builds: `claude-mux-{darwin,linux,windows}-{arm64,amd64}`. The hub downloads the
+The hub downloads the
 backend of its own release for each environment it connects to, this
 machine included, checks it against the release's `checksums.txt`, keeps it
 in `~/.claude-mux/cache/<version>/`, and installs it in
@@ -41,8 +47,9 @@ go build -o /tmp/backends/claude-mux-backend-$(go env GOOS)-$(go env GOARCH) ./c
 go run ./cmd/hub -backend-dir /tmp/backends -cwd ~/projects
 ```
 
-`./restart.sh` rebuilds both (backends for every platform), restarts them
-and resumes the tabs. Run it from a regular terminal, because a tab inside
+`./restart.sh` rebuilds both (backends for every platform), restarts a
+headless hub and resumes the tabs. `scripts/macapp.sh <version> <dir>`
+builds the `.app`. Run it from a regular terminal, because a tab inside
 claude-mux is hung up by the restart.
 
 Start it from a normal terminal. Starting it from inside a claude session also
@@ -138,6 +145,10 @@ shown; claude running in other terminals is left alone.
 
 ## Known rough edges
 
+- **One backend per environment.** A backend locks its state directory
+  (`~/.claude-mux/backend.lock`): a second hub reaching the same machine,
+  container or host shows it as in use, naming the pid, and connects by
+  itself once the first lets go. Two would resume every tab twice.
 - The processes live in the backend: stopping it hangs up every tab.
   Resuming brings back the conversations, but not what was running in them
   (background tasks, watchers); a startup message can restart those.

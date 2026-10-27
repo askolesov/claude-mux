@@ -1,6 +1,6 @@
 # claude-mux: hub and backends
 
-Status: steps 1–5 done (2026-10-27), Windows untested on a real machine yet; step 6 is design. Today claude-mux is one Mac program that runs
+Status: all six steps done (2026-10-27); Windows not yet tried on a real machine. Today claude-mux is one Mac program that runs
 claude sessions on this machine. This design splits it into a **hub** (the
 window and the page) and **backends** (the sessions), so one window can
 show sessions running here, over SSH, in Docker, in WSL and on Windows.
@@ -200,8 +200,10 @@ Each step ships something that runs.
 
 ## Open questions
 
-- The hub's window: `webview/webview_go` (small, C bindings) or Wails (more
-  framework than needed)? Decided in step 6.
+- ~~The hub's window.~~ `webview/webview_go`, built natively on each system
+  (cgo); a build without cgo opens the browser instead.
+- ~~Two hubs on one machine.~~ Each backend locks its state directory, so
+  an environment has one backend; the other hub waits.
 - ~~Public releases?~~ The repository is public since step 3; whether
   environments download for themselves is still open.
 - ~~What the page shows when an environment has no claude.~~ Done in
