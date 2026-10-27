@@ -64,23 +64,41 @@ every start continues the tab's conversation (`claude --resume`). **Close**
 ends its claude and removes it for good. Only claudes started here are
 shown; claude running in other terminals is left alone.
 
-- **New** (⌥N): name, group, directory, startup message, extra args and the
-  `--dangerously-skip-permissions` / `--chrome` switches. The name is
-  passed as `--name`.
+The design is in [docs/redesign/](docs/redesign/README.md): tabs on the
+left (or on top, in Settings), and nothing that says the same thing twice.
+
+- **A tab row** is its status dot and name, plus ↻ when it has its own
+  message for when it starts again. Above the terminal: the name, then
+  `environment / group · directory · git branch`, and **…** for Tab settings.
+- **Tab settings** (…, or right-click): group, directory, the message for
+  when it starts again, extra arguments, **Restart** and **Close tab**.
+  Extra arguments are one text; the frequent flags
+  (`--dangerously-skip-permissions`, `--chrome`, `--model opus`,
+  `--permission-mode acceptEdits`) are checkboxes, each gone once the text
+  has that flag, and one line shows exactly what runs. Directory and
+  arguments apply on the next start. **New** (+, ⌥N) has the same fields,
+  with the environment first, from the defaults in Settings › New tabs.
 - **Names** belong to claude: type `/rename <name>` in the tab and the
-  sidebar follows (from `claude agents --json`, polled every 5 s).
-- **Startup message** (right-click → Startup message…, marked ↻): the first
-  prompt whenever the tab's claude starts, passed as
-  `claude [--resume <id>] -- "<message>"`. Use it to bring back what dies
-  with the old process, like a watcher.
-- **Groups**: right-click → Group… (or the Group field in New) puts a tab
-  under a collapsible header. Drag a tab onto a header to put it in that
-  group, or next to a tab to take that tab's group; drag to reorder. A
-  collapsed header shows the most urgent status inside it. Right-click a
-  header to start a new tab in it, rename it (an existing name merges the
-  two) or ungroup it. Collapsing is kept per browser.
-- **Resume** restarts a tab whose claude exited (`/exit`, a crash).
-- **Environments**: **+ Env** adds one of a kind:
+  sidebar follows (from `claude agents --json`, polled every 5 s). The
+  name is passed as `--name` on the next start.
+- **When tabs start again** (Settings): a tab's claude starts again when
+  claude-mux restarts or updates, on Restart and on Resume. It continues
+  its conversation, but what ran in the old process (background tasks,
+  watchers, servers) is gone. A message sent to every tab as its first
+  prompt then, `claude --resume <id> -- "<message>"`, tells it so (off by
+  default, with a suggested text). In Tab settings each tab follows it
+  (Default), has its own (Custom: say, restart a watcher) or gets none.
+  It's never sent on a new tab's first start.
+- **Groups**: a plain label above their tabs; click it to fold it (it then
+  shows the most urgent status inside). Drag a tab onto a label to put it
+  in that group, or next to a tab to take that tab's group; drag to
+  reorder. Right-click a label to start a new tab in it, rename it (an
+  existing name merges the two) or ungroup it.
+- **Jump to tab** (⌘K): fuzzy search over the tabs, waiting ones first,
+  and a few actions.
+- An exited tab (`/exit`, a crash) says so in its terminal: Enter resumes
+  it.
+- **Environments**: Settings › Environments › **Add environment** adds one of a kind:
   - an **SSH host**, as ssh takes it: host, user@host or a `~/.ssh/config`
     alias (offered from there); it must take your key without a password
     prompt;
@@ -95,8 +113,10 @@ shown; claude running in other terminals is left alone.
   connection, so the environment needs no internet for it. The backend
   lives as long as the connection: when the hub quits or the connection
   drops, it hangs up its tabs, and the next connect resumes them.
-  Right-click an environment's header to open a tab there or remove it
-  (its tabs stay there for when it's added again). Drag a header to
+  Its header has a health dot (green connected, amber a problem); hover
+  for the kind, platform and latency. Settings › Environments (or
+  right-click the header) reconnects one, installs claude there or removes
+  it (its tabs stay there for when it's added again). Drag a header to
   reorder the environments; this machine (`local`) is one of them, and
   can't be removed.
 - **No claude in an environment**: its block says so, with **Install…**
@@ -107,15 +127,15 @@ shown; claude running in other terminals is left alone.
   claude in `~/.local/bin`, which a non-interactive ssh usually leaves off
   the PATH. The first tab in a fresh environment walks through claude's
   setup and login.
-- **Status dot**: blue pulsing = working, green = ready for input, amber
-  pulsing = needs you (a permission prompt, or a prompt shown before startup
+- **Status dot**: blue = working, green = ready for input, amber with a
+  ring = needs you (a permission prompt, or a prompt shown before startup
   such as trusting the folder), hollow = exited. A tab that finished while
-  you looked elsewhere gets a bold name and a green edge until you open it.
-  The page title and icon count what waits: `(2) claude-mux`.
-- **Notifications** when a tab becomes ready or needs you and you aren't
-  looking at it (press "Enable notifications" once).
-- **Updates**: ⚙ Settings has "Check for updates" (on, every 1 day by
-  default) and Check now. When a newer release is out, the sidebar says so
+  you looked elsewhere has a bold name until you open it. The page title,
+  icon and Dock count what waits: `(2) claude-mux`.
+- **Notifications** (Settings): a tab needs you, finished or exited; only
+  while the window is in the background, if you like.
+- **Updates**: Settings › Updates has "Check for updates" (on, every 1 day
+  by default) and Check now. When a newer release is out, the sidebar says so
   (with a notification once per version): **Update and restart**
   downloads it, checks it against the release's checksums, puts it in
   place of the running hub (the whole `.app` on a Mac), and restarts into
@@ -123,11 +143,12 @@ shown; claude running in other terminals is left alone.
   connects. **Skip this version** stays quiet until a newer one. A Mac app
   still running from its download (macOS's read-only copy) has to be moved
   to Applications first. Development builds don't check.
-- **Themes**: page theme (Auto follows macOS, Light, Dark) and terminal theme
-  (Auto matches the page, or Tokyo Night, Dracula, Solarized) in the footer,
-  kept per browser.
-- Keys: ⌥1–9 tab, ⌥↑/↓ prev/next, ⌥J next tab that waits for you, ⌥N new,
-  ⇧↵ newline in the prompt.
+- **Appearance** (Settings): page theme (Auto follows the system, Light,
+  Dark), terminal theme (Match page, Tokyo Night, Dracula, Solarized, …),
+  terminal font and size. Settings live in `hub.json`, so the app's window
+  and a browser share them.
+- Keys: ⌘K jump, ⌥1–9 tab, ⌥↑/↓ prev/next, ⌥J next tab that waits for you,
+  ⌥N new, ⌘, settings, ⇧↵ newline in the prompt.
 
 ## How it works
 
@@ -138,12 +159,13 @@ shown; claude running in other terminals is left alone.
   Windows). A backend's API listens on no port. The hub's own API is `/hub/`
   (the environments, as server-sent events; add, remove).
 - Files, all in `~/.claude-mux/`:
-  - `hub.json`, the hub's: settings, the environments in sidebar order,
-    the last update check and a skipped version. `hub.log` when it runs
+  - `hub.json`, the hub's: settings (the page's too, and the message for
+    when tabs start again), the environments in sidebar order, the last
+    update check and a skipped version. `hub.log` when it runs
     from Finder or Explorer (or `restart.sh`).
   - `backend.json`, each environment's own (on this machine and on every
     host and container): the tabs in sidebar order, each with its name,
-    group, directory, args, claude session id and startup message.
+    group, directory, args, claude session id and its resume message mode.
     `backend-hooks.json` (the hooks, rewritten every start),
     `backend.lock` (one backend per environment), `bin/<version>/`.
   - `hub.lock`: one hub per state directory.

@@ -19,7 +19,7 @@ import (
 // Run serves the backend to the hub over stdin and stdout until the hub
 // closes them: the hub quit or the connection to it broke. It then hangs up
 // its sessions, noting which ran, so the next start resumes them.
-func Run(stateDir, defaultCwd string) error {
+func Run(stateDir, defaultCwd string, resume ResumeDefault) error {
 	lock, err := lockState(stateDir)
 	if err != nil {
 		return err
@@ -39,7 +39,7 @@ func Run(stateDir, defaultCwd string) error {
 	_, _ = rand.Read(token)
 	hookURL := fmt.Sprintf("http://%s/hook/%s", hookLn.Addr(), hex.EncodeToString(token))
 
-	m, err := NewManager(stateDir, hookURL, exe)
+	m, err := NewManager(stateDir, hookURL, exe, resume)
 	if err != nil {
 		return err
 	}
@@ -48,6 +48,7 @@ func Run(stateDir, defaultCwd string) error {
 
 	go m.PollNames(ctx, 5*time.Second)
 	go m.WatchStartup(ctx)
+	go m.WatchBranches(ctx, 10*time.Second)
 
 	hooks := &http.Server{Handler: NewHookHandler(m, hex.EncodeToString(token)), ReadHeaderTimeout: 10 * time.Second}
 	go func() { _ = hooks.Serve(hookLn) }()

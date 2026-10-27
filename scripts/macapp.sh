@@ -15,7 +15,8 @@ for arch in arm64 amd64; do
 	GOARCH=$arch go -C "$dir" build -trimpath -ldflags="-s -X main.version=$version" -o "$tmp/claude-mux-$arch" ./cmd/hub
 done
 
-mkdir -p "$app/Contents/MacOS"
+mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+cp "$dir/assets/icon/AppIcon.icns" "$app/Contents/Resources/"
 lipo -create -output "$app/Contents/MacOS/claude-mux" "$tmp/claude-mux-arm64" "$tmp/claude-mux-amd64"
 cat >"$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -26,6 +27,7 @@ cat >"$app/Contents/Info.plist" <<PLIST
 	<key>CFBundleDisplayName</key><string>claude-mux</string>
 	<key>CFBundleIdentifier</key><string>io.github.askolesov.claude-mux</string>
 	<key>CFBundleExecutable</key><string>claude-mux</string>
+	<key>CFBundleIconFile</key><string>AppIcon</string>
 	<key>CFBundlePackageType</key><string>APPL</string>
 	<key>CFBundleShortVersionString</key><string>${version#v}</string>
 	<key>CFBundleVersion</key><string>${version#v}</string>

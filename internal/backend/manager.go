@@ -34,6 +34,7 @@ type Manager struct {
 	mu       sync.Mutex
 	claude   Claude
 	sessions []*Session
+	resume   ResumeDefault
 	subs     map[chan struct{}]struct{}
 }
 
@@ -44,7 +45,7 @@ type State struct {
 
 // NewManager loads the tabs and starts every one of them, continuing each
 // tab's conversation.
-func NewManager(stateDir, hookURL, exe string) (*Manager, error) {
+func NewManager(stateDir, hookURL, exe string, resume ResumeDefault) (*Manager, error) {
 	if err := os.MkdirAll(stateDir, 0o700); err != nil {
 		return nil, err
 	}
@@ -52,6 +53,7 @@ func NewManager(stateDir, hookURL, exe string) (*Manager, error) {
 		stateFile: filepath.Join(stateDir, "backend.json"),
 		hooksFile: filepath.Join(stateDir, "backend-hooks.json"),
 		hookURL:   hookURL,
+		resume:    resume,
 		subs:      map[chan struct{}]struct{}{},
 	}
 	if err := writeHookSettings(m.hooksFile, exe); err != nil {
@@ -95,6 +97,9 @@ func (m *Manager) load(stateDir string) error {
 	m.sessions = st.Sessions
 	for _, s := range m.sessions {
 		s.status, s.statusSince = StatusStopped, time.Now()
+		if s.StartupMessage != "" { // before v0.5
+			s.Resume, s.ResumeMessage, s.StartupMessage = ResumeCustom, s.StartupMessage, ""
+		}
 	}
 	return nil
 }
@@ -160,14 +165,17 @@ func (m *Manager) Get(id string) (*Session, error) {
 }
 
 // Create opens a tab with a new claude in cwd.
-func (m *Manager) Create(name, group, cwd, startupMessage string, args []string) (*Session, error) {
+func (m *Manager) Create(name, group, cwd, resume, resumeMessage string, args []string) (*Session, error) {
+	if err := validResume(resume); err != nil {
+		return nil, err
+	}
 	if st, err := os.Stat(cwd); err != nil || !st.IsDir() {
 		return nil, fmt.Errorf("%q is not a directory", cwd)
 	}
 	if name == "" {
 		name = filepath.Base(cwd)
 	}
-	s := &Session{ID: newID(), Name: name, Group: group, Cwd: cwd, Args: args, StartupMessage: startupMessage}
+	s := &Session{ID: newID(), Name: name, Group: group, Cwd: cwd, Args: args, Resume: resume, ResumeMessage: strings.TrimSpace(resumeMessage)}
 	m.mu.Lock()
 	m.sessions = append(m.sessions, s)
 	m.groupTogether()
@@ -195,17 +203,27 @@ func (m *Manager) Start(id string) error {
 		return errNoClaude
 	}
 	s.mu.Lock()
-	name, sid, startupMessage := s.Name, s.ClaudeSessionID, s.StartupMessage
+	name, sid, resume, own := s.Name, s.ClaudeSessionID, s.Resume, s.ResumeMessage
 	args := append([]string{"--settings", m.hooksFile, "--name", name}, s.Args...)
 	s.mu.Unlock()
+	// Starting again (claude-mux restarted, Restart, Resume) continues the
+	// conversation, and tells claude so: what ran in the old process,
+	// background tasks and watchers, is gone.
 	if hasConversation(sid) {
 		args = append([]string{"--resume", sid}, args...)
-	}
-	if strings.TrimSpace(startupMessage) != "" {
-		args = append(args, "--", startupMessage) // after "--", a message starting with "-" stays a prompt
+		if msg := m.resumeMessage(resume, own); msg != "" {
+			args = append(args, "--", msg) // after "--", a message starting with "-" stays a prompt
+		}
 	}
 	env := append(childEnv(), "CLAUDE_MUX_ID="+s.ID, "CLAUDE_MUX_HOOK="+m.hookURL+"/"+s.ID, "TERM=xterm-256color", "COLORTERM=truecolor")
 	if err := s.start(claude, args, env, func() {
+		s.mu.Lock()
+		again := s.restarting
+		s.restarting = false
+		s.mu.Unlock()
+		if again && m.Start(s.ID) == nil {
+			return
+		}
 		s.setStatus(StatusExited)
 		m.notify()
 	}); err != nil {
@@ -326,19 +344,123 @@ func (m *Manager) followName(pid int, name string) {
 	}
 }
 
-// SetStartupMessage sets the prompt the tab's claude gets whenever it
-// starts; "" means none.
-func (m *Manager) SetStartupMessage(id, msg string) error {
+// Resume modes of a tab: the empty mode follows the environment's default.
+const (
+	ResumeCustom = "custom" // the tab's own message
+	ResumeOff    = "off"    // no message
+)
+
+func validResume(mode string) error {
+	if mode != "" && mode != ResumeCustom && mode != ResumeOff {
+		return fmt.Errorf("unknown resume mode %q", mode)
+	}
+	return nil
+}
+
+// ResumeDefault is the message every tab gets when its claude starts again,
+// unless the tab says otherwise; the hub sets it for all environments.
+type ResumeDefault struct {
+	Enabled bool   `json:"enabled"`
+	Message string `json:"message"`
+}
+
+func (m *Manager) SetResumeDefault(d ResumeDefault) {
+	m.mu.Lock()
+	m.resume = d
+	m.mu.Unlock()
+}
+
+// resumeMessage is what a tab in the given mode gets when it starts again.
+func (m *Manager) resumeMessage(mode, own string) string {
+	switch mode {
+	case ResumeCustom:
+		return strings.TrimSpace(own)
+	case ResumeOff:
+		return ""
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if !m.resume.Enabled {
+		return ""
+	}
+	return strings.TrimSpace(m.resume.Message)
+}
+
+// Configure sets what a tab starts with: its group, directory, resume
+// message and extra arguments. Everything but the group applies from the
+// next start.
+func (m *Manager) Configure(id, group, cwd, resume, resumeMessage string, args []string) error {
+	if err := validResume(resume); err != nil {
+		return err
+	}
+	if st, err := os.Stat(cwd); err != nil || !st.IsDir() {
+		return fmt.Errorf("%q is not a directory", cwd)
+	}
 	s, err := m.Get(id)
 	if err != nil {
 		return err
 	}
+	m.mu.Lock()
 	s.mu.Lock()
-	s.StartupMessage = strings.TrimSpace(msg)
+	s.Group, s.Cwd, s.Resume, s.ResumeMessage, s.Args = strings.TrimSpace(group), cwd, resume, strings.TrimSpace(resumeMessage), args
 	s.mu.Unlock()
+	m.groupTogether()
+	m.mu.Unlock()
 	m.save()
 	m.notify()
+	m.refreshBranch(s)
 	return nil
+}
+
+// Restart ends a tab's claude and starts it again, continuing its
+// conversation; one that isn't running just starts.
+func (m *Manager) Restart(id string) error {
+	s, err := m.Get(id)
+	if err != nil {
+		return err
+	}
+	if !s.running() {
+		return m.Start(id)
+	}
+	s.mu.Lock()
+	s.restarting = true
+	s.mu.Unlock()
+	s.kill()
+	return nil
+}
+
+// WatchBranches keeps each tab's git branch current.
+func (m *Manager) WatchBranches(ctx context.Context, every time.Duration) {
+	for {
+		m.mu.Lock()
+		sessions := append([]*Session(nil), m.sessions...)
+		m.mu.Unlock()
+		for _, s := range sessions {
+			m.refreshBranch(s)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(every):
+		}
+	}
+}
+
+func (m *Manager) refreshBranch(s *Session) {
+	s.mu.Lock()
+	cwd := s.Cwd
+	s.mu.Unlock()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	out, _ := sysproc.Hide(exec.CommandContext(ctx, "git", "-C", cwd, "branch", "--show-current")).Output()
+	branch := strings.TrimSpace(string(out))
+	s.mu.Lock()
+	changed := s.branch != branch
+	s.branch = branch
+	s.mu.Unlock()
+	if changed {
+		m.notify()
+	}
 }
 
 func (m *Manager) MarkSeen(id string) error {

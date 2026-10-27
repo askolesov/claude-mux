@@ -36,7 +36,7 @@ type store struct {
 
 func openStore(dir string) (*store, error) {
 	st := &store{path: filepath.Join(dir, "hub.json")}
-	st.s.Settings = Settings{CheckUpdates: true, EveryDays: 1}
+	st.s.Settings = Settings{CheckUpdates: true, EveryDays: 1, Resume: ResumeDefault{Message: defaultResumeMessage}}
 	migrated := false
 	data, err := os.ReadFile(st.path)
 	switch {

@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>claude-mux v4 tab settings</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#AFC6FA}a:hover{color:#D3E0FD}
+</style>
+</helmet>
+<div style="position: relative; min-height: 900px; background: #0F1115; font-family: Inter, system-ui, sans-serif; font-size: 13px; color: #E6E8EC; line-height: 1.4">
+<dc-import name="V4Main" active-tab="billing-fix" hint-size="100%,900px"></dc-import>
+<div style="position: absolute; inset: 0; background: rgba(6,7,9,0.6); display: flex; justify-content: center; align-items: flex-start; padding: 90px 16px 16px">
+<div role="dialog" aria-label="Tab settings" style="width: 560px; max-width: 100%; background: #171A20; border: 1px solid #2E3440; border-radius: 12px; box-shadow: 0 24px 60px rgba(0,0,0,0.5)">
+<div style="display: flex; align-items: flex-start; padding: 18px 20px 6px">
+<div style="flex: 1"><div style="font-size: 16px; font-weight: 600">billing-fix</div><div style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #8A92A2; margin-top: 2px">local / api · fix/invoice-rounding · a71d0b94</div></div>
+<a href="V4Main.dc.html" aria-label="Close" style="width: 28px; height: 28px; display: grid; place-items: center; border-radius: 6px; color: #9098A8"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg></a>
+</div>
+<div style="padding: 14px 20px 18px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px">
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: #C4C9D3">Name<input defaultValue="billing-fix" style="height: 34px; padding: 0 10px; border: 1px solid #2B313C; border-radius: 6px; background: #0F1115; color: #E6E8EC; font: inherit; font-size: 13px"></label>
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: #C4C9D3">Group<select style="height: 34px; padding: 0 8px; border: 1px solid #2B313C; border-radius: 6px; background: #0F1115; color: #E6E8EC; font: inherit; font-size: 13px"><option>api</option><option>infra</option><option>None</option><option>New group…</option></select></label>
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: #C4C9D3; grid-column: 1 / -1">Directory<input defaultValue="~/src/billing" style="height: 34px; padding: 0 10px; border: 1px solid #2B313C; border-radius: 6px; background: #0F1115; color: #E6E8EC; font-family: 'JetBrains Mono', monospace; font-size: 12px"></label>
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: #C4C9D3; grid-column: 1 / -1">Startup message<textarea rows="2" placeholder="Sent as the first prompt whenever this tab starts" style="padding: 8px 10px; border: 1px solid #2B313C; border-radius: 6px; background: #0F1115; color: #E6E8EC; font: inherit; font-size: 13px; resize: vertical"></textarea></label>
+
+<div style="grid-column: 1 / -1; display: flex; flex-direction: column; gap: 8px">
+<label for="tsArgs" style="font-size: 12px; color: #C4C9D3">Extra arguments</label>
+<input id="tsArgs" value="{{args}}" onChange="{{onArgs}}" placeholder="e.g. --model sonnet --add-dir ../shared" style="height: 34px; padding: 0 10px; border: 1px solid #2B313C; border-radius: 6px; background: #0F1115; color: #E6E8EC; font-family: 'JetBrains Mono', monospace; font-size: 12px">
+<sc-if value="{{hasChecks}}" hint-placeholder-val="{{ true }}">
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; padding-top: 2px">
+<sc-for list="{{checks}}" as="c" hint-placeholder-count="4">
+<label style="display: flex; align-items: center; gap: 8px; min-width: 0; cursor: pointer"><input type="checkbox" checked="{{c.on}}" onChange="{{c.flip}}" style="accent-color: #7AA2F7; margin: 0; width: 15px; height: 15px; flex: none"><span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #E6E8EC; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{c.flag}}</span></label>
+</sc-for>
+</div>
+</sc-if>
+<div style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #8A92A2; overflow-x: auto; white-space: nowrap">$ {{cmd}}</div>
+</div>
+</div>
+<div style="display: flex; align-items: center; gap: 8px; padding: 14px 20px; border-top: 1px solid #252A33; flex-wrap: wrap">
+<button type="button" style="height: 32px; padding: 0 12px; border: 0; border-radius: 6px; background: transparent; color: #F38B8B; font: inherit; cursor: pointer">Close tab</button>
+<button type="button" style="height: 32px; padding: 0 12px; border: 0; border-radius: 6px; background: transparent; color: #C4C9D3; font: inherit; cursor: pointer">Restart</button>
+<span style="flex: 1"></span>
+<a href="V4Main.dc.html" style="display: grid; place-items: center; height: 32px; padding: 0 14px; border-radius: 6px; border: 1px solid #2B313C; color: #E6E8EC; text-decoration: none; box-sizing: border-box">Cancel</a>
+<a href="V4Main.dc.html" style="display: grid; place-items: center; height: 32px; padding: 0 16px; border-radius: 6px; background: #7AA2F7; color: #0F1115; font-weight: 600; text-decoration: none">Save</a>
+</div>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const s = this.state || {};
+    const FLAGS = ['--dangerously-skip-permissions', '--chrome', '--model opus', '--permission-mode acceptEdits'];
+    const args = s.args !== undefined ? s.args : '--model sonnet';
+    const ck = s.ck || { '--chrome': true };
+    const words = args.trim().split(/\s+/);
+    const inString = (f) => words.indexOf(f.split(' ')[0]) >= 0;
+    const visible = FLAGS.filter((f) => !inString(f));
+    const checks = visible.map((f) => ({
+      flag: f, on: !!ck[f],
+      flip: () => this.setState({ ck: Object.assign({}, ck, { [f]: !ck[f] }) })
+    }));
+    const extra = visible.filter((f) => ck[f]);
+    return {
+      args: args, onArgs: (e) => this.setState({ args: e.target.value }),
+      checks: checks, hasChecks: checks.length > 0,
+      cmd: ['claude --resume a71d0b94'].concat(extra, args.trim() ? [args.trim()] : []).join(' ')
+    };
+  }
+}
+</script>
+</body>
+</html>

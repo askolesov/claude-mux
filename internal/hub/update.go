@@ -2,6 +2,7 @@ package hub
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -21,13 +22,32 @@ const latestRelease = "https://api.github.com/repos/askolesov/claude-mux/release
 
 // Settings are the hub's own settings, set in the page.
 type Settings struct {
-	CheckUpdates bool `json:"checkUpdates"`
-	EveryDays    int  `json:"everyDays"`
+	CheckUpdates bool            `json:"checkUpdates"`
+	EveryDays    int             `json:"everyDays"`
+	Resume       ResumeDefault   `json:"resume"`         // what every tab gets when it starts again, unless it says otherwise
+	Page         json.RawMessage `json:"page,omitempty"` // the page's own settings, which the hub keeps without reading
+}
+
+// ResumeDefault is the message tabs get as their first prompt when their
+// claude starts again, in every environment. A tab can have its own or none.
+type ResumeDefault struct {
+	Enabled bool   `json:"enabled"`
+	Message string `json:"message"`
+}
+
+const defaultResumeMessage = "claude-mux restarted this session: its claude process started again, so " +
+	"anything that was running in it (background tasks, watchers, servers) has stopped. " +
+	"If you were in the middle of something, carry on; restart any background work that should be running."
+
+// flag is the backend's -resume argument: base64url, so that it passes
+// through any shell unquoted.
+func (d ResumeDefault) flag() string {
+	data, _ := json.Marshal(d)
+	return base64.RawURLEncoding.EncodeToString(data)
 }
 
 // UpdateView is what the page sees of updates.
 type UpdateView struct {
-	Settings
 	Current   string    `json:"current"`
 	Dev       bool      `json:"dev"` // a development build, which doesn't update
 	LastCheck time.Time `json:"lastCheck,omitzero"`
@@ -68,7 +88,7 @@ func (u *updater) View() UpdateView {
 	kept := u.st.get()
 	u.mu.Lock()
 	defer u.mu.Unlock()
-	return UpdateView{Settings: kept.Settings, Current: u.current, Dev: u.dev(), LastCheck: kept.Update.LastCheck,
+	return UpdateView{Current: u.current, Dev: u.dev(), LastCheck: kept.Update.LastCheck,
 		Latest: u.latest, Notes: u.notes, Available: u.latest != "" && u.latest != kept.Update.Skip,
 		Error: u.err, Step: u.step, Updating: u.updating}
 }

@@ -59,7 +59,7 @@ func TestLoadOldName(t *testing.T) {
 	if err := m.load(dir); err != nil {
 		t.Fatal(err)
 	}
-	if len(m.sessions) != 1 || m.sessions[0].StartupMessage != "restart the watch" {
+	if len(m.sessions) != 1 || m.sessions[0].Resume != ResumeCustom || m.sessions[0].ResumeMessage != "restart the watch" {
 		t.Fatalf("sessions %+v", m.sessions)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "backend.json")); err != nil {
@@ -68,6 +68,26 @@ func TestLoadOldName(t *testing.T) {
 	for _, name := range []string{"state.json", "hooks.json"} {
 		if _, err := os.Stat(filepath.Join(dir, name)); !errors.Is(err, os.ErrNotExist) {
 			t.Errorf("%s still there: %v", name, err)
+		}
+	}
+}
+
+func TestResumeMessage(t *testing.T) {
+	m := &Manager{}
+	for _, c := range []struct {
+		enabled   bool
+		mode, own string
+		want      string
+	}{
+		{false, "", "", ""},
+		{true, "", "", "global"},
+		{true, ResumeOff, "", ""},
+		{false, ResumeCustom, " mine ", "mine"},
+		{true, ResumeCustom, "mine", "mine"},
+	} {
+		m.SetResumeDefault(ResumeDefault{Enabled: c.enabled, Message: "global"})
+		if got := m.resumeMessage(c.mode, c.own); got != c.want {
+			t.Errorf("enabled %v, mode %q, own %q: got %q, want %q", c.enabled, c.mode, c.own, got, c.want)
 		}
 	}
 }

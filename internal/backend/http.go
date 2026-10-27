@@ -37,10 +37,12 @@ func NewHandler(m *Manager, defaultCwd string) http.Handler {
 	api.GET("/events", h.events)
 	api.POST("/sessions", h.create)
 	api.PUT("/sessions/order", h.reorder)
+	api.PUT("/sessions/:id", h.configure)
 	api.PUT("/sessions/:id/group", h.setGroup)
-	api.PUT("/sessions/:id/startup-message", h.setStartupMessage)
+	api.PUT("/resume-default", h.setResumeDefault)
 	api.DELETE("/sessions/:id", h.close)
 	api.POST("/sessions/:id/start", h.start)
+	api.POST("/sessions/:id/restart", h.restart)
 	api.POST("/sessions/:id/seen", h.seen)
 	api.GET("/sessions/:id/term", h.term)
 	api.POST("/groups/rename", h.renameGroup)
@@ -134,11 +136,12 @@ func expandHome(p string) string {
 
 func (h *Handler) create(c *gin.Context) {
 	var req struct {
-		Name           string `json:"name"`
-		Group          string `json:"group"`
-		Cwd            string `json:"cwd"`
-		Args           string `json:"args"`
-		StartupMessage string `json:"startupMessage"`
+		Name          string `json:"name"`
+		Group         string `json:"group"`
+		Cwd           string `json:"cwd"`
+		Args          string `json:"args"`
+		Resume        string `json:"resume"`
+		ResumeMessage string `json:"resumeMessage"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		respond(c, nil, err)
@@ -148,7 +151,7 @@ func (h *Handler) create(c *gin.Context) {
 	if cwd == "" {
 		cwd = h.defaultCwd
 	}
-	s, err := h.m.Create(strings.TrimSpace(req.Name), strings.TrimSpace(req.Group), cwd, strings.TrimSpace(req.StartupMessage), strings.Fields(req.Args))
+	s, err := h.m.Create(strings.TrimSpace(req.Name), strings.TrimSpace(req.Group), cwd, req.Resume, req.ResumeMessage, strings.Fields(req.Args))
 	if err != nil {
 		respond(c, nil, err)
 		return
@@ -168,6 +171,34 @@ func (h *Handler) reorder(c *gin.Context) {
 	respond(c, nil, nil)
 }
 
+// configure takes the tab's settings as Tab settings saves them.
+func (h *Handler) configure(c *gin.Context) {
+	var req struct {
+		Group         string `json:"group"`
+		Cwd           string `json:"cwd" binding:"required"`
+		Args          string `json:"args"`
+		Resume        string `json:"resume"`
+		ResumeMessage string `json:"resumeMessage"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respond(c, nil, err)
+		return
+	}
+	respond(c, nil, h.m.Configure(c.Param("id"), req.Group, expandHome(strings.TrimSpace(req.Cwd)), req.Resume, req.ResumeMessage, strings.Fields(req.Args)))
+}
+
+// setResumeDefault takes the message tabs get when they start again, which
+// the hub sends when it changes.
+func (h *Handler) setResumeDefault(c *gin.Context) {
+	var d ResumeDefault
+	if err := c.ShouldBindJSON(&d); err != nil {
+		respond(c, nil, err)
+		return
+	}
+	h.m.SetResumeDefault(d)
+	respond(c, nil, nil)
+}
+
 func (h *Handler) setGroup(c *gin.Context) {
 	var req struct {
 		Group string `json:"group"`
@@ -177,17 +208,6 @@ func (h *Handler) setGroup(c *gin.Context) {
 		return
 	}
 	respond(c, nil, h.m.SetGroup(c.Param("id"), req.Group))
-}
-
-func (h *Handler) setStartupMessage(c *gin.Context) {
-	var req struct {
-		StartupMessage string `json:"startupMessage"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		respond(c, nil, err)
-		return
-	}
-	respond(c, nil, h.m.SetStartupMessage(c.Param("id"), req.StartupMessage))
 }
 
 func (h *Handler) renameGroup(c *gin.Context) {
@@ -239,9 +259,10 @@ func (l *lines) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func (h *Handler) close(c *gin.Context) { respond(c, nil, h.m.Close(c.Param("id"))) }
-func (h *Handler) start(c *gin.Context) { respond(c, nil, h.m.Start(c.Param("id"))) }
-func (h *Handler) seen(c *gin.Context)  { respond(c, nil, h.m.MarkSeen(c.Param("id"))) }
+func (h *Handler) close(c *gin.Context)   { respond(c, nil, h.m.Close(c.Param("id"))) }
+func (h *Handler) start(c *gin.Context)   { respond(c, nil, h.m.Start(c.Param("id"))) }
+func (h *Handler) restart(c *gin.Context) { respond(c, nil, h.m.Restart(c.Param("id"))) }
+func (h *Handler) seen(c *gin.Context)    { respond(c, nil, h.m.MarkSeen(c.Param("id"))) }
 
 // term bridges a browser terminal to a session's pty. The browser sends
 // JSON text frames ({"t":"in","d":…} or {"t":"resize","c":…,"r":…}); the

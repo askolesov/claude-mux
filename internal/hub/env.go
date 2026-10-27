@@ -3,6 +3,7 @@ package hub
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -38,24 +39,31 @@ const (
 // EnvView is what the page sees of an environment.
 type EnvView struct {
 	EnvConfig
-	State string `json:"state"`
-	Step  string `json:"step,omitempty"` // while connecting: what it is doing
-	Error string `json:"error,omitempty"`
+	State    string `json:"state"`
+	Platform string `json:"platform,omitempty"` // "linux-arm64", once connected
+	Latency  int    `json:"latency,omitempty"`  // ms, the last ping
+	Step     string `json:"step,omitempty"`     // while connecting: what it is doing
+	Error    string `json:"error,omitempty"`
 }
 
 // Env is one environment: a backend the hub runs as its child and talks to
 // over the child's stdin and stdout. A backend that stops is started again.
 type Env struct {
 	EnvConfig
-	prepare  func(step func(string)) ([]string, error) // installs the backend if needed and returns the command that runs it
+	prepare  func(step func(string)) ([]string, string, error) // installs the backend if needed; the command that runs it and the platform
 	onChange func()
+	// onConnect runs once the backend answers, each time.
+	onConnect func(*Env)
 
-	mu      sync.Mutex
-	session *yamux.Session
-	cmd     *exec.Cmd
-	state   string
-	step    string
-	err     string
+	mu        sync.Mutex
+	session   *yamux.Session
+	cmd       *exec.Cmd
+	state     string
+	step      string
+	platform  string
+	latency   time.Duration
+	reconnect bool // the next exit is a reconnect, not a failure
+	err       string
 
 	quit chan struct{} // closed by Close
 	done chan struct{} // closed when Supervise returns
@@ -63,7 +71,7 @@ type Env struct {
 	proxy *httputil.ReverseProxy
 }
 
-func NewEnv(cfg EnvConfig, prepare func(step func(string)) ([]string, error), onChange func()) *Env {
+func NewEnv(cfg EnvConfig, prepare func(step func(string)) ([]string, string, error), onChange func()) *Env {
 	e := &Env{EnvConfig: cfg, prepare: prepare, onChange: onChange, state: StateConnecting,
 		quit: make(chan struct{}), done: make(chan struct{})}
 	e.proxy = &httputil.ReverseProxy{
@@ -83,7 +91,8 @@ func NewEnv(cfg EnvConfig, prepare func(step func(string)) ([]string, error), on
 func (e *Env) View() EnvView {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	return EnvView{EnvConfig: e.EnvConfig, State: e.state, Step: e.step, Error: e.err}
+	return EnvView{EnvConfig: e.EnvConfig, State: e.state, Platform: e.platform, Latency: int(e.latency.Milliseconds()),
+		Step: e.step, Error: e.err}
 }
 
 func (e *Env) setState(state, err string) {
@@ -92,6 +101,56 @@ func (e *Env) setState(state, err string) {
 	e.state, e.err, e.step = state, err, ""
 	e.mu.Unlock()
 	if changed {
+		e.onChange()
+	}
+}
+
+// call sends one request to the backend, with body as JSON.
+func (e *Env) call(method, path string, body any) error {
+	data, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequest(method, "http://backend"+path, bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	res, err := e.proxy.Transport.RoundTrip(req.WithContext(ctx))
+	if err != nil {
+		return err
+	}
+	_ = res.Body.Close()
+	if res.StatusCode >= 300 {
+		return fmt.Errorf("%s %s: %s", method, path, res.Status)
+	}
+	return nil
+}
+
+// Reconnect starts the backend again: the running one hangs up its tabs,
+// and the new one resumes them.
+func (e *Env) Reconnect() {
+	e.mu.Lock()
+	session := e.session
+	if session != nil {
+		e.reconnect = true
+	}
+	e.mu.Unlock()
+	if session != nil {
+		_ = session.Close()
+	}
+}
+
+// setLatency keeps the last ping; the page hears of it when it moves by
+// more than a few ms.
+func (e *Env) setLatency(rtt time.Duration) {
+	e.mu.Lock()
+	diff := rtt - e.latency
+	e.latency = rtt
+	e.mu.Unlock()
+	if diff > 5*time.Millisecond || diff < -5*time.Millisecond {
 		e.onChange()
 	}
 }
@@ -137,6 +196,13 @@ func (e *Env) Supervise() {
 			return
 		default:
 		}
+		e.mu.Lock()
+		again := e.reconnect
+		e.reconnect = false
+		e.mu.Unlock()
+		if again {
+			continue
+		}
 		e.setState(StateFailed, err.Error())
 		fmt.Fprintf(os.Stderr, "env %s: %v; trying again in %s\n", e.Name, err, pause)
 		select {
@@ -152,11 +218,14 @@ func (e *Env) Supervise() {
 // reason: its last line on stderr, if it left one.
 func (e *Env) run() error {
 	e.setState(StateConnecting, "")
-	argv, err := e.prepare(e.setStep)
+	argv, plat, err := e.prepare(e.setStep)
 	e.setStep("starting the backend")
 	if err != nil {
 		return err
 	}
+	e.mu.Lock()
+	e.platform = plat
+	e.mu.Unlock()
 	cmd := sysproc.Hide(exec.Command(argv[0], argv[1:]...))
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -182,8 +251,25 @@ func (e *Env) run() error {
 	e.mu.Unlock()
 	go func() {
 		// Connected once the backend answers; over SSH that can take a while.
-		if _, err := session.Ping(); err == nil {
-			e.setState(StateConnected, "")
+		// Then a ping now and then, for the page to show the latency.
+		rtt, err := session.Ping()
+		if err != nil {
+			return
+		}
+		e.setLatency(rtt)
+		e.setState(StateConnected, "")
+		if e.onConnect != nil {
+			e.onConnect(e)
+		}
+		for {
+			select {
+			case <-session.CloseChan():
+				return
+			case <-time.After(15 * time.Second):
+			}
+			if rtt, err := session.Ping(); err == nil {
+				e.setLatency(rtt)
+			}
 		}
 	}()
 

@@ -59,20 +59,24 @@ func New(stateDir string, backends Backends, connectors Connectors, defaultCwd s
 }
 
 func (h *Hub) newEnv(cfg EnvConfig) *Env {
-	prepare := func(step func(string)) ([]string, error) {
+	prepare := func(step func(string)) ([]string, string, error) {
+		args := []string{"-resume", h.st.get().Settings.Resume.flag()}
 		if cfg.Kind != "local" {
-			return h.connectors.Prepare(cfg, h.backends, step)
+			return h.connectors.Prepare(cfg, h.backends, args, step)
 		}
 		// Installed like any other environment's; the local backend shares
 		// the hub's state directory.
-		src, ver, err := h.backends.Build(runtime.GOOS+"-"+runtime.GOARCH, step)
+		plat := runtime.GOOS + "-" + runtime.GOARCH
+		src, ver, err := h.backends.Build(plat, step)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		bin, err := installLocal(src, filepath.Join(h.stateDir, "bin"), ver)
-		return []string{bin, "-state", h.stateDir, "-cwd", h.defaultCwd}, err
+		return append([]string{bin, "-state", h.stateDir, "-cwd", h.defaultCwd}, args...), plat, err
 	}
-	return NewEnv(cfg, prepare, h.notify)
+	e := NewEnv(cfg, prepare, h.notify)
+	e.onConnect = h.pushResume
+	return e
 }
 
 // Start serves the page on addr and starts the environments' backends. The
@@ -114,6 +118,14 @@ func (h *Hub) Start(addr string) (stop func(), err error) {
 		defer cancel()
 		_ = srv.Shutdown(ctx)
 	}, nil
+}
+
+// pushResume tells an environment's backend the current resume default: it
+// got one at launch, which a change since may have outdated.
+func (h *Hub) pushResume(e *Env) {
+	if err := e.call(http.MethodPut, "/api/resume-default", h.st.get().Settings.Resume); err != nil && !errors.Is(err, errNotConnected) {
+		fmt.Fprintf(os.Stderr, "env %s: resume message: %v\n", e.Name, err)
+	}
 }
 
 // Restart is closed once an update is installed: the hub should stop, and
@@ -281,6 +293,15 @@ func (h *Hub) Handler() http.Handler {
 		}
 		respond(c, h.Reorder(req.Names))
 	})
+	r.POST("/hub/environments/:name/reconnect", func(c *gin.Context) {
+		e := h.env(c.Param("name"))
+		if e == nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "no such environment"})
+			return
+		}
+		e.Reconnect()
+		c.Status(http.StatusNoContent)
+	})
 	r.DELETE("/hub/environments/:name", func(c *gin.Context) { respond(c, h.Remove(c.Param("name"))) })
 	r.PUT("/hub/settings", func(c *gin.Context) {
 		var s Settings
@@ -288,7 +309,13 @@ func (h *Hub) Handler() http.Handler {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		respond(c, h.updates.SetSettings(s))
+		err := h.updates.SetSettings(s)
+		if err == nil {
+			for _, e := range h.list() {
+				go h.pushResume(e)
+			}
+		}
+		respond(c, err)
 	})
 	r.POST("/hub/update/check", func(c *gin.Context) { respond(c, h.updates.Check(c.Request.Context())) })
 	r.POST("/hub/update/skip", func(c *gin.Context) { h.updates.Skip(); c.Status(http.StatusNoContent) })
@@ -353,7 +380,8 @@ func (h *Hub) events(c *gin.Context) {
 	ping := time.NewTicker(20 * time.Second)
 	defer ping.Stop()
 	for {
-		data, _ := json.Marshal(gin.H{"version": h.version, "envs": h.views(), "update": h.updates.View()})
+		data, _ := json.Marshal(gin.H{"version": h.version, "platform": runtime.GOOS + "-" + runtime.GOARCH,
+			"envs": h.views(), "update": h.updates.View(), "settings": h.st.get().Settings})
 		if _, err := c.Writer.Write(append(append([]byte("data: "), data...), '\n', '\n')); err != nil {
 			return
 		}

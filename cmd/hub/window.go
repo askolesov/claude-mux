@@ -21,6 +21,7 @@ func window(ctx context.Context, url string) {
 	w.SetSize(1400, 900, webview.HintNone)
 	nativeMenu()
 	_ = w.Bind("cmuxNotify", notify)
+	_ = w.Bind("cmuxBadge", func(label string) { w.Dispatch(func() { badge(label) }) })
 	w.Navigate(url)
 	closed := make(chan struct{})
 	defer close(closed)

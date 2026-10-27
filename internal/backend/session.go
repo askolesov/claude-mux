@@ -29,12 +29,16 @@ type Session struct {
 	Cwd             string   `json:"cwd"`
 	Args            []string `json:"args,omitempty"`
 	ClaudeSessionID string   `json:"claudeSessionId,omitempty"` // the conversation the tab continues
-	StartupMessage  string   `json:"startupMessage,omitempty"`  // the first prompt whenever its claude starts
+	Resume          string   `json:"resume,omitempty"`          // the first prompt when its claude starts again: "" the default, "custom" ResumeMessage, "off" none
+	ResumeMessage   string   `json:"resumeMessage,omitempty"`
+	StartupMessage  string   `json:"startupMessage,omitempty"` // before v0.5: became Resume "custom"
 
 	mu          sync.Mutex
 	status      Status
 	statusSince time.Time
 	unseen      bool
+	branch      string   // the git branch of Cwd, if it is in a repository
+	restarting  bool     // the next exit starts it again
 	proc        *ptyProc // nil while claude isn't running
 	scrollback  []byte
 	lastOutput  time.Time
@@ -50,10 +54,12 @@ type SessionView struct {
 	Cwd             string    `json:"cwd"`
 	Args            []string  `json:"args"`
 	ClaudeSessionID string    `json:"claudeSessionId"`
-	StartupMessage  string    `json:"startupMessage"`
+	Resume          string    `json:"resume"`
+	ResumeMessage   string    `json:"resumeMessage"`
 	Status          Status    `json:"status"`
 	StatusSince     time.Time `json:"statusSince"`
 	Unseen          bool      `json:"unseen"`
+	Branch          string    `json:"branch"`
 }
 
 func (s *Session) View() SessionView {
@@ -66,10 +72,12 @@ func (s *Session) View() SessionView {
 		Cwd:             s.Cwd,
 		Args:            s.Args,
 		ClaudeSessionID: s.ClaudeSessionID,
-		StartupMessage:  s.StartupMessage,
+		Resume:          s.Resume,
+		ResumeMessage:   s.ResumeMessage,
 		Status:          s.status,
 		StatusSince:     s.statusSince,
 		Unseen:          s.unseen,
+		Branch:          s.branch,
 	}
 }
 

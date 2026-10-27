@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>claude-mux main window</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="min-height: 900px; display: flex; flex-direction: column; background: #0F1115; color: #E6E8EC; font-family: Inter, system-ui, sans-serif; font-size: 13px; line-height: 1.4">
+
+<sc-if value="{{isTop}}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; align-items: center; gap: 6px; padding: 6px 10px; background: #14171C; border-bottom: 1px solid #252A33; overflow-x: auto">
+<div style="display: flex; align-items: center; gap: 8px; padding: 0 8px 0 4px; flex: none">
+<div style="width: 18px; height: 18px; border-radius: 5px; border: 2px solid #7AA2F7; box-sizing: border-box"></div>
+</div>
+<button type="button" style="display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border: 1px solid #2B313C; border-radius: 6px; background: #1B1F26; color: #E6E8EC; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; flex: none">{{topEnv}}<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg><span style="width: 6px; height: 6px; border-radius: 50%; background: #7AA2F7"></span></button>
+<div style="width: 1px; height: 20px; background: #2B313C; margin: 0 4px; flex: none"></div>
+<sc-for list="{{topGroups}}" as="g" hint-placeholder-count="2">
+<div style="display: flex; align-items: center; gap: 2px; flex: none; padding-right: 6px">
+<span style="font-size: 11px; font-weight: 600; color: #8A92A2; padding: 0 6px; text-transform: lowercase">{{g.label}}</span>
+<sc-for list="{{g.tabs}}" as="t" hint-placeholder-count="3">
+<button type="button" onClick="{{t.select}}" style="{{t.topStyle}}">
+<span style="{{t.dotStyle}}"></span>
+<span style="{{t.nameStyle}}">{{t.name}}</span>
+<sc-if value="{{t.isNeeds}}" hint-placeholder-val="{{ false }}"><span style="font-size: 11px; font-weight: 600; color: #F5B14C">needs you</span></sc-if>
+</button>
+</sc-for>
+</div>
+</sc-for>
+<button type="button" aria-label="New tab" style="width: 32px; height: 32px; display: grid; place-items: center; border: 0; border-radius: 6px; background: transparent; color: #9098A8; cursor: pointer; flex: none"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button>
+<div style="flex: 1 1 0"></div>
+<button type="button" style="display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: #9098A8; font: inherit; font-size: 12px; cursor: pointer; flex: none">All tabs <span style="color: #E6E8EC; font-weight: 600">{{total}}</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button>
+<button type="button" style="display: flex; align-items: center; gap: 8px; height: 32px; width: 200px; padding: 0 10px; border: 1px solid #2B313C; border-radius: 6px; background: #0F1115; color: #8A92A2; font: inherit; font-size: 12px; cursor: pointer; flex: none"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg><span style="flex: 1; text-align: left">Jump to tab or action</span><span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; padding: 1px 5px; border: 1px solid #2B313C; border-radius: 4px">⌘K</span></button>
+<a href="Settings.dc.html" aria-label="Settings" style="width: 32px; height: 32px; display: grid; place-items: center; border-radius: 6px; color: #9098A8; flex: none"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"></path><circle cx="15" cy="6" r="2"></circle><circle cx="9" cy="12" r="2"></circle><circle cx="17" cy="18" r="2"></circle></svg></a>
+</div>
+</sc-if>
+
+<div style="flex: 1 1 auto; display: flex; flex-wrap: wrap; min-height: 0">
+
+<sc-if value="{{isLeft}}" hint-placeholder-val="{{ true }}">
+<aside style="flex: 1 1 272px; max-width: 100%; display: flex; flex-direction: column; background: #14171C; border-right: 1px solid #252A33; min-height: 0">
+<div style="display: flex; align-items: center; gap: 8px; padding: 12px 12px 10px 14px">
+<div style="width: 18px; height: 18px; border-radius: 5px; border: 2px solid #7AA2F7; box-sizing: border-box; flex: none"></div>
+<span style="font-weight: 700; font-size: 14px; letter-spacing: -0.01em; flex: 1">claude-mux</span>
+<button type="button" style="display: flex; align-items: center; gap: 4px; height: 28px; padding: 0 10px; border: 0; border-radius: 6px; background: #7AA2F7; color: #0F1115; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>New</button>
+<a href="Settings.dc.html" aria-label="Settings" style="width: 28px; height: 28px; display: grid; place-items: center; border-radius: 6px; color: #9098A8"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"></path><circle cx="15" cy="6" r="2"></circle><circle cx="9" cy="12" r="2"></circle><circle cx="17" cy="18" r="2"></circle></svg></a>
+</div>
+<div style="padding: 0 12px 8px">
+<label style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; border: 1px solid #2B313C; border-radius: 6px; background: #0F1115; color: #8A92A2">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+<input value="{{q}}" onChange="{{onQ}}" placeholder="Filter tabs" aria-label="Filter tabs" style="flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: #E6E8EC; font: inherit; font-size: 13px">
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; padding: 1px 5px; border: 1px solid #2B313C; border-radius: 4px">⌘K</span>
+</label>
+</div>
+<div style="display: flex; gap: 4px; padding: 0 12px 10px; border-bottom: 1px solid #252A33">
+<sc-for list="{{chips}}" as="c" hint-placeholder-count="3">
+<button type="button" onClick="{{c.pick}}" aria-pressed="{{c.on}}" style="{{c.style}}">{{c.label}}<span style="{{c.countStyle}}">{{c.count}}</span></button>
+</sc-for>
+</div>
+<div style="flex: 1 1 auto; overflow-y: auto; padding: 6px 8px 12px">
+<sc-for list="{{envs}}" as="e" hint-placeholder-count="3">
+<div style="margin-top: 8px">
+<div style="display: flex; align-items: center; gap: 8px; padding: 6px 6px 4px">
+<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#8A92A2" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+<span style="font-weight: 600; font-size: 12px; color: #E6E8EC">{{e.label}}</span>
+<span style="font-size: 11px; color: #8A92A2; padding: 0 5px; border: 1px solid #2B313C; border-radius: 4px">{{e.kind}}</span>
+<span style="flex: 1"></span>
+<span style="{{e.healthDot}}"></span>
+<span style="font-size: 11px; color: #8A92A2">{{e.meta}}</span>
+</div>
+<sc-if value="{{e.noClaude}}" hint-placeholder-val="{{ false }}">
+<div style="margin: 4px 6px; padding: 10px 12px; border: 1px dashed #2B313C; border-radius: 8px; color: #9098A8; font-size: 12px">
+<div style="margin-bottom: 8px">No claude in this container yet.</div>
+<div style="display: flex; gap: 6px">
+<button type="button" style="height: 28px; padding: 0 10px; border: 1px solid #3A4A6B; border-radius: 6px; background: #1B2233; color: #AFC6FA; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer">Install…</button>
+<button type="button" style="height: 28px; padding: 0 10px; border: 1px solid #2B313C; border-radius: 6px; background: transparent; color: #C4C9D3; font: inherit; font-size: 12px; cursor: pointer">Retry</button>
+</div>
+</div>
+</sc-if>
+<sc-for list="{{e.groups}}" as="g" hint-placeholder-count="2">
+<div>
+<sc-if value="{{g.hasLabel}}" hint-placeholder-val="{{ true }}">
+<div style="display: flex; align-items: center; gap: 6px; padding: 8px 10px 4px 24px; color: #8A92A2; font-size: 11px; font-weight: 600">
+<span style="flex: 1">{{g.label}}</span><span style="font-weight: 500">{{g.count}}</span>
+</div>
+</sc-if>
+<sc-for list="{{g.tabs}}" as="t" hint-placeholder-count="3">
+<button type="button" onClick="{{t.select}}" style="{{t.rowStyle}}">
+<span style="{{t.dotStyle}}"></span>
+<span style="display: flex; flex-direction: column; flex: 1; min-width: 0">
+<span style="display: flex; align-items: center; gap: 6px"><span style="{{t.nameStyle}}">{{t.name}}</span><sc-if value="{{t.startup}}" hint-placeholder-val="{{ false }}"><span title="Has a startup message" style="font-size: 11px; color: #8A92A2">↻</span></sc-if></span>
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #8A92A2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{t.branch}}</span>
+</span>
+<sc-if value="{{t.isNeeds}}" hint-placeholder-val="{{ false }}"><span style="font-size: 11px; font-weight: 600; color: #0F1115; background: #F5B14C; padding: 1px 6px; border-radius: 999px">needs you</span></sc-if>
+<sc-if value="{{t.unread}}" hint-placeholder-val="{{ false }}"><span style="font-size: 11px; font-weight: 600; color: #4FD18B">done</span></sc-if>
+<sc-if value="{{t.showKey}}" hint-placeholder-val="{{ true }}"><span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #8A92A2">{{t.key}}</span></sc-if>
+</button>
+</sc-for>
+</div>
+</sc-for>
+</div>
+</sc-for>
+</div>
+</aside>
+</sc-if>
+
+<main style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; background: #0F1115">
+<div style="display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid #252A33; flex-wrap: wrap">
+<span style="{{cur.dotStyle}}"></span>
+<span style="font-weight: 600; font-size: 15px">{{cur.name}}</span>
+<span style="{{cur.pillStyle}}">{{cur.statusLabel}}</span>
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #9098A8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1 1 200px">{{cur.crumb}}</span>
+<div style="display: flex; gap: 2px">
+<button type="button" onClick="{{toggleSplit}}" aria-label="Split view" aria-pressed="{{split}}" style="{{splitBtn}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M12 4v16"></path></svg></button>
+<button type="button" onClick="{{toggleDetails}}" aria-label="Tab details" aria-pressed="{{details}}" style="{{detailsBtn}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M15 4v16"></path></svg></button>
+<button type="button" aria-label="More actions" style="width: 32px; height: 32px; display: grid; place-items: center; border: 0; border-radius: 6px; background: transparent; color: #9098A8; cursor: pointer"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"></circle><circle cx="12" cy="12" r="1.8"></circle><circle cx="19" cy="12" r="1.8"></circle></svg></button>
+</div>
+</div>
+<div style="flex: 1 1 auto; display: flex; flex-wrap: wrap; gap: 8px; padding: 8px; min-height: 0">
+<sc-for list="{{panes}}" as="p" hint-placeholder-count="1">
+<section style="{{p.paneStyle}}" aria-label="{{p.name}}">
+<sc-if value="{{p.showHead}}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid #1E222A; background: #12151A">
+<span style="{{p.dotStyle}}"></span><span style="font-weight: 600; font-size: 12px">{{p.name}}</span><span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #8A92A2; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{p.branch}}</span>
+<button type="button" aria-label="Close pane" style="width: 24px; height: 24px; display: grid; place-items: center; border: 0; border-radius: 4px; background: transparent; color: #8A92A2; cursor: pointer"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg></button>
+</div>
+</sc-if>
+<div style="flex: 1 1 auto; padding: 14px 16px; font-family: 'JetBrains Mono', monospace; font-size: 13px; line-height: 1.65; overflow: hidden; display: flex; flex-direction: column; gap: 0">
+<sc-for list="{{p.lines}}" as="l" hint-placeholder-count="8">
+<div>
+<sc-if value="{{l.isText}}" hint-placeholder-val="{{ true }}"><div style="{{l.style}}">{{l.t}}</div></sc-if>
+<sc-if value="{{l.isBox}}" hint-placeholder-val="{{ false }}">
+<div style="margin: 10px 0; padding: 10px 14px; border: 1px solid #F5B14C; border-radius: 6px; color: #D7DAE0">
+<div style="color: #F5B14C; font-weight: 500">Bash command</div>
+<div style="padding: 4px 0 8px 12px; color: #E6E8EC">go test ./internal/invoice/...</div>
+<div style="color: #D7DAE0">Do you want to proceed?</div>
+<div style="color: #7AA2F7">❯ 1. Yes</div>
+<div style="color: #9098A8">  2. Yes, and don't ask again for go test commands</div>
+<div style="color: #9098A8">  3. No, and tell Claude what to do differently (esc)</div>
+</div>
+</sc-if>
+<sc-if value="{{l.isPrompt}}" hint-placeholder-val="{{ false }}">
+<div style="margin-top: 10px; padding: 6px 12px; border: 1px solid #3A3F4A; border-radius: 6px; color: #E6E8EC; display: flex; gap: 8px"><span style="color: #9098A8">&gt;</span><span style="width: 8px; height: 18px; background: #C4C9D3"></span></div>
+<div style="color: #8A92A2; font-size: 12px; padding: 2px 12px">? for shortcuts</div>
+</sc-if>
+</div>
+</sc-for>
+<sc-if value="{{p.exited}}" hint-placeholder-val="{{ false }}">
+<div style="margin: auto; text-align: center; font-family: Inter, system-ui, sans-serif; color: #9098A8">
+<div style="font-size: 14px; color: #E6E8EC; font-weight: 600; margin-bottom: 4px">claude exited</div>
+<div style="font-size: 12px; margin-bottom: 12px">/exit at 14:02. The conversation is kept.</div>
+<button type="button" style="height: 32px; padding: 0 14px; border: 0; border-radius: 6px; background: #7AA2F7; color: #0F1115; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">Resume</button>
+</div>
+</sc-if>
+</div>
+</section>
+</sc-for>
+</div>
+</main>
+
+<sc-if value="{{details}}" hint-placeholder-val="{{ true }}">
+<aside aria-label="Tab details" style="flex: 1 1 280px; max-width: 100%; background: #14171C; border-left: 1px solid #252A33; padding: 14px 16px; display: flex; flex-direction: column; gap: 14px">
+<div style="display: flex; align-items: center"><span style="font-weight: 600; font-size: 13px; flex: 1">Details</span><button type="button" onClick="{{toggleDetails}}" aria-label="Hide details" style="width: 24px; height: 24px; display: grid; place-items: center; border: 0; border-radius: 4px; background: transparent; color: #8A92A2; cursor: pointer"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg></button></div>
+<div style="display: flex; flex-direction: column; gap: 10px">
+<sc-for list="{{cur.rows}}" as="r" hint-placeholder-count="8">
+<div style="display: flex; flex-direction: column; gap: 2px">
+<span style="font-size: 11px; color: #8A92A2">{{r.k}}</span>
+<span style="{{r.style}}">{{r.v}}</span>
+</div>
+</sc-for>
+</div>
+<div style="height: 1px; background: #252A33"></div>
+<div style="display: flex; flex-direction: column; gap: 6px">
+<span style="font-size: 11px; color: #8A92A2">Startup message</span>
+<div style="font-size: 12px; color: #C4C9D3; padding: 8px 10px; border: 1px dashed #2B313C; border-radius: 6px">{{cur.startupText}}</div>
+</div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-top: auto">
+<button type="button" style="height: 30px; border: 1px solid #2B313C; border-radius: 6px; background: #1B1F26; color: #E6E8EC; font: inherit; font-size: 12px; cursor: pointer">Restart</button>
+<button type="button" style="height: 30px; border: 1px solid #2B313C; border-radius: 6px; background: #1B1F26; color: #E6E8EC; font: inherit; font-size: 12px; cursor: pointer">Duplicate</button>
+<button type="button" style="height: 30px; border: 1px solid #2B313C; border-radius: 6px; background: #1B1F26; color: #E6E8EC; font: inherit; font-size: 12px; cursor: pointer">Open in Finder</button>
+<button type="button" style="height: 30px; border: 1px solid #5A2E33; border-radius: 6px; background: transparent; color: #F38B8B; font: inherit; font-size: 12px; cursor: pointer">Close tab</button>
+</div>
+</aside>
+</sc-if>
+
+</div>
+
+<footer style="display: flex; align-items: center; gap: 14px; padding: 0 12px; height: 28px; background: #14171C; border-top: 1px solid #252A33; font-size: 11px; color: #9098A8; overflow-x: auto; white-space: nowrap">
+<sc-for list="{{envs}}" as="e" hint-placeholder-count="3">
+<span style="display: flex; align-items: center; gap: 6px"><span style="{{e.healthDot}}"></span>{{e.label}} <span style="color: #8A92A2">{{e.meta}}</span></span>
+</sc-for>
+<span style="flex: 1"></span>
+<span style="color: #7AA2F7">{{counts.working}} working</span>
+<span style="color: #F5B14C">{{counts.needs}} needs you</span>
+<span style="color: #4FD18B">{{counts.unread}} done, unseen</span>
+<span style="width: 1px; height: 12px; background: #2B313C"></span>
+<span>⌘K switch · ⌥J next waiting</span>
+<span>v0.9.2</span>
+</footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"layout":{"editor":"enum","options":["left","top"],"default":"left","section":"Layout"},"details":{"editor":"boolean","default":true,"section":"Layout"},"split":{"editor":"boolean","default":false,"section":"Layout"},"activeTab":{"editor":"enum","options":["rpc-gateway","billing-fix","docs-site","terraform-plan","k8s-watch","release-v0.9","flaky-tests"],"default":"billing-fix","section":"Layout"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const s = this.state || {};
+    const P = this.props;
+    const layout = s.layout || P.layout || 'left';
+    const split = s.split !== undefined ? s.split : (P.split !== undefined ? P.split : false);
+    const details = s.details !== undefined ? s.details : (P.details !== undefined ? P.details : true);
+    const activeId = s.active || P.activeTab || 'billing-fix';
+    const q = (s.q || '').toLowerCase();
+    const filter = s.filter || 'all';
+    const COL = { working: '#7AA2F7', ready: '#4FD18B', needs: '#F5B14C', exited: '#6B7383' };
+    const HALO = { working: 'rgba(122,162,247,0.22)', needs: 'rgba(245,177,76,0.22)', ready: 'rgba(79,209,139,0.18)' };
+    const LABEL = { working: 'Working', ready: 'Ready', needs: 'Needs you', exited: 'Exited' };
+    const TABS = [
+      { id: 'rpc-gateway', name: 'rpc-gateway', env: 'local', group: 'api', cwd: '~/src/rpc-gateway', branch: 'feat/rate-limits', model: 'opus', status: 'working', session: '3f9c2a1e', up: '2h 14m', last: 'now · running go test', args: '--permission-mode acceptEdits' },
+      { id: 'billing-fix', name: 'billing-fix', env: 'local', group: 'api', cwd: '~/src/billing', branch: 'fix/invoice-rounding', model: 'sonnet', status: 'needs', session: 'a71d0b94', up: '38m', last: '12s ago · permission prompt', args: 'none' },
+      { id: 'docs-site', name: 'docs-site', env: 'local', group: 'api', cwd: '~/src/docs', branch: 'main', model: 'sonnet', status: 'ready', unread: true, session: '0be44c7f', up: '1h 02m', last: '3m ago · finished', args: 'none' },
+      { id: 'terraform-plan', name: 'terraform-plan', env: 'local', group: 'infra', cwd: '~/infra/terraform', branch: 'main', model: 'opus', status: 'ready', session: '9e1f7730', up: '5h 40m', last: '41m ago', args: 'none' },
+      { id: 'k8s-watch', name: 'k8s-watch', env: 'local', group: 'infra', cwd: '~/infra/k8s', branch: 'main', model: 'haiku', status: 'working', startup: 'Watch the staging rollout and tell me when a pod crash-loops.', session: '55c8e012', up: '3d 2h', last: 'now · watching', args: '--dangerously-skip-permissions' },
+      { id: 'release-v0.9', name: 'release-v0.9', env: 'build-box', group: '', cwd: '/srv/claude-mux', branch: 'release/v0.9', model: 'opus', status: 'working', session: 'c2b6e9d1', up: '22m', last: 'now · building', args: 'none' },
+      { id: 'flaky-tests', name: 'flaky-tests', env: 'build-box', group: '', cwd: '/srv/claude-mux', branch: 'main', model: 'sonnet', status: 'exited', session: '7a0d33bf', up: '–', last: '14:02 · /exit', args: 'none' }
+    ];
+    const byId = {};
+    TABS.forEach((t, i) => { byId[t.id] = t; t.key = '⌥' + (i + 1); });
+    const dot = (st, size) => {
+      const d = size || 8;
+      if (st === 'exited') return 'width:' + d + 'px;height:' + d + 'px;border-radius:50%;border:1.5px solid #6B7383;box-sizing:border-box;flex:none';
+      return 'width:' + d + 'px;height:' + d + 'px;border-radius:50%;background:' + COL[st] + ';flex:none;' + (HALO[st] && st !== 'ready' ? 'box-shadow:0 0 0 3px ' + HALO[st] : '');
+    };
+    const dec = (t) => {
+      const active = t.id === activeId;
+      const bold = active || t.unread || t.status === 'needs';
+      const envObj = t.env === 'local' ? 'local' : t.env;
+      return Object.assign({}, t, {
+        isNeeds: t.status === 'needs',
+        startup: !!t.startup,
+        unread: !!t.unread,
+        showKey: t.status !== 'needs' && !t.unread,
+        dotStyle: dot(t.status),
+        nameStyle: 'font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:' + (bold ? '600' : '400') + ';color:' + (t.status === 'exited' ? '#8A92A2' : '#E6E8EC'),
+        rowStyle: 'display:flex;align-items:center;gap:10px;width:100%;padding:6px 10px 6px 24px;margin:1px 0;border:0;border-radius:6px;cursor:pointer;text-align:left;font:inherit;color:inherit;background:' + (active ? '#232834' : 'transparent'),
+        topStyle: 'display:flex;align-items:center;gap:8px;height:32px;padding:0 12px;border:0;border-radius:6px;font:inherit;cursor:pointer;flex:none;color:#E6E8EC;background:' + (active ? '#232834' : 'transparent') + (active ? ';box-shadow:inset 0 -2px 0 #7AA2F7' : ''),
+        statusLabel: LABEL[t.status],
+        pillStyle: 'font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;color:' + COL[t.status] + ';background:' + (HALO[t.status] || 'rgba(107,115,131,0.2)'),
+        crumb: envObj + ' / ' + (t.group || '—') + '  ·  ' + t.cwd + '  ·  ' + t.branch,
+        select: () => this.setState({ active: t.id })
+      });
+    };
+    const match = (t) => {
+      if (q && t.name.toLowerCase().indexOf(q) < 0) return false;
+      if (filter === 'waiting') return t.status === 'needs' || t.unread;
+      if (filter === 'working') return t.status === 'working';
+      return true;
+    };
+    const counts = {
+      working: TABS.filter((t) => t.status === 'working').length,
+      needs: TABS.filter((t) => t.status === 'needs').length,
+      unread: TABS.filter((t) => t.unread).length
+    };
+    const chipDefs = [['all', 'All', TABS.length], ['waiting', 'Waiting', counts.needs + counts.unread], ['working', 'Working', counts.working]];
+    const chips = chipDefs.map((c) => ({
+      label: c[1], count: c[2], on: filter === c[0],
+      pick: () => this.setState({ filter: c[0] }),
+      style: 'display:flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:999px;font:inherit;font-size:12px;cursor:pointer;border:1px solid ' + (filter === c[0] ? '#3A4A6B' : '#2B313C') + ';background:' + (filter === c[0] ? '#1B2233' : 'transparent') + ';color:' + (filter === c[0] ? '#AFC6FA' : '#9098A8'),
+      countStyle: 'font-weight:600;color:' + (c[0] === 'waiting' ? '#F5B14C' : (filter === c[0] ? '#AFC6FA' : '#C4C9D3'))
+    }));
+    const envDefs = [
+      { id: 'local', label: 'local', kind: 'this Mac', meta: 'connected', health: '#4FD18B' },
+      { id: 'build-box', label: 'build-box', kind: 'ssh', meta: '42 ms', health: '#4FD18B' },
+      { id: 'sandbox', label: 'sandbox', kind: 'docker', meta: 'no claude', health: '#F5B14C', noClaude: true }
+    ];
+    const envs = envDefs.map((e) => {
+      const tabs = TABS.filter((t) => t.env === e.id && match(t));
+      const gNames = [];
+      tabs.forEach((t) => { if (gNames.indexOf(t.group) < 0) gNames.push(t.group); });
+      return Object.assign({}, e, {
+        noClaude: !!e.noClaude,
+        healthDot: 'width:6px;height:6px;border-radius:50%;flex:none;background:' + e.health,
+        groups: gNames.map((g) => {
+          const gt = tabs.filter((t) => t.group === g);
+          return { label: g, hasLabel: !!g, count: gt.length, tabs: gt.map(dec) };
+        })
+      });
+    });
+    const cur0 = byId[activeId] || byId['billing-fix'];
+    const cur = dec(cur0);
+    const mono = 'font-family:JetBrains Mono,monospace;font-size:12px;color:#E6E8EC;word-break:break-all';
+    cur.rows = [
+      { k: 'Status', v: cur.statusLabel + ' · ' + cur0.last, style: 'font-size:12px;color:' + COL[cur0.status] },
+      { k: 'Environment', v: cur0.env + (cur0.env === 'build-box' ? ' (ssh)' : ' (this Mac)'), style: 'font-size:12px;color:#E6E8EC' },
+      { k: 'Directory', v: cur0.cwd, style: mono },
+      { k: 'Git branch', v: cur0.branch, style: mono },
+      { k: 'Model', v: cur0.model, style: mono },
+      { k: 'Extra args', v: cur0.args, style: mono },
+      { k: 'Session', v: cur0.session, style: mono },
+      { k: 'Running for', v: cur0.up, style: 'font-size:12px;color:#E6E8EC' }
+    ];
+    cur.startupText = cur0.startup || 'None. Sent as the first prompt whenever this tab starts.';
+    const topEnv = cur0.env;
+    const topTabs = TABS.filter((t) => t.env === topEnv);
+    const tg = [];
+    topTabs.forEach((t) => { if (tg.indexOf(t.group) < 0) tg.push(t.group); });
+    const topGroups = tg.map((g) => ({ label: g || topEnv, tabs: topTabs.filter((t) => t.group === g).map(dec) }));
+    const T = (t, c) => ({ isText: true, t: t, style: 'white-space:pre-wrap;color:' + (c || '#D7DAE0') });
+    const lines = (t) => {
+      if (t.id === 'billing-fix') return [
+        T('> fix the rounding on multi-currency invoices, totals are off by a cent', '#9098A8'), T(' '),
+        T('● Read(internal/invoice/total.go)', '#E6E8EC'), T('● Read(internal/invoice/total_test.go)', '#E6E8EC'), T(' '),
+        T('  The total is summed in float64 and rounded once. The ledger rounds per line,'), T('  so I will switch to integer minor units and round each line.'), T(' '),
+        T('● Update(internal/invoice/total.go)', '#E6E8EC'), T('  ⎿  Added 14 lines, removed 9 lines', '#9098A8'), T(' '),
+        { isBox: true }
+      ];
+      if (t.status === 'working') return [
+        T('> add per-key rate limits to the gateway, 100 rps default, config override', '#9098A8'), T(' '),
+        T('● Read(internal/limit/bucket.go)', '#E6E8EC'), T('● Read(config/gateway.yaml)', '#E6E8EC'), T(' '),
+        T('  Token bucket per API key, refilled on read. Overrides live under limits.keys.'), T(' '),
+        T('● Update(internal/limit/bucket.go)', '#E6E8EC'), T('  ⎿  Added 38 lines, removed 4 lines', '#9098A8'),
+        T('● Bash(go test ./internal/limit/...)', '#E6E8EC'), T('  ⎿  Running…', '#9098A8'), T(' '),
+        T('✻ Testing… (42s · esc to interrupt)', '#7AA2F7')
+      ];
+      if (t.status === 'exited') return [T('> find why TestReconnect flakes on CI', '#9098A8'), T('● Bash(go test -run TestReconnect -count 50 ./internal/hub)', '#E6E8EC'), T('  ⎿  ok  (50 runs, 0 failures)', '#9098A8'), T('> /exit', '#9098A8')];
+      return [
+        T('> update the README for the new config keys', '#9098A8'), T(' '),
+        T('● Update(README.md)', '#E6E8EC'), T('  ⎿  Added 12 lines', '#9098A8'), T(' '),
+        T('  Done. The new keys are documented under Configuration, with defaults.'),
+        { isPrompt: true }
+      ];
+    };
+    const second = activeId === 'rpc-gateway' ? 'billing-fix' : 'rpc-gateway';
+    const paneIds = split ? [activeId, second] : [activeId];
+    const panes = paneIds.map((id, i) => {
+      const t = dec(byId[id]);
+      return Object.assign(t, {
+        lines: lines(byId[id]).map((l) => Object.assign({ isText: false, isBox: false, isPrompt: false }, l)),
+        exited: byId[id].status === 'exited',
+        showHead: split,
+        paneStyle: 'flex:1 1 360px;min-width:0;display:flex;flex-direction:column;background:#0B0D10;border-radius:8px;overflow:hidden;border:1px solid ' + (split && i === 0 ? '#3A4A6B' : '#1E222A')
+      });
+    });
+    const iconBtn = (on) => 'width:32px;height:32px;display:grid;place-items:center;border:0;border-radius:6px;cursor:pointer;background:' + (on ? '#232834' : 'transparent') + ';color:' + (on ? '#AFC6FA' : '#9098A8');
+    return {
+      isLeft: layout === 'left', isTop: layout === 'top', split: split, details: details,
+      q: s.q || '', onQ: (e) => this.setState({ q: e.target.value }),
+      chips: chips, envs: envs, counts: counts, total: TABS.length,
+      cur: cur, panes: panes, topEnv: topEnv, topGroups: topGroups,
+      splitBtn: iconBtn(split), detailsBtn: iconBtn(details),
+      toggleSplit: () => this.setState({ split: !split }),
+      toggleDetails: () => this.setState({ details: !details })
+    };
+  }
+}
+</script>
+</body>
+</html>

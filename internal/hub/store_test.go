@@ -23,7 +23,7 @@ func TestStoreMigrates(t *testing.T) {
 	}
 	check := func(s hubState) {
 		t.Helper()
-		if s.Settings != (Settings{CheckUpdates: false, EveryDays: 3}) || s.Update.Skip != "v0.3.1" {
+		if s.Settings.CheckUpdates || s.Settings.EveryDays != 3 || s.Update.Skip != "v0.3.1" {
 			t.Errorf("settings %+v, update %+v", s.Settings, s.Update)
 		}
 		if len(s.Environments) != 2 || s.Environments[0].Kind != "local" || s.Environments[1].Name != "devbox" {

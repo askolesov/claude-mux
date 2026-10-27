@@ -330,31 +330,32 @@ func run(argv []string, stdin io.Reader) ([]byte, error) {
 
 // Prepare installs the backend in an environment if the right build isn't
 // there yet, under ~/.claude-mux/bin/<version>/, and returns the command that
-// runs it. step says what it is doing, for the page.
-func (c Connectors) Prepare(cfg EnvConfig, b Backends, step func(string)) ([]string, error) {
+// runs it, with args (which must need no quoting), and the environment's
+// platform. step says what it is doing, for the page.
+func (c Connectors) Prepare(cfg EnvConfig, b Backends, args []string, step func(string)) (argv []string, plat string, err error) {
 	shell, err := c.shell(cfg)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	step("checking the platform")
 	uname, err := run(shell("uname -sm"), nil)
 	if err != nil {
-		return nil, fmt.Errorf("%s %s: %w", cfg.Kind, cfg.Target, err)
+		return nil, "", fmt.Errorf("%s %s: %w", cfg.Kind, cfg.Target, err)
 	}
 	p, err := platform(string(uname))
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	file, ver, err := b.Build(p, step)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	dir := "$HOME/.claude-mux/bin/" + ver
 	bin := dir + "/claude-mux-backend"
 	if _, err := run(shell("test -x "+bin), nil); err != nil {
 		f, err := os.Open(file)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		defer func() { _ = f.Close() }()
 		var size int64
@@ -368,8 +369,8 @@ func (c Connectors) Prepare(cfg EnvConfig, b Backends, step func(string)) ([]str
 		install := fmt.Sprintf("mkdir -p %s && cat > %s.tmp && chmod +x %s.tmp && mv %s.tmp %s && "+
 			"find $HOME/.claude-mux/bin -mindepth 1 -maxdepth 1 ! -name %s -exec rm -rf {} +", dir, bin, bin, bin, bin, ver)
 		if _, err := run(shell(install), copying); err != nil {
-			return nil, fmt.Errorf("installing the backend in %s: %w", cfg.Target, err)
+			return nil, "", fmt.Errorf("installing the backend in %s: %w", cfg.Target, err)
 		}
 	}
-	return shell("exec " + bin), nil
+	return shell(strings.Join(append([]string{"exec", bin}, args...), " ")), p, nil
 }

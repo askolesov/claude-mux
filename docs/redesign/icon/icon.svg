@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 64 64">
+  <title>claude-mux</title>
+  <rect width="64" height="64" rx="14" fill="#161A21"/>
+  <rect x="20" y="10" width="34" height="27" rx="5" fill="#232834"/>
+  <rect x="15" y="16" width="34" height="27" rx="5" fill="#2E3542"/>
+  <rect x="10" y="22" width="36" height="30" rx="5" fill="#0B0D10" stroke="#7AA2F7" stroke-width="2.5"/>
+  <path d="M17 31l6 5-6 5" fill="none" stroke="#E6E8EC" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M27 42h10" stroke="#E6E8EC" stroke-width="3" stroke-linecap="round"/>
+</svg>

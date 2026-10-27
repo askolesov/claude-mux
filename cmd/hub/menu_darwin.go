@@ -6,6 +6,7 @@ package main
 #cgo CFLAGS: -x objective-c
 #cgo LDFLAGS: -framework Cocoa
 #import <Cocoa/Cocoa.h>
+#include <stdlib.h>
 
 static NSMenuItem *item(NSString *title, SEL action, NSString *key) {
 	return [[NSMenuItem alloc] initWithTitle:title action:action keyEquivalent:key];
@@ -51,9 +52,22 @@ static void nativeMenu(void) {
 	[NSApp setMainMenu:bar];
 	[NSApp setWindowsMenu:win];
 }
+static void setBadge(const char *label) {
+	[[NSApp dockTile] setBadgeLabel:(label[0] ? [NSString stringWithUTF8String:label] : nil)];
+}
 */
 import "C"
+
+import "unsafe"
 
 // nativeMenu gives the app the menus a Mac app has: without an Edit menu a
 // web view takes no ⌘C or ⌘V.
 func nativeMenu() { C.nativeMenu() }
+
+// badge sets the Dock icon's badge: the count of tabs that wait, or ""
+// for none. Run it on the main thread.
+func badge(label string) {
+	s := C.CString(label)
+	defer C.free(unsafe.Pointer(s))
+	C.setBadge(s)
+}
