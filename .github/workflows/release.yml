@@ -40,7 +40,9 @@ jobs:
           # browser, and keeps its console, which closing quits it.
           GOOS=windows GOARCH=arm64 go build -trimpath -ldflags="-s -X main.version=$VERSION" -o dist/claude-mux-windows-arm64.exe ./cmd/hub
       - uses: actions/upload-artifact@v4
-        with: { name: backends, path: dist/* }
+        with:
+          name: backends
+          path: dist/*
 
   mac:
     runs-on: macos-latest
@@ -55,7 +57,9 @@ jobs:
           mkdir dist
           ditto -c -k --keepParent out/claude-mux.app dist/claude-mux-mac.zip
       - uses: actions/upload-artifact@v4
-        with: { name: mac, path: dist/* }
+        with:
+          name: mac
+          path: dist/*
 
   windows:
     runs-on: windows-latest
@@ -72,7 +76,9 @@ jobs:
       - name: Build
         run: go build -trimpath -ldflags="-s -H=windowsgui -X main.version=$VERSION" -o dist/claude-mux-windows-amd64.exe ./cmd/hub
       - uses: actions/upload-artifact@v4
-        with: { name: windows, path: dist/* }
+        with:
+          name: windows
+          path: dist/*
 
   linux:
     strategy:
@@ -97,7 +103,9 @@ jobs:
           printf 'Name: webkit2gtk-4.0\nDescription: webkit2gtk-4.1 by the old name\nVersion: 2.0\nRequires: webkit2gtk-4.1\n' > pc/webkit2gtk-4.0.pc
           PKG_CONFIG_PATH=$PWD/pc go build -trimpath -ldflags="-s -X main.version=$VERSION" -o dist/claude-mux-linux-${{ matrix.arch }} ./cmd/hub
       - uses: actions/upload-artifact@v4
-        with: { name: linux-${{ matrix.arch }}, path: dist/* }
+        with:
+          name: linux-${{ matrix.arch }}
+          path: dist/*
 
   release:
     if: startsWith(github.ref, 'refs/tags/')
@@ -105,7 +113,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
-        with: { path: dist, merge-multiple: true }
+        with:
+          path: dist
+          merge-multiple: true
       - run: cd dist && sha256sum * > checksums.txt && ls -l
       - name: Publish
         env:
