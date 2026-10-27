@@ -11,12 +11,14 @@ import (
 	"time"
 
 	"github.com/askolesov/claude-mux/internal/backend"
+	"github.com/askolesov/claude-mux/internal/migrate"
 )
 
 // hubState is hub.json, everything the hub keeps: its settings, the
 // environments in sidebar order (local among them), and what the update
-// check last found.
+// check last found. It is at version len(hubSteps(…)), migrations.go.
 type hubState struct {
+	Version      int         `json:"version"`
 	Settings     Settings    `json:"settings"`
 	Environments []EnvConfig `json:"environments"`
 	Update       updateState `json:"update"`
@@ -57,17 +59,26 @@ type store struct {
 func openStore(dir string) (*store, error) {
 	st := &store{path: filepath.Join(dir, "hub.json")}
 	st.s.Settings = Settings{CheckUpdates: true, EveryDays: 1, Resume: backend.ResumeDefault{Message: defaultResumeMessage}}
-	data, err := os.ReadFile(st.path)
-	switch {
-	case err == nil:
-		if err := json.Unmarshal(data, &st.s); err != nil {
-			return nil, fmt.Errorf("%s: %w", st.path, err)
-		}
-	case !errors.Is(err, os.ErrNotExist):
+	steps := hubSteps(dir)
+	data, upgraded, err := migrate.Load(st.path, steps)
+	if err == nil && data == nil {
+		// A first start, or one from before v0.4 with only environments.json,
+		// which step 1 reads.
+		data, upgraded, err = migrate.Upgrade([]byte("{}"), steps)
+	}
+	if err != nil {
 		return nil, err
 	}
+	if err := json.Unmarshal(data, &st.s); err != nil {
+		return nil, fmt.Errorf("%s: %w", st.path, err)
+	}
+	st.s.Version = len(steps)
 	if !slices.ContainsFunc(st.s.Environments, func(e EnvConfig) bool { return e.Kind == KindLocal }) {
 		st.s.Environments = append([]EnvConfig{{Name: "local", Kind: KindLocal}}, st.s.Environments...)
+	}
+	if upgraded {
+		st.change(func(*hubState) {})
+		_ = os.Rename(filepath.Join(dir, "environments.json"), filepath.Join(dir, "environments.json.bak"))
 	}
 	return st, nil
 }

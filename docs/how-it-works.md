@@ -118,7 +118,7 @@ The hub's own API is `/hub/...`:
 | `GET /hub/events` | SSE: version, platform, environments, update state, settings, on every change |
 | `GET /hub/info` | version and the kinds of environment this machine can add |
 | `GET /hub/targets/:kind` | what can be added: hosts from `~/.ssh/config`, running containers, WSL distros |
-| `POST /hub/environments`, `DELETE /hub/environments/:name` | add, remove |
+| `POST /hub/environments`, `PUT /hub/environments/:name`, `DELETE /hub/environments/:name` | add, rename (not local), remove |
 | `PUT /hub/environments/order` | reorder (local included) |
 | `POST /hub/environments/:name/reconnect` | start that backend again |
 | `PUT /hub/settings` | every hub setting at once (the page's own, too) |
@@ -130,8 +130,9 @@ And a backend's, under `/env/<name>`:
 |---|---|
 | `GET /api/state`, `GET /api/events` | the tabs, claude's path and version, the default directory; SSE on every change |
 | `POST /api/sessions` | new tab |
-| `PUT /api/sessions/:id` | Tab settings: group, directory, args, resume message |
-| `PUT /api/sessions/order`, `PUT /api/sessions/:id/group`, `POST /api/groups/rename` | order and groups |
+| `PUT /api/sessions/:id` | Tab settings: group (parent), directory, args, resume message |
+| `POST /api/groups`, `PUT /api/groups/:id`, `DELETE /api/groups/:id` | new group, rename, delete (its contents move up) |
+| `PUT /api/nodes/:id/place` | move a tab or a group: `{parent, before \| after}` |
 | `POST /api/sessions/:id/start`, `/restart`, `/seen`; `DELETE /api/sessions/:id` | lifecycle |
 | `GET /api/sessions/:id/term` | the terminal, a WebSocket |
 | `PUT /api/resume-default` | the hub's resume message, on change and on connect |
@@ -193,14 +194,32 @@ backend's event stream.
 
 ## Tabs: the backend
 
-`internal/backend/manager.go` holds the tabs in sidebar order. Each is a
-`Session` (`session.go`), with what is saved in `backend.json`:
+`internal/backend/manager.go` holds the tabs and the groups they sit in.
+
+**The tree** (`tree.go`). An environment holds groups and tabs; a group
+holds the same, to any depth; groups and tabs mix in one order. Each node
+is stored flat, with its `parent` (a group's id, or none for the
+environment) and an `order` key. The key is a fractional index: a base-62
+fraction compared as a plain string, the same in Go and in the page. A move
+gives one node a key between its new neighbours' and touches nothing else.
+A group can't be moved into itself or anything inside it, and deleting one
+moves its contents up into its place.
+
+```mermaid
+flowchart LR
+    env["local"] --> api["group: api"] & notes["tab: notes"]
+    api --> fix["tab: api-fix"] & pay["group: payments"]
+    pay --> ledger["tab: ledger"]
+```
+
+A group is `{id, name, parent, order}`. A tab is a `Session`
+(`session.go`), with what is saved in `backend.json`:
 
 | Field | |
 |---|---|
 | `id` | 8 hex characters, the tab's key |
 | `name` | follows claude's own name for the session |
-| `group` | a label; tabs of one group are kept together, where its first tab is |
+| `parent`, `order` | where it sits in the tree |
 | `cwd`, `args` | where claude starts, and its extra arguments |
 | `claudeSessionId` | the conversation the tab continues, from its hooks |
 | `resume`, `resumeMessage` | what it is told when it starts again (below) |
@@ -337,6 +356,10 @@ JetBrains Mono are in `vendor/`, so the page needs no internet.
   the app's window and a browser share them. A copy in `localStorage`
   paints the first frame. Folded groups, the sidebar width and the last tab
   per directory stay per browser.
+- The sidebar is an ARIA tree. Rows are `treeitem`s with `aria-level`, and
+  containers have `aria-expanded`. The keys are ↑↓←→, Enter, Home/End, F2 to
+  rename and type-ahead. Drag-and-drop works out the target depth from the
+  pointer's x.
 - When `/hub/events` reports a different hub version (after an update),
   the page reloads.
 - The app's window is a bare web view, which answers `confirm()` and
@@ -397,11 +420,29 @@ never check.
 
 ## Files and locks
 
+Both state files carry a `version`. Every change to a file's shape is a
+numbered step in that file's migrations (`internal/backend/migrations.go`,
+`internal/hub/migrations.go`), run by `internal/migrate`:
+
+- Steps upgrade the raw JSON one version at a time, so a file from any
+  release reads in the current one.
+- Before writing an upgraded file, the old one is kept as
+  `<file>.v<version>.bak`.
+- A file from a newer release is refused, never overwritten.
+- Steps are never removed or changed once released, and each has a test
+  with a file of the version before it.
+
+Version 1 is everything up to v0.6:
+- **backend.json:** `state.json` renamed; a tab's `startupMessage` became
+  its resume message; group names became group nodes.
+- **hub.json:** v0.3's flat fields moved under `settings` and `update`;
+  `environments.json` merged in.
+
 Everything is in `~/.claude-mux/` (`-state` moves it). On this machine:
 
 | File | Written by | Holds |
 |---|---|---|
-| `hub.json` | hub | `settings` (update check, resume default, `page`), `environments` in sidebar order with `local` among them, `update` (last check, skipped version) |
+| `hub.json` | hub | `version`, `settings` (update check, resume default, `page`), `environments` in sidebar order with `local` among them, `update` (last check, skipped version) |
 | `hub.lock` | hub | its pid and address, locked while it runs |
 | `hub.log` | hub | its output and its backends', when started from Finder or Explorer |
 | `cache/<version>/` | hub | downloaded backend builds |
@@ -411,7 +452,7 @@ In every environment, this machine included:
 
 | File | Written by | Holds |
 |---|---|---|
-| `backend.json` | backend | the tabs |
+| `backend.json` | backend | the tabs and groups (`version`, `sessions`, `groups`) |
 | `backend-hooks.json` | backend | the hooks settings passed to every claude |
 | `backend.lock` | backend | its pid, locked while it runs |
 | `bin/<version>/claude-mux-backend` | hub | the installed backend; other versions are removed |

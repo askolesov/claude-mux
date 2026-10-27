@@ -42,7 +42,8 @@ static void nativeMenu(void) {
 
 	NSMenu *win = [[NSMenu alloc] initWithTitle:@"Window"];
 	[win addItem:item(@"Minimize", @selector(performMiniaturize:), @"m")];
-	[win addItem:item(@"Close", @selector(performClose:), @"w")];
+	// No ⌘W here: the page takes it to close a tab.
+	[win addItem:item(@"Close Window", @selector(performClose:), @"")];
 
 	NSMenu *bar = [NSMenu new];
 	add(bar, app);

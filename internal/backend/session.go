@@ -25,13 +25,13 @@ const scrollbackLimit = 1 << 20
 type Session struct {
 	ID              string     `json:"id"`
 	Name            string     `json:"name"`
-	Group           string     `json:"group,omitempty"` // tabs with one group sit together under its header
+	Parent          string     `json:"parent,omitempty"` // the group it is in, "" for none (see tree.go)
+	Order           string     `json:"order"`
 	Cwd             string     `json:"cwd"`
 	Args            []string   `json:"args,omitempty"`
 	ClaudeSessionID string     `json:"claudeSessionId,omitempty"` // the conversation the tab continues
 	Resume          ResumeMode `json:"resume,omitempty"`          // the first prompt when its claude starts again
 	ResumeMessage   string     `json:"resumeMessage,omitempty"`
-	StartupMessage  string     `json:"startupMessage,omitempty"` // before v0.5: became Resume "custom"
 
 	mu          sync.Mutex
 	status      Status
@@ -50,7 +50,8 @@ type Session struct {
 type SessionView struct {
 	ID              string     `json:"id"`
 	Name            string     `json:"name"`
-	Group           string     `json:"group"`
+	Parent          string     `json:"parent"`
+	Order           string     `json:"order"`
 	Cwd             string     `json:"cwd"`
 	Args            []string   `json:"args"`
 	ClaudeSessionID string     `json:"claudeSessionId"`
@@ -68,7 +69,8 @@ func (s *Session) View() SessionView {
 	return SessionView{
 		ID:              s.ID,
 		Name:            s.Name,
-		Group:           s.Group,
+		Parent:          s.Parent,
+		Order:           s.Order,
 		Cwd:             s.Cwd,
 		Args:            s.Args,
 		ClaudeSessionID: s.ClaudeSessionID,

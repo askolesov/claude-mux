@@ -70,21 +70,19 @@ Mockups: `V4Main.dc.html` (tabs on the left), `V4TopTabs.dc.html` (on top).
   `docker`), then on the right the health dot (green connected, amber
   problem) and a short state (`connected`, `42 ms`, `no claude`). An
   environment without claude says *No claude here · Install*.
-- **Group**: a small semibold muted label, indented under its environment,
-  with the tab count on the right.
-- **Tab row** (indented under the environment, one step further inside a group): the status dot, then two
-  lines: the name (plus ↻ when it has a startup message) and the directory
-  in small mono. Nothing else. Settings › Appearance › *Tab rows* switches
-  between **Detailed** (two lines, the default) and **Compact** (name only,
-  one line); mockup `V4Compact.dc.html`.
-- **New tab** lives with what it goes into: a small **+** at the right end
-  of every environment header and every group header opens a new tab
-  there (in that group, for a group). ⌥N opens one next to the current
-  tab. An environment without claude has no **+**; it shows *Install*.
+- **The tree** (see *Tab tree* below): environments at the top, then
+  groups and tabs, groups nesting to any depth. Groups show a chevron and
+  their name; tabs a status dot.
+- **Tab row**: the status dot, then two lines: the name (plus ↻ when it has
+  a startup message) and the directory in small mono. Nothing else.
+  Settings › Appearance › *Tab rows* switches between **Detailed** (two
+  lines, the default) and **Compact** (name only, one line); mockup
+  `V4Compact.dc.html`.
 - **Connect environment…** is a dashed row after the last environment:
   adding an environment extends the list it belongs to.
 - At the bottom, only when a release is out: *0.9.3 is out · Update and
   restart*.
+
 
 **Tabs on top** (Settings → Tab position): one strip for every environment,
 `[env] (tab) (tab) [env] (tab) …`. An environment is a small square-cornered
@@ -95,11 +93,75 @@ environment, a dashed **Connect** chip. Groups don't show in the strip. On
 the right: *Update to …* when one is out, and settings.
 
 **Above the terminal**: the tab's name, then
-`env / group · directory · branch` in mono, and **…**, which opens Tab
+`env / group / subgroup · directory · branch` in mono, and **…**, which opens Tab
 settings. No status pill: the dot already says it.
 
 **Terminal**: fills the whole area under that line, edge to edge, on the
 `term` background. No inset, border or rounded frame.
+
+## Tab tree
+
+Mockups: `V4Main.dc.html`, and `V4Tree.dc.html` with the add menu open on
+a nested group.
+
+**Model.** Three kinds of node:
+
+| Node | Lives in | Holds |
+|---|---|---|
+| Environment | the root | groups and tabs |
+| Group | an environment or a group | groups and tabs |
+| Tab | an environment or a group | nothing (a leaf) |
+
+Groups and tabs mix in one user-defined order (a group isn't forced above
+or below the tabs). Stored flat, one record per node:
+`{id, kind, parent, order, name, …}`, with `order` a sortable key
+(fractional index, e.g. `"a0"`, `"a0V"`), so a move or reorder rewrites one
+record. The sidebar builds the tree from `parent`. Moving a group moves
+everything in it. Today's `group` string on a tab becomes a group node
+once, on upgrade.
+
+**Rows.** One shape per kind, the same at every depth:
+
+- Environment: chevron · name · kind tag · health dot · state · **+**
+- Group: chevron · name · **+** (collapsed: also the most urgent dot inside
+  and the tab count)
+- Tab: status dot · name / directory
+
+Each level indents 16 px, with a thin guide line under each group's
+chevron so deep tabs still show where they belong.
+
+**Adding.** The **+** on an environment or group opens a two-item menu
+right under it: *New tab* and *New group*. Both create the node inside
+that container; a new group starts with its name selected for typing.
+⌥N makes a new tab next to the current one (same parent).
+
+**Collapsing.** The chevron (or ←/→) collapses a container. A collapsed
+group keeps one summary: the most urgent status inside (needs you >
+finished unseen > working > ready > exited) and how many tabs it holds,
+so nothing waiting gets hidden. Collapse state is kept per browser.
+
+**Moving.** Drag any tab or group:
+
+- onto a group or environment: into it, at the end;
+- between rows: a line shows the drop point, and its left edge shows the
+  depth it lands at (drag left or right to go up or down a level);
+- a group can't go into itself or its own descendants.
+
+Without a mouse: Tab settings › Group (pick any container), and ⌘⇧↑/↓ to
+move within the parent.
+
+**Other actions** (right-click, or the same keys in the tree):
+rename (F2, or double-click a group), delete group (its contents move up to
+the parent; no tab is ever closed by deleting a group), close tab (⌘W,
+asks first).
+
+**Keyboard and accessibility.** The sidebar is an ARIA `tree`; rows are
+`treeitem`s with `aria-level` and, for containers, `aria-expanded`. ↑/↓
+move, → expands or steps into, ← collapses or steps out to the parent,
+Enter opens a tab, Home/End jump, typing a name jumps to it.
+
+**Depth.** Any depth is allowed; past three group levels the indent stops
+growing and only the guides show the depth, so names keep their width.
 
 ## Status
 

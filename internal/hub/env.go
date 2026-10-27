@@ -59,13 +59,13 @@ type EnvView struct {
 // Env is one environment: a backend the hub runs as its child and talks to
 // over the child's stdin and stdout. A backend that stops is started again.
 type Env struct {
-	EnvConfig
 	prepare  func(step func(string)) ([]string, string, error) // installs the backend if needed; the command that runs it and the platform
 	onChange func()
 	// onConnect runs once the backend answers, each time.
 	onConnect func(*Env)
 
 	mu        sync.Mutex
+	cfg       EnvConfig // its name can change; see Config
 	session   *yamux.Session
 	cmd       *exec.Cmd
 	state     string
@@ -82,7 +82,7 @@ type Env struct {
 }
 
 func newEnv(cfg EnvConfig, prepare func(step func(string)) ([]string, string, error), onChange func()) *Env {
-	e := &Env{EnvConfig: cfg, prepare: prepare, onChange: onChange, state: StateConnecting,
+	e := &Env{cfg: cfg, prepare: prepare, onChange: onChange, state: StateConnecting,
 		quit: make(chan struct{}), done: make(chan struct{})}
 	e.proxy = &httputil.ReverseProxy{
 		Rewrite: func(r *httputil.ProxyRequest) {
@@ -98,10 +98,22 @@ func newEnv(cfg EnvConfig, prepare func(step func(string)) ([]string, string, er
 	return e
 }
 
+func (e *Env) Config() EnvConfig {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.cfg
+}
+
+func (e *Env) rename(name string) {
+	e.mu.Lock()
+	e.cfg.Name = name
+	e.mu.Unlock()
+}
+
 func (e *Env) View() EnvView {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	return EnvView{EnvConfig: e.EnvConfig, State: e.state, Platform: e.platform, Latency: int(e.latency.Milliseconds()),
+	return EnvView{EnvConfig: e.cfg, State: e.state, Platform: e.platform, Latency: int(e.latency.Milliseconds()),
 		Step: e.step, Error: e.err}
 }
 
@@ -214,7 +226,7 @@ func (e *Env) Supervise() {
 			continue
 		}
 		e.setState(StateFailed, err.Error())
-		fmt.Fprintf(os.Stderr, "env %s: %v; trying again in %s\n", e.Name, err, pause)
+		fmt.Fprintf(os.Stderr, "env %s: %v; trying again in %s\n", e.Config().Name, err, pause)
 		select {
 		case <-e.quit:
 			return
@@ -245,7 +257,7 @@ func (e *Env) run() error {
 	if err != nil {
 		return err
 	}
-	stderr := &lastLine{prefix: "env " + e.Name + ": "}
+	stderr := &lastLine{prefix: "env " + e.Config().Name + ": "}
 	cmd.Stderr = stderr
 	if err := cmd.Start(); err != nil {
 		return err

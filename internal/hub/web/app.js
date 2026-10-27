@@ -136,7 +136,8 @@ const tab = (key) => tabs.find((t) => t.key === key);
 const env = (name) => envs.find((e) => e.name === name);
 const dead = (t) => t.status === "exited" || t.status === "stopped";
 const sessionsOf = (name) => envData.get(name)?.sessions || [];
-const groupsOf = (name) => [...new Set(sessionsOf(name).map((s) => s.group).filter(Boolean))];
+const groupsIn = (name) => envData.get(name)?.groups || [];
+const groupOf = (name, id) => groupsIn(name).find((g) => g.id === id);
 const bold = (t) => t.key === selected || t.unseen || t.status === "needs-you";
 const rank = (t) => (t.status === "needs-you" ? 0 : t.status === "ready" && t.unseen ? 1 : 2);
 const hasClaude = (name) => !!envData.get(name)?.claude?.path;
@@ -175,45 +176,49 @@ const PLUG = (size) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24
 // A tab's own resume message shows as ↻; the default doesn't.
 const ownResume = (t) => t.resume === "custom" && t.resumeMessage;
 
-// ---------- groups ----------
-// Collapsing a group is per browser, per environment.
+// ---------- the tree ----------
+// An environment holds groups and tabs, a group the same, to any depth, in
+// one order (each node's parent and order key, from its backend). Folding
+// is per browser: "env:<env>" and "g:<env>/<group id>".
 const collapsed = new Set((() => { try { return JSON.parse(store.get("mux.collapsed") || "[]"); } catch { return []; } })());
 function setCollapsed(key, shut) {
   shut ? collapsed.add(key) : collapsed.delete(key);
   store.set("mux.collapsed", JSON.stringify([...collapsed]));
 }
-// grouped splits items into runs: each group, at its first item, and every
-// ungrouped item on its own.
-function grouped(items, groupOf) {
-  const runs = [];
-  const byName = new Map();
-  for (const it of items) {
-    const g = groupOf(it);
-    if (!g) { runs.push({ group: "", items: [it] }); continue; }
-    if (!byName.has(g)) { byName.set(g, { group: g, items: [] }); runs.push(byName.get(g)); }
-    byName.get(g).items.push(it);
+const byOrder = (a, b) => (a.order < b.order ? -1 : a.order > b.order ? 1 : 0);
+// kids are a container's children in order: {group} or {tab}. Sorted by
+// waiting, the tabs float within their container and groups keep their places.
+function kids(name, parent) {
+  const all = [
+    ...groupsIn(name).filter((g) => (g.parent || "") === parent).map((g) => ({ group: g, order: g.order })),
+    ...tabs.filter((t) => t.env === name && (t.parent || "") === parent).map((t) => ({ tab: t, order: t.order })),
+  ].sort(byOrder);
+  if (page.sort === "waiting") {
+    const slots = all.flatMap((k, i) => (k.tab ? [i] : []));
+    const floated = slots.map((i) => all[i]).sort((a, b) => rank(a.tab) - rank(b.tab));
+    slots.forEach((i, j) => { all[i] = floated[j]; });
   }
-  return runs;
+  return all;
 }
+// tabsUnder lists a container's tabs, all the way down, in tree order.
+const tabsUnder = (name, parent) => kids(name, parent).flatMap((k) => (k.tab ? [k.tab] : tabsUnder(name, k.group.id)));
+// pathOf is the groups from the environment down to parent.
+function pathOf(name, parent) {
+  const path = [];
+  for (let g = groupOf(name, parent); g; g = groupOf(name, g.parent || "")) path.unshift(g);
+  return path;
+}
+const crumbOf = (t) => [t.env, ...pathOf(t.env, t.parent || "").map((g) => g.name)].join(" / ");
+// urgent is what a folded group shows: the most urgent status inside.
 function urgent(list) {
-  if (list.some((t) => t.status === "needs-you")) return "needs-you";
-  if (list.some((t) => t.status === "ready" && t.unseen)) return "ready";
-  if (list.some((t) => t.status === "working" || t.status === "starting")) return "working";
+  for (const [st, has] of [["needs-you", (t) => t.status === "needs-you"], ["ready", (t) => t.status === "ready" && t.unseen],
+    ["working", (t) => t.status === "working" || t.status === "starting"], ["ready", (t) => t.status === "ready"], ["exited", dead]]) {
+    if (list.some(has)) return st;
+  }
   return "";
 }
-// The tabs in the order they show: by environment, then as the user
-// dragged them, or waiting ones first within each group.
-function ordered(list) {
-  if (page.sort !== "waiting") return list;
-  return [...list].sort((a, b) => rank(a) - rank(b));
-}
-function visual() {
-  const out = [];
-  for (const e of envs) {
-    for (const run of grouped(tabs.filter((t) => t.env === e.name), (t) => t.group)) out.push(...ordered(run.items));
-  }
-  return out;
-}
+// The tabs in the order they show, every environment's, folded or not.
+const visual = () => envs.flatMap((e) => tabsUnder(e.name, ""));
 
 // ---------- icon ----------
 // The small mark (assets/icon/svg/icon-small.svg), with a dot when
@@ -233,14 +238,15 @@ function favicon(dot) {
 }
 
 // ---------- rendering ----------
-let dragKey = null;       // the tab being dragged; renders wait for the drop
+let drag = null;          // the tab or group being dragged: {env, id, kind}; renders wait for the drop
 let dragEnv = null;       // the environment being dragged, by its name
-let dragGroup = null;     // the group being dragged: {env, group}
+let addOpen = "";         // the container whose + menu is open: "<env>/<group id or "">"
+let editing = "";         // the row being renamed: "env:<env>" or "g:<env>/<group id>"
 let renderPending = false;
 let lastBadge = null;
 
 function render() {
-  if (dragKey || dragEnv || dragGroup) { renderPending = true; return; }
+  if (drag || dragEnv) { renderPending = true; return; }
   const waitingCount = tabs.filter(waiting).length;
   const needs = tabs.some((t) => t.status === "needs-you");
   document.title = waitingCount && page.badge ? `(${waitingCount}) claude-mux` : "claude-mux";
@@ -253,34 +259,68 @@ function render() {
   renderUpdate();
 }
 
-// The sidebar: a block per environment (folds by its header), its groups
-// with their counts, its tabs and a New tab row; Connect after the last.
+// The sidebar is an ARIA tree: an environment, then its groups and tabs,
+// each level indented 16 px (up to four), with a guide under each group's
+// chevron; Connect after the last environment.
+const INDENT = 16;
+const pad = (depth) => 6 + Math.min(depth, 4) * INDENT;
+const guides = (depth) => Array.from({ length: Math.max(0, depth - 1) }, (_, k) => `<span class="guide" style="left:${pad(k + 1) + 7}px"></span>`).join("");
+const plusBtn = (name, parent, label) => `<button class="plusbtn" data-add-menu="${esc(name + "/" + parent)}" aria-expanded="${addOpen === name + "/" + parent}" title="New tab or group in ${esc(label)}" aria-label="Add to ${esc(label)}">${PLUS(13)}</button>`;
+
 function renderList() {
+  if (editing && $("list").querySelector(".rename")) return; // until the rename is done
+  const focused = document.activeElement?.closest?.(".trow")?.dataset.fid;
   let html = "";
   for (const e of envs) {
-    const own = tabs.filter((t) => t.env === e.name);
-    const eshut = collapsed.has("env:" + e.name);
-    const edot = eshut ? urgent(own) : "";
-    html += `<div class="envblock" data-env="${esc(e.name)}"><div class="envhead ${eshut ? "shut" : ""}" data-env="${esc(e.name)}" title="${esc(envMeta(e))} · click to ${eshut ? "show" : "hide"} · drag to reorder · right-click for actions" draggable="true">
-      ${CHEVRON}<span class="ename">${esc(e.name)}</span><span class="kind">${esc(kindTag(e))}</span>${edot ? `<span class="dot ${edot}"></span>` : ""}
-      <span class="gap"></span><span class="hdot ${health(e)}"></span><span class="estate">${esc(envState(e))}</span></div>`;
-    if (eshut) { html += `</div>`; continue; }
-    html += envNote(e);
-    for (const run of grouped(own, (t) => t.group)) {
-      if (!run.group) { html += tabRow(run.items[0]); continue; }
-      const key = e.name + "/" + run.group;
-      const shut = collapsed.has(key);
-      const dot = shut ? urgent(run.items) : "";
-      html += `<div class="glabel" data-env="${esc(e.name)}" data-group="${esc(run.group)}" title="Click to ${shut ? "show" : "hide"} · drag to move the group · right-click for actions" draggable="true">
-        <span class="gname">${esc(run.group)}</span>${shut ? `<span class="shut">▸</span>` : ""}${dot ? `<span class="dot ${dot}"></span>` : ""}<span class="count">${run.items.length}</span></div>`;
-      if (!shut) for (const t of ordered(run.items)) html += tabRow(t);
-    }
-    // A new tab opens where it was asked for; without claude, envNote offers Install.
-    if (e.state === "connected" && hasClaude(e.name)) html += `<button class="newrow" data-new-env="${esc(e.name)}" title="New tab in ${esc(e.name)}">${PLUS(13)}New tab</button>`;
+    const shut = collapsed.has("env:" + e.name);
+    const can = e.state === "connected" && hasClaude(e.name);
+    const name = editing === "env:" + e.name ? `<input class="rename" data-rename="env:${esc(e.name)}" value="${esc(e.name)}" aria-label="Environment name">` : `<span class="ename">${esc(e.name)}</span>`;
+    html += `<div class="envblock" data-env="${esc(e.name)}" role="none">
+      <div class="trow envhead ${shut ? "shut" : ""}" role="treeitem" aria-level="1" aria-expanded="${!shut}" tabindex="-1" data-fid="env:${esc(e.name)}" data-kind="env" data-env="${esc(e.name)}" data-node="" data-depth="0" data-path=""
+        title="${esc(envMeta(e))} · drag to reorder · right-click for actions" draggable="true">
+      <button class="chevbtn" data-toggle="env:${esc(e.name)}" tabindex="-1" aria-label="Fold ${esc(e.name)}">${CHEVRON}</button>${name}<span class="kind">${esc(kindTag(e))}</span>
+      <span class="gap"></span><span class="hdot ${health(e)}"></span><span class="estate">${esc(envState(e))}</span>${can ? plusBtn(e.name, "", e.name) : ""}</div>`;
+    if (addOpen === e.name + "/") html += addMenu(e.name, "", 1);
+    if (!shut) html += envNote(e) + walk(e.name, "", 1, []);
     html += `</div>`;
   }
   html += `<button class="connectrow" data-connect title="An SSH host, a Docker container or a WSL distro">${PLUG(13)}Connect environment…</button>`;
-  $("list").innerHTML = html;
+  $("list").innerHTML = `<div role="tree" aria-label="Tabs">${html}</div>`;
+  if (!$("list").querySelector('.trow[tabindex="0"]')) {
+    const first = $("list").querySelector(`.trow[data-fid="${CSS.escape(focused || "t:" + selected)}"]`) || $("list").querySelector(".trow");
+    if (first) first.tabIndex = 0;
+  }
+  if (focused) $("list").querySelector(`.trow[data-fid="${CSS.escape(focused)}"]`)?.focus();
+  const input = $("list").querySelector(".rename");
+  if (input) { input.focus(); input.select(); }
+}
+
+// walk renders a container's children at depth; path is its groups' ids.
+function walk(name, parent, depth, path) {
+  let html = "";
+  for (const k of kids(name, parent)) {
+    if (k.tab) { html += tabRow(k.tab, depth, path); continue; }
+    const g = k.group;
+    const fid = "g:" + name + "/" + g.id;
+    const shut = collapsed.has(fid);
+    const under = shut ? tabsUnder(name, g.id) : [];
+    const dot = shut ? urgent(under) : "";
+    const label = editing === fid ? `<input class="rename" data-rename="${esc(fid)}" value="${esc(g.name)}" aria-label="Group name">` : `<span class="gname">${esc(g.name)}</span>`;
+    html += `<div class="trow glabel" role="treeitem" aria-level="${depth + 1}" aria-expanded="${!shut}" tabindex="-1" data-fid="${esc(fid)}" data-kind="group" data-env="${esc(name)}" data-node="${esc(g.id)}" data-parent="${esc(parent)}" data-depth="${depth}" data-path="${esc(path.join("/"))}"
+      style="padding-left:${pad(depth) - 2}px" title="Drag to move · double-click to rename · right-click for actions" draggable="true">${guides(depth)}
+      <button class="chevbtn ${shut ? "shut" : ""}" data-toggle="${esc(fid)}" tabindex="-1" aria-label="Fold ${esc(g.name)}">${CHEVRON}</button>${label}
+      ${shut ? `${dot ? `<span class="dot ${dot}"></span>` : ""}<span class="count">${under.length}</span>` : ""}${plusBtn(name, g.id, g.name)}</div>`;
+    if (addOpen === name + "/" + g.id) html += addMenu(name, g.id, depth + 1);
+    if (!shut) html += walk(name, g.id, depth + 1, [...path, g.id]);
+  }
+  return html;
+}
+
+// addMenu is the + menu, right under its container: a new tab or group in it.
+function addMenu(name, parent, depth) {
+  return `<div class="addmenu" role="menu" style="padding-left:${pad(depth)}px">${guides(depth)}
+    <button role="menuitem" data-add="tab" data-env="${esc(name)}" data-parent="${esc(parent)}"><span class="ring"></span>New tab</button>
+    <button role="menuitem" data-add="group" data-env="${esc(name)}" data-parent="${esc(parent)}">${CHEVRON}New group</button></div>`;
 }
 
 // envNote says what's wrong with an environment, if anything, with what
@@ -296,12 +336,13 @@ function envNote(e) {
 }
 
 // A tab row: its dot, then its name and, in Detailed rows, its directory.
-function tabRow(t) {
-  const cls = ["tab", selected === t.key && "active", bold(t) && "bold", dead(t) && "dead"].filter(Boolean).join(" ");
+function tabRow(t, depth, path) {
+  const cls = ["trow", "tab", selected === t.key && "active", bold(t) && "bold", dead(t) && "dead"].filter(Boolean).join(" ");
   const mark = ownResume(t) ? `<span class="mark" title="Its own message when it starts again: ${esc(t.resumeMessage)}">↻</span>` : "";
-  return `<button class="${cls}" data-key="${esc(t.key)}" title="${esc(STATUS_TEXT[t.status] || t.status)} for ${ago(t.statusSince)} · ${esc(home(t.cwd))}" draggable="true">
+  return `<div class="${cls}" role="treeitem" aria-level="${depth + 1}" aria-selected="${selected === t.key}" tabindex="-1" data-fid="t:${esc(t.key)}" data-kind="tab" data-key="${esc(t.key)}" data-env="${esc(t.env)}" data-node="${esc(t.id)}" data-parent="${esc(t.parent || "")}" data-depth="${depth}" data-path="${esc(path.join("/"))}"
+    style="padding-left:${pad(depth) + 4}px" title="${esc(STATUS_TEXT[t.status] || t.status)} for ${ago(t.statusSince)} · ${esc(home(t.cwd))}" draggable="true">${guides(depth)}
     <span class="dot ${esc(t.status)}"></span><span class="lines"><span class="line1"><span class="name">${esc(t.name)}</span>${mark}</span>
-    ${page.tabRows === "one" ? "" : `<span class="cwd">${esc(home(t.cwd))}</span>`}</span></button>`;
+    ${page.tabRows === "one" ? "" : `<span class="cwd">${esc(home(t.cwd))}</span>`}</span></div>`;
 }
 
 // Tabs on top: one strip for every environment, each a chip (click for a
@@ -312,7 +353,7 @@ function renderStrip() {
   for (const e of envs) {
     html += `<div class="senv"><button class="echip" data-env="${esc(e.name)}" title="${esc(envMeta(e))}${e.error ? " · " + esc(e.error) : ""} · click for a new tab here">${kindIcon(e.kind)}${esc(e.name)}<span class="hdot ${health(e)}"></span></button>`;
     if (e.state === "connected" && envData.get(e.name) && !hasClaude(e.name)) html += `<button class="install" data-env-act="install" data-env="${esc(e.name)}">Install claude</button>`;
-    for (const t of visual().filter((x) => x.env === e.name)) {
+    for (const t of tabsUnder(e.name, "")) {
       const cls = ["ttab", selected === t.key && "active", bold(t) && "bold", dead(t) && "dead"].filter(Boolean).join(" ");
       html += `<button class="${cls}" data-key="${esc(t.key)}" title="${esc(home(t.cwd))}"><span class="dot ${esc(t.status)}"></span><span class="name">${esc(t.name)}</span></button>`;
     }
@@ -330,7 +371,7 @@ function renderStrip() {
 function renderHead() {
   const t = tab(selected);
   if (!t) { $("head").innerHTML = `<span class="crumb">Pick a tab${page.layout === "top" ? "" : " on the left"}.</span>`; return; }
-  const crumb = [t.env + (t.group ? " / " + t.group : ""), home(t.cwd), t.branch].filter(Boolean).join("  ·  ");
+  const crumb = [crumbOf(t), home(t.cwd), t.branch].filter(Boolean).join("  ·  ");
   $("head").innerHTML = `<span class="tname">${esc(t.name)}</span><span class="crumb" title="${esc(t.cwd)}">${esc(crumb)}</span>
     <button class="icon-btn" id="tabMore" title="Tab settings" aria-label="Tab settings" style="width:32px;height:32px"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button>`;
 }
@@ -482,7 +523,7 @@ function select(key) {
   if (!t) return;
   selected = key;
   store.set("mux.selected", key);
-  if (t.group) setCollapsed(t.env + "/" + t.group, false);
+  for (const g of pathOf(t.env, t.parent || "")) setCollapsed("g:" + t.env + "/" + g.id, false);
   setCollapsed("env:" + t.env, false);
   for (const [k, x] of terms) x.el.classList.toggle("shown", k === key);
   $("placeholder").style.display = "none";
@@ -669,18 +710,34 @@ $("tResume").addEventListener("click", (e) => {
   if (dlg.resume === "custom") $("tResumeMsg").focus();
 });
 
+// The Group field offers every container in the environment, by its path,
+// and New group…, made at the top.
 function fillGroups(name, current) {
-  const gs = groupsOf(name);
-  $("tGroup").innerHTML = [`<option value="">None</option>`, ...gs.map((g) => `<option value="${esc(g)}">${esc(g)}</option>`), `<option value="\u0000new">New group…</option>`].join("");
-  $("tGroup").value = gs.includes(current) ? current : current ? "\u0000new" : "";
-  $("tNewGroupRow").hidden = $("tGroup").value !== "\u0000new";
-  $("tNewGroup").value = gs.includes(current) ? "" : current || "";
+  const opts = [];
+  const add = (parent, depth) => {
+    for (const k of kids(name, parent)) {
+      if (!k.group) continue;
+      opts.push(`<option value="${esc(k.group.id)}">${esc(pathOf(name, k.group.id).map((g) => g.name).join(" / "))}</option>`);
+      add(k.group.id, depth + 1);
+    }
+  };
+  add("", 0);
+  $("tGroup").innerHTML = [`<option value="">None</option>`, ...opts, `<option value="\u0000new">New group…</option>`].join("");
+  $("tGroup").value = groupOf(name, current) ? current : "";
+  $("tNewGroupRow").hidden = true;
+  $("tNewGroup").value = "";
 }
 $("tGroup").addEventListener("change", () => {
   $("tNewGroupRow").hidden = $("tGroup").value !== "\u0000new";
   if (!$("tNewGroupRow").hidden) $("tNewGroup").focus();
 });
-const dlgGroup = () => ($("tGroup").value === "\u0000new" ? $("tNewGroup").value.trim() : $("tGroup").value);
+// dlgParent is the chosen container's id, making the new group first.
+async function dlgParent() {
+  if ($("tGroup").value !== "\u0000new") return $("tGroup").value;
+  const name = $("tNewGroup").value.trim();
+  if (!name) throw new Error("Name the new group.");
+  return (await api(dlg.env, "POST", "/api/groups", { name, parent: "" })).id;
+}
 
 function fillCwds(name) {
   const data = envData.get(name);
@@ -694,12 +751,12 @@ function openTabSettings(key) {
   const { checked, rest } = splitArgs(t.args);
   dlg = { mode: "edit", key, env: t.env, resume: t.resume || "", custom: t.resumeMessage || "", checked };
   $("tTitle").textContent = t.name;
-  $("tMeta").textContent = [t.env + (t.group ? " / " + t.group : ""), t.branch, t.claudeSessionId?.slice(0, 8)].filter(Boolean).join(" · ");
+  $("tMeta").textContent = [crumbOf(t), t.branch, t.claudeSessionId?.slice(0, 8)].filter(Boolean).join(" · ");
   $("tEnvRow").hidden = true;
   $("tName").value = t.name;
   $("tName").readOnly = true;
   $("tNameHint").textContent = "Type /rename <name> in the tab to rename it.";
-  fillGroups(t.env, t.group || "");
+  fillGroups(t.env, t.parent || "");
   fillCwds(t.env);
   $("tCwd").value = t.cwd;
   $("tResumeMsg").value = t.resumeMessage || "";
@@ -715,11 +772,14 @@ function openTabSettings(key) {
   $("tCwd").focus();
 }
 
+// openNew opens New tab: in prefill's environment and container (parent),
+// after a tab there (after), or by default next to the selected tab.
 function openNew(prefill = {}) {
   const sel = tab(selected);
   const connected = envs.filter((e) => e.state === "connected" && hasClaude(e.name));
   const envName = prefill.env ?? (page.newEnv && env(page.newEnv) ? page.newEnv : sel?.env) ?? connected[0]?.name ?? "local";
-  dlg = { mode: "new", env: envName, resume: "", custom: "", checked: new Set(page.newFlags || []) };
+  const nextTo = !prefill.env && sel?.env === envName;
+  dlg = { mode: "new", env: envName, resume: "", custom: "", checked: new Set(page.newFlags || []), after: prefill.after ?? (nextTo ? sel.id : "") };
   $("tTitle").textContent = "New tab";
   $("tMeta").textContent = "";
   $("tEnvRow").hidden = envs.length < 2;
@@ -729,7 +789,7 @@ function openNew(prefill = {}) {
   $("tName").readOnly = false;
   $("tName").placeholder = "defaults to the folder name";
   $("tNameHint").textContent = "";
-  fillNewEnv(prefill.group ?? (sel && sel.env === envName ? sel.group || "" : ""));
+  fillNewEnv(prefill.parent ?? (nextTo ? sel.parent || "" : ""));
   $("tResumeMsg").value = "";
   $("tArgs").value = page.newArgs || "";
   $("tClose").hidden = true;
@@ -742,21 +802,21 @@ function openNew(prefill = {}) {
   $("tName").focus();
 }
 // The directory and groups offered depend on the environment.
-function fillNewEnv(group) {
+function fillNewEnv(parent) {
   const name = $("tEnv").value || dlg.env;
   dlg.env = name;
-  fillGroups(name, group);
+  fillGroups(name, parent);
   fillCwds(name);
   $("tCwd").value = store.get("mux.lastCwd." + name) || page.newCwd || envData.get(name)?.defaultCwd || "";
 }
-$("tEnv").addEventListener("change", () => fillNewEnv(""));
+$("tEnv").addEventListener("change", () => { dlg.after = ""; fillNewEnv(""); });
 
 $("tabForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   const resumeMessage = dlg.resume === "custom" ? $("tResumeMsg").value.trim() : (dlg.custom || "");
-  const body = { group: dlgGroup(), cwd: $("tCwd").value.trim(), args: dlgArgs(), resume: dlg.resume, resumeMessage };
   if (dlg.resume === "custom" && !resumeMessage) { $("tErr").textContent = "Write the message, or pick Default or None."; return; }
   try {
+    const body = { parent: await dlgParent(), cwd: $("tCwd").value.trim(), args: dlgArgs(), resume: dlg.resume, resumeMessage };
     if (dlg.mode === "edit") {
       const t = tab(dlg.key);
       await api(t.env, "PUT", `/api/sessions/${t.id}`, body);
@@ -764,7 +824,9 @@ $("tabForm").addEventListener("submit", async (e) => {
       return;
     }
     const name = dlg.env;
-    const s = await api(name, "POST", "/api/sessions", { ...body, name: $("tName").value.trim() });
+    // After the tab it was opened next to, if it stayed in that container.
+    const after = tabs.some((t) => t.env === name && t.id === dlg.after && (t.parent || "") === body.parent) ? dlg.after : "";
+    const s = await api(name, "POST", "/api/sessions", { ...body, after, name: $("tName").value.trim() });
     store.set("mux.lastCwd." + name, body.cwd);
     $("tabDlg").close();
     const data = envData.get(name);
@@ -1102,7 +1164,7 @@ function renderPalette() {
   const actionsOnly = raw.startsWith(">");
   const q = actionsOnly ? raw.slice(1).trim() : raw.trim();
   const vis = visual();
-  const found = actionsOnly ? [] : vis.filter((t) => fuzzy(`${t.name} ${t.env} ${t.group || ""} ${t.branch || ""}`, q))
+  const found = actionsOnly ? [] : vis.filter((t) => fuzzy(`${t.name} ${crumbOf(t)} ${t.branch || ""}`, q))
     .sort((a, b) => rank(a) - rank(b) || vis.indexOf(a) - vis.indexOf(b));
   const actions = [["new", "New tab", "⌥N"], ["tab-settings", "Tab settings", ""], ["settings", "Settings", MOD + ","], ["add-env", "Connect an environment", ""]]
     .filter(([k, l]) => fuzzy(l, q) && (k !== "tab-settings" || selected));
@@ -1113,7 +1175,7 @@ function renderPalette() {
   for (const t of found) {
     const n = vis.indexOf(t);
     html += `<button class="item ${i === pal.on ? "on" : ""}" data-i="${i++}"><span class="dot ${esc(t.status)}"></span><span class="name">${esc(t.name)}</span>
-      <span class="where">${esc([t.env + (t.group ? " / " + t.group : ""), t.branch].filter(Boolean).join(" · "))}</span>
+      <span class="where">${esc([crumbOf(t), t.branch].filter(Boolean).join(" · "))}</span>
       <span class="st">${esc(STATUS_TEXT[t.status] || t.status)}${t.status === "ready" && t.unseen ? ", unseen" : ""}</span><kbd>${n < 9 ? "⌥" + (n + 1) : ""}</kbd></button>`;
   }
   if (actions.length) html += `<div class="sec">Actions</div>`;
@@ -1172,75 +1234,154 @@ function newIn(name) {
 }
 
 $("list").addEventListener("click", (e) => {
+  if (e.target.closest(".rename")) return;
   const b = e.target.closest("button[data-env-act]");
   if (b) { envAct(b.dataset.envAct, b.dataset.env); return; }
-  const nr = e.target.closest("[data-new-env]");
-  if (nr) { openNew({ env: nr.dataset.newEnv }); return; }
   if (e.target.closest("[data-connect]")) { addEnv(); return; }
-  const eh = e.target.closest(".envhead");
-  if (eh) {
-    const key = "env:" + eh.dataset.env;
-    setCollapsed(key, !collapsed.has(key));
-    render();
-    return;
-  }
-  const head = e.target.closest(".glabel");
-  if (head) {
-    const key = head.dataset.env + "/" + head.dataset.group;
-    setCollapsed(key, !collapsed.has(key));
-    render();
-    return;
-  }
-  const row = e.target.closest(".tab");
-  if (row) select(row.dataset.key);
+  const plus = e.target.closest("[data-add-menu]");
+  if (plus) { addOpen = addOpen === plus.dataset.addMenu ? "" : plus.dataset.addMenu; render(); return; }
+  const add = e.target.closest("[data-add]");
+  if (add) { addOpen = ""; addIn(add.dataset.add, add.dataset.env, add.dataset.parent); return; }
+  const row = e.target.closest(".trow");
+  if (!row) return;
+  if (row.dataset.kind === "tab") { select(row.dataset.key); return; }
+  toggle(row.dataset.fid);
 });
+$("list").addEventListener("dblclick", (e) => {
+  const row = e.target.closest(".trow");
+  if (row && !e.target.closest("button") && canRename(row)) startRename(row.dataset.fid);
+});
+// Clicks elsewhere close the + menu.
+window.addEventListener("pointerdown", (e) => {
+  if (addOpen && !e.target.closest(".addmenu, [data-add-menu]")) { addOpen = ""; render(); }
+}, true);
 
-// Drag a tab to reorder it within its environment; the backend keeps the
-// order. Dropped on a tab, a tab takes that tab's group; dropped on a
-// group's label, it joins the group at its end. A group moves whole by its
-// label, before or after another group or an ungrouped tab. Environments
-// reorder by their headers.
+function toggle(fid) {
+  setCollapsed(fid, !collapsed.has(fid));
+  render();
+}
+
+// addIn makes a tab or a group in a container. A new group starts with its
+// name selected, to type over.
+async function addIn(what, name, parent) {
+  if (what === "tab") { openNew({ env: name, parent, after: "" }); return; }
+  try {
+    const g = await api(name, "POST", "/api/groups", { name: "New group", parent });
+    const data = envData.get(name);
+    if (data && !groupOf(name, g.id)) data.groups = [...(data.groups || []), g];
+    setCollapsed("env:" + name, false);
+    if (parent) setCollapsed("g:" + name + "/" + parent, false);
+    startRename("g:" + name + "/" + g.id);
+  } catch (err) {
+    say(err.message);
+  }
+}
+
+// ---------- renaming ----------
+// Groups and environments rename in place; local keeps its name, and a
+// tab's name is claude's (/rename in the tab).
+const canRename = (row) => row.dataset.kind === "group" || (row.dataset.kind === "env" && env(row.dataset.env)?.kind !== "local");
+function startRename(fid) {
+  editing = fid;
+  render();
+}
+async function finishRename(input, save) {
+  const fid = input.dataset.rename;
+  const to = input.value.trim();
+  editing = "";
+  try {
+    if (save && to) {
+      if (fid.startsWith("env:")) {
+        const from = fid.slice(4);
+        if (to !== from) {
+          await request("PUT", `/hub/environments/${encodeURIComponent(from)}`, { name: to });
+          renameEnvKeys(from, to);
+        }
+      } else {
+        const [name, id] = fid.slice(2).split("/");
+        if (to !== groupOf(name, id)?.name) await api(name, "PUT", `/api/groups/${id}`, { name: to });
+      }
+    }
+  } catch (err) {
+    say(err.message);
+  }
+  render();
+  $("list").querySelector(`.trow[data-fid="${CSS.escape(fid)}"]`)?.focus();
+}
+$("list").addEventListener("keydown", (e) => {
+  const input = e.target.closest(".rename");
+  if (!input) return;
+  e.stopPropagation();
+  if (e.key === "Enter") { e.preventDefault(); finishRename(input, true); }
+  if (e.key === "Escape") { e.preventDefault(); finishRename(input, false); }
+});
+$("list").addEventListener("focusout", (e) => { if (e.target.matches?.(".rename") && editing) finishRename(e.target, true); });
+// renameEnvKeys carries what this browser keeps by environment name over
+// to the new one.
+function renameEnvKeys(from, to) {
+  for (const k of [...collapsed]) {
+    if (k === "env:" + from) setCollapsed("env:" + to, true);
+    if (k.startsWith("g:" + from + "/")) setCollapsed("g:" + to + k.slice(2 + from.length), true);
+  }
+  const cwd = store.get("mux.lastCwd." + from);
+  if (cwd) store.set("mux.lastCwd." + to, cwd);
+  if (selected?.startsWith(from + "/")) selected = to + selected.slice(from.length);
+  if (page.newEnv === from) setPage({ newEnv: to });
+}
+
+// ---------- moving ----------
+// Drag a tab or a group: onto a group or an environment (its middle) to go
+// in at the end, or between rows, where the line's left edge is the depth
+// it lands at: drag left or right to go up or down a level. Only within
+// its environment, and a group never into itself. Environments drag by
+// their headers, anywhere on another environment: its top half before,
+// its bottom half after.
 function dropSide(el, e) {
   const r = el.getBoundingClientRect();
   return e.clientY < r.top + r.height / 2 ? "before" : "after";
 }
 function clearDrop() {
   for (const t of $("list").querySelectorAll(".drop-before, .drop-after, .drop-into")) t.classList.remove("drop-before", "drop-after", "drop-into");
+  $("dropline").hidden = true;
 }
-function dropTarget(e) {
-  const el = e.target.closest(".tab, .glabel");
-  if (!dragKey || !el) return null;
-  const elEnv = el.classList.contains("glabel") ? el.dataset.env : tab(el.dataset.key)?.env;
-  return elEnv === tab(dragKey)?.env ? el : null;
-}
-// An environment drops anywhere on another one's block: its top half puts
-// it before, its bottom half after.
 const envTarget = (e) => (dragEnv ? e.target.closest(".envblock") : null);
-// groupDrop is where a dragged group would land: before or after a whole
-// other group, or an ungrouped tab, in the same environment; with the row
-// to mark.
-function groupDrop(e) {
-  const el = dragGroup && e.target.closest(".tab, .glabel");
-  if (!el) return null;
-  const over = el.classList.contains("glabel") ? { env: el.dataset.env, group: el.dataset.group } : tab(el.dataset.key);
-  if (!over || over.env !== dragGroup.env || (over.group || "") === dragGroup.group) return null;
-  const side = dropSide(el, e);
-  if (!over.group) return { side, before: over.id, mark: el };
-  const members = sessionsOf(over.env).filter((s) => s.group === over.group);
-  const label = $("list").querySelector(`.glabel[data-env="${CSS.escape(over.env)}"][data-group="${CSS.escape(over.group)}"]`);
-  const lastRow = $("list").querySelector(`.tab[data-key="${CSS.escape(over.env + "/" + members.at(-1).id)}"]`);
-  return side === "before" ? { side, before: members[0].id, mark: label } : { side, after: members.at(-1).id, mark: lastRow || label };
+const inside = (row, id) => row.dataset.node === id || row.dataset.path.split("/").includes(id);
+// nodeDrop is where the dragged node would land, from the row under the
+// pointer: {parent, before | after, into?, row?, line?}.
+function nodeDrop(e) {
+  const el = e.target.closest(".trow");
+  if (!drag || !el || el.dataset.env !== drag.env) return null;
+  const rows = [...el.closest(".envblock").querySelectorAll(".trow")].filter((r) => r.dataset.kind === "env" || !inside(r, drag.id));
+  if (!rows.includes(el)) return null; // the dragged group's own rows
+  const r = el.getBoundingClientRect();
+  const y = (e.clientY - r.top) / r.height;
+  const container = el.dataset.kind !== "tab";
+  if (container && y > 0.25 && y < 0.75) return { parent: el.dataset.node, into: el };
+  const i = rows.indexOf(el);
+  const [a, b] = y < 0.5 ? [rows[i - 1], el] : [el, rows[i + 1]];
+  if (!a) return null; // above the environment's own header
+  const depth = (row) => Number(row.dataset.depth);
+  const open = (row) => row.dataset.kind !== "tab" && row.getAttribute("aria-expanded") === "true";
+  const max = open(a) ? depth(a) + 1 : depth(a);
+  const min = b ? depth(b) : 1;
+  const want = Math.round((e.clientX - $("list").getBoundingClientRect().left - pad(0) - 8) / INDENT);
+  const d = Math.max(min, Math.min(max, want, 99), 1);
+  const lineAt = { top: (y < 0.5 ? r.top : r.bottom), left: pad(d) };
+  if (open(a) && d === depth(a) + 1) {
+    return { parent: a.dataset.node, before: b && b.dataset.parent === a.dataset.node ? b.dataset.node : "", line: lineAt };
+  }
+  // The node at depth d that a is, or is inside: the new one goes after it.
+  const x = depth(a) === d ? a : rows.find((row) => row.dataset.node === a.dataset.path.split("/")[d - 1]);
+  if (!x) return null;
+  return { parent: x.dataset.parent || "", after: x.dataset.node, line: lineAt };
 }
 $("list").addEventListener("dragstart", (e) => {
-  const head = e.target.closest(".envhead");
-  const label = e.target.closest(".glabel");
-  const row = e.target.closest(".tab");
-  if (head) dragEnv = head.dataset.env;
-  else if (label) { dragGroup = { env: label.dataset.env, group: label.dataset.group }; label.classList.add("dragging"); }
-  else if (row) { dragKey = row.dataset.key; row.classList.add("dragging"); }
-  else return;
+  const row = e.target.closest(".trow");
+  if (!row || editing) return;
+  if (row.dataset.kind === "env") dragEnv = row.dataset.env;
+  else { drag = { env: row.dataset.env, id: row.dataset.node, kind: row.dataset.kind }; row.classList.add("dragging"); }
   e.dataTransfer.effectAllowed = "move";
-  e.dataTransfer.setData("text/plain", dragEnv || dragKey || dragGroup.group);
+  e.dataTransfer.setData("text/plain", dragEnv || drag.id);
 });
 $("list").addEventListener("dragover", (e) => {
   const he = envTarget(e);
@@ -1250,20 +1391,19 @@ $("list").addEventListener("dragover", (e) => {
     if (he.dataset.env !== dragEnv) he.classList.add("drop-" + dropSide(he, e));
     return;
   }
-  if (dragGroup) {
-    const at = groupDrop(e);
-    clearDrop();
-    if (!at) return;
-    e.preventDefault();
-    at.mark?.classList.add("drop-" + at.side);
-    return;
-  }
-  const el = dropTarget(e);
-  if (!el) return;
-  e.preventDefault();
   clearDrop();
-  if (el.classList.contains("glabel")) el.classList.add("drop-into");
-  else if (el.dataset.key !== dragKey) el.classList.add("drop-" + dropSide(el, e));
+  const at = nodeDrop(e);
+  if (!at) return;
+  e.preventDefault();
+  if (at.into) { at.into.classList.add("drop-into"); return; }
+  // The line sits in the sidebar, over the list.
+  const side = $("list").parentElement.getBoundingClientRect();
+  const list = $("list").getBoundingClientRect();
+  const line = $("dropline");
+  line.hidden = false;
+  line.style.top = at.line.top - side.top - 1 + "px";
+  line.style.left = list.left - side.left + 8 + at.line.left + "px";
+  line.style.width = list.width - 16 - at.line.left + "px";
 });
 $("list").addEventListener("drop", async (e) => {
   const he = envTarget(e);
@@ -1276,55 +1416,61 @@ $("list").addEventListener("drop", async (e) => {
     await request("PUT", "/hub/environments/order", { names }).catch((err) => say(err.message));
     return;
   }
-  if (dragGroup) {
-    const at = groupDrop(e);
-    if (!at) return;
-    e.preventDefault();
-    const { env: name, group } = dragGroup;
-    const data = envData.get(name);
-    const members = data.sessions.filter((s) => s.group === group).map((s) => s.id);
-    const ids = data.sessions.map((s) => s.id).filter((id) => !members.includes(id));
-    ids.splice(at.before ? ids.indexOf(at.before) : ids.indexOf(at.after) + 1, 0, ...members);
-    data.sessions = ids.map((id) => data.sessions.find((x) => x.id === id));
-    dragGroup = null;
-    refresh();
-    await api(name, "PUT", "/api/sessions/order", { ids }).catch((err) => say(err.message));
-    return;
-  }
-  const el = dropTarget(e);
-  if (!el || el.dataset.key === dragKey) return;
+  const at = nodeDrop(e);
+  if (!at) return;
   e.preventDefault();
-  const moved = tab(dragKey);
-  const data = envData.get(moved.env);
-  const ids = data.sessions.map((s) => s.id).filter((x) => x !== moved.id);
-  let group;
-  if (el.classList.contains("glabel")) {
-    group = el.dataset.group;
-    const last = data.sessions.filter((s) => s.group === group && s.id !== moved.id).pop();
-    ids.splice(last ? ids.indexOf(last.id) + 1 : ids.length, 0, moved.id);
-  } else {
-    const over = tab(el.dataset.key);
-    group = over.group || "";
-    ids.splice(ids.indexOf(over.id) + (dropSide(el, e) === "after" ? 1 : 0), 0, moved.id);
-  }
-  const regroup = (moved.group || "") !== group;
-  data.sessions.find((x) => x.id === moved.id).group = group;
-  data.sessions = ids.map((id) => data.sessions.find((x) => x.id === id));
-  refresh();
-  try {
-    if (regroup) await api(moved.env, "PUT", `/api/sessions/${moved.id}/group`, { group });
-    await api(moved.env, "PUT", "/api/sessions/order", { ids });
-  } catch (err) {
-    say(err.message);
-  }
+  const { env: name, id } = drag;
+  if (at.into) setCollapsed(at.into.dataset.fid, false);
+  await place(name, id, { parent: at.parent, before: at.before || "", after: at.after || "" });
 });
 $("list").addEventListener("dragend", () => {
   dragEnv = null;
-  dragKey = null;
-  dragGroup = null;
+  drag = null;
   renderPending = false;
   clearDrop();
   render();
+});
+async function place(name, id, where) {
+  await api(name, "PUT", `/api/nodes/${id}/place`, where).catch((err) => say(err.message));
+}
+// shift moves a tab or a group one place up or down among its siblings.
+function shift(name, id, dir) {
+  const node = groupOf(name, id) || tabs.find((t) => t.env === name && t.id === id);
+  if (!node) return;
+  const sib = kids(name, node.parent || "").map((k) => (k.group || k.tab).id);
+  const i = sib.indexOf(id);
+  const other = sib[i + dir];
+  if (other) place(name, id, { parent: node.parent || "", before: dir < 0 ? other : "", after: dir > 0 ? other : "" });
+}
+
+// ---------- the tree by keyboard ----------
+// ↑/↓ move, → unfolds or steps in, ← folds or steps out, Enter opens a tab
+// or folds, Home/End, F2 renames, typing a name jumps to it.
+let typeahead = { text: "", at: 0 };
+$("list").addEventListener("keydown", (e) => {
+  const row = e.target.closest?.(".trow");
+  if (!row || e.target.closest(".rename") || e.metaKey || e.ctrlKey || e.altKey) return;
+  const rows = [...$("list").querySelectorAll(".trow")];
+  const i = rows.indexOf(row);
+  const go = (r) => { if (!r) return; for (const x of rows) x.tabIndex = -1; r.tabIndex = 0; r.focus(); };
+  const container = row.dataset.kind !== "tab";
+  const open = row.getAttribute("aria-expanded") === "true";
+  const parentRow = () => rows.slice(0, i).reverse().find((r) => Number(r.dataset.depth) < Number(row.dataset.depth));
+  let handled = true;
+  if (e.key === "ArrowDown") go(rows[i + 1]);
+  else if (e.key === "ArrowUp") go(rows[i - 1]);
+  else if (e.key === "Home") go(rows[0]);
+  else if (e.key === "End") go(rows.at(-1));
+  else if (e.key === "ArrowRight") { if (container && !open) toggle(row.dataset.fid); else if (container) go(rows[i + 1]); }
+  else if (e.key === "ArrowLeft") { if (container && open) toggle(row.dataset.fid); else go(parentRow()); }
+  else if (e.key === "Enter" || e.key === " ") { if (container) toggle(row.dataset.fid); else select(row.dataset.key); }
+  else if (e.key === "F2") { if (canRename(row)) startRename(row.dataset.fid); }
+  else if (e.key.length === 1 && /\S/.test(e.key)) {
+    typeahead = { text: (Date.now() - typeahead.at < 700 ? typeahead.text : "") + e.key.toLowerCase(), at: Date.now() };
+    const name = (r) => (r.querySelector(".name, .gname, .ename")?.textContent || "").toLowerCase();
+    go([...rows.slice(i + (typeahead.text.length > 1 ? 0 : 1)), ...rows.slice(0, i)].find((r) => name(r).startsWith(typeahead.text)));
+  } else handled = false;
+  if (handled) { e.preventDefault(); e.stopPropagation(); }
 });
 
 // ---------- context menu ----------
@@ -1333,11 +1479,13 @@ $("list").addEventListener("dragend", () => {
 function menuItems(target) {
   if (target.kind === "env") {
     const e = env(target.env);
-    return [["new-in-env", "New tab here…"], ["env-reconnect", e?.kind === "local" ? "Restart backend" : "Reconnect"],
+    const can = e?.state === "connected" && hasClaude(e.name);
+    return [can && ["new-tab", "New tab here…"], can && ["new-group", "New group here"], e?.kind !== "local" && ["rename", "Rename"],
+      ["env-reconnect", e?.kind === "local" ? "Restart backend" : "Reconnect"],
       e?.state === "connected" && envData.get(e.name) && !hasClaude(e.name) && ["env-install", "Install claude…"],
       e?.kind !== "local" && null, e?.kind !== "local" && ["env-remove", "Remove environment", "danger"]].filter((x) => x !== false);
   }
-  if (target.kind === "group") return [["new-in-group", "New tab in group…"], ["rename-group", "Rename group…"], null, ["ungroup", "Ungroup"]];
+  if (target.kind === "group") return [["new-tab", "New tab here…"], ["new-group", "New group here"], ["rename", "Rename"], null, ["delete-group", "Delete group", "danger"]];
   const t = tab(target.key);
   if (!t) return [];
   return [
@@ -1368,11 +1516,9 @@ function openMenu(e, target) {
   menu.style.top = Math.min(e.clientY, innerHeight - r.height - 8) + "px";
 }
 $("list").addEventListener("contextmenu", (e) => {
-  const el = e.target.closest(".tab, .glabel, .envhead");
+  const el = e.target.closest(".trow");
   if (!el) return;
-  openMenu(e, el.classList.contains("tab") ? { kind: "tab", key: el.dataset.key }
-    : el.classList.contains("glabel") ? { kind: "group", env: el.dataset.env, group: el.dataset.group }
-      : { kind: "env", env: el.dataset.env });
+  openMenu(e, { kind: el.dataset.kind, key: el.dataset.key, env: el.dataset.env, id: el.dataset.node, fid: el.dataset.fid });
 });
 $("strip").addEventListener("contextmenu", (e) => {
   const el = e.target.closest(".ttab, .echip");
@@ -1381,6 +1527,16 @@ $("strip").addEventListener("contextmenu", (e) => {
 });
 window.addEventListener("pointerdown", (e) => { if (!e.target.closest("#menu")) closeMenu(); }, true);
 window.addEventListener("blur", closeMenu);
+
+// closeTab closes a tab, asking first when Settings say so, when it is
+// working, or always (⌘W).
+async function closeTab(key, always = true) {
+  const t = tab(key);
+  if (!t) return;
+  const why = t.status === "working" ? "It is working: the turn in progress is cut off. " : "";
+  if ((always || page.confirmClose || why) && !(await sure(`Close ${t.name}?`, `${why}Its claude ends and the tab is removed for good.`, "Close tab"))) return;
+  await api(t.env, "DELETE", `/api/sessions/${t.id}`).catch((err) => say(err.message));
+}
 
 // act runs one action on a target.
 async function act(what, target) {
@@ -1395,18 +1551,13 @@ async function act(what, target) {
     } else if (what === "tab-settings") {
       openTabSettings(t.key);
     } else if (what === "close") {
-      const ask = page.confirmClose || t.status === "working";
-      const why = t.status === "working" ? "It is working: the turn in progress is cut off. " : "";
-      if (!ask || await sure(`Close ${t.name}?`, `${why}Its claude ends and the tab is removed for good.`, "Close tab")) await api(name, "DELETE", `/api/sessions/${t.id}`);
-    } else if (what === "rename-group") {
-      const to = await ask("Rename group", "Renames it on every tab; an existing group's name merges the two.", target.group, groupsOf(name));
-      if (to && to !== target.group) await api(name, "POST", "/api/groups/rename", { from: target.group, to });
-    } else if (what === "ungroup") {
-      await api(name, "POST", "/api/groups/rename", { from: target.group, to: "" });
-    } else if (what === "new-in-group") {
-      openNew({ env: name, group: target.group });
-    } else if (what === "new-in-env") {
-      openNew({ env: name });
+      await closeTab(t.key, false);
+    } else if (what === "rename") {
+      startRename(target.fid);
+    } else if (what === "delete-group") {
+      await api(name, "DELETE", `/api/groups/${target.id}`); // what it held moves up; no tab closes
+    } else if (what === "new-tab" || what === "new-group") {
+      addIn(what.slice(4), name, target.kind === "group" ? target.id : "");
     } else if (what.startsWith("env-")) {
       envAct(what.slice(4), name);
     } else if (what === "copy-id" || what === "copy-cwd") {
@@ -1419,7 +1570,7 @@ async function act(what, target) {
 }
 
 // sure and say stand in for confirm and alert, which the app's own window
-// (a bare web view) answers without showing anything. ask asks for one line.
+// (a bare web view) answers without showing anything.
 function sure(title, text, ok = "OK") {
   $("mTitle").textContent = title;
   $("mText").textContent = text;
@@ -1439,27 +1590,27 @@ function say(text) {
   $("mCancel").hidden = true;
   return shown;
 }
-function ask(title, hint, value, options) {
-  $("groupsList").innerHTML = (options || []).map((g) => `<option value="${esc(g)}">`).join("");
-  $("aTitle").textContent = title;
-  $("aHint").textContent = hint;
-  $("aLine").value = value || "";
-  return new Promise((resolve) => {
-    const done = (v) => { $("askDlg").close(); resolve(v); };
-    $("askForm").onsubmit = (e) => { e.preventDefault(); done($("aLine").value.trim()); };
-    $("aCancel").onclick = () => done(null);
-    $("askDlg").oncancel = () => resolve(null);
-    $("askDlg").showModal();
-    $("aLine").select();
-  });
-}
-
 // ---------- keys ----------
 // Caught before the terminal sees them.
 window.addEventListener("keydown", (e) => {
   const mod = isMac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
   if (mod && !e.altKey && e.code === "KeyK") { e.preventDefault(); e.stopPropagation(); $("palette").classList.contains("open") ? closePalette() : openPalette(); return; }
   if (mod && !e.altKey && e.code === "Comma") { e.preventDefault(); e.stopPropagation(); openSettings(); return; }
+  // ⌘W closes the selected tab, asking first.
+  if (mod && !e.altKey && !e.shiftKey && e.code === "KeyW") {
+    e.preventDefault(); e.stopPropagation();
+    if (selected && !document.querySelector("dialog[open]")) closeTab(selected);
+    return;
+  }
+  // ⌘⇧↑/↓ moves the focused row (or the selected tab) within its container.
+  if (mod && e.shiftKey && !e.altKey && (e.code === "ArrowUp" || e.code === "ArrowDown")) {
+    const row = document.activeElement?.closest?.(".trow");
+    const t = tab(selected);
+    const name = row && row.dataset.kind !== "env" ? row.dataset.env : t?.env;
+    const id = row && row.dataset.kind !== "env" ? row.dataset.node : t?.id;
+    if (name && id) { e.preventDefault(); e.stopPropagation(); shift(name, id, e.code === "ArrowUp" ? -1 : 1); }
+    return;
+  }
   if (e.key === "Escape") {
     closeMenu();
     if ($("settingsPage").classList.contains("open") && !document.querySelector("dialog[open]")) { closeSettings(); e.preventDefault(); }

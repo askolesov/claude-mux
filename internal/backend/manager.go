@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/askolesov/claude-mux/internal/migrate"
 	"github.com/askolesov/claude-mux/internal/stream"
 	"github.com/askolesov/claude-mux/internal/sysproc"
 )
@@ -24,9 +25,9 @@ var (
 	errRunning  = errors.New("session is still running")
 )
 
-// Manager owns the tabs: one claude each, in the order and groups of the
-// sidebar. It keeps them in the state file and tells subscribers when
-// anything changed. A tab lives until it is closed.
+// Manager owns the tabs, one claude each, and the groups they sit in (see
+// tree.go). It keeps them in backend.json and tells the page's event
+// streams when anything changed. A tab lives until it is closed.
 type Manager struct {
 	stateFile string
 	hooksFile string
@@ -37,12 +38,15 @@ type Manager struct {
 	mu       sync.Mutex
 	claude   Claude
 	sessions []*Session
+	groups   []*Group
 	resume   ResumeDefault
 }
 
-// State is backend.json.
+// State is backend.json, at version len(stateSteps) (migrations.go).
 type State struct {
+	Version  int        `json:"version"`
 	Sessions []*Session `json:"sessions"`
+	Groups   []*Group   `json:"groups"`
 }
 
 // NewManager loads the tabs and starts every one of them, continuing each
@@ -60,7 +64,7 @@ func NewManager(stateDir, hookURL, exe string, resume ResumeDefault) (*Manager, 
 	if err := writeHookSettings(m.hooksFile, exe); err != nil {
 		return nil, err
 	}
-	if err := m.load(); err != nil {
+	if err := m.load(stateDir); err != nil {
 		return nil, err
 	}
 	m.claude = findClaude()
@@ -72,31 +76,39 @@ func NewManager(stateDir, hookURL, exe string, resume ResumeDefault) (*Manager, 
 	return m, nil
 }
 
-func (m *Manager) load() error {
-	data, err := os.ReadFile(m.stateFile)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
+// load reads backend.json, upgrading it from an older version.
+func (m *Manager) load(stateDir string) error {
+	data, upgraded, err := migrate.Load(m.stateFile, stateSteps)
+	if err == nil && data == nil {
+		// Before v0.4 the file was state.json, and the hooks hooks.json.
+		data, upgraded, err = migrate.Load(filepath.Join(stateDir, "state.json"), stateSteps)
+		if data != nil {
+			defer func() {
+				_ = os.Rename(filepath.Join(stateDir, "state.json"), filepath.Join(stateDir, "state.json.bak"))
+				_ = os.Remove(filepath.Join(stateDir, "hooks.json"))
+			}()
+		}
 	}
-	if err != nil {
+	if err != nil || data == nil {
 		return err
 	}
 	var st State
 	if err := json.Unmarshal(data, &st); err != nil {
 		return fmt.Errorf("%s: %w", m.stateFile, err)
 	}
-	m.sessions = st.Sessions
+	m.sessions, m.groups = st.Sessions, st.Groups
 	for _, s := range m.sessions {
 		s.status, s.statusSince = StatusStopped, time.Now()
-		if s.StartupMessage != "" { // before v0.5
-			s.Resume, s.ResumeMessage, s.StartupMessage = ResumeCustom, s.StartupMessage, ""
-		}
+	}
+	if upgraded {
+		m.save()
 	}
 	return nil
 }
 
 func (m *Manager) save() {
 	m.mu.Lock()
-	data, err := json.MarshalIndent(State{Sessions: m.sessions}, "", "  ")
+	data, err := json.MarshalIndent(State{Version: len(stateSteps), Sessions: m.sessions, Groups: m.groups}, "", "  ")
 	m.mu.Unlock()
 	if err == nil {
 		err = os.WriteFile(m.stateFile, data, 0o600)
@@ -128,8 +140,9 @@ func (m *Manager) Get(id string) (*Session, error) {
 	return nil, errNotFound
 }
 
-// Create opens a tab with a new claude in cwd.
-func (m *Manager) Create(name, group, cwd string, resume ResumeMode, resumeMessage string, args []string) (*Session, error) {
+// Create opens a tab with a new claude in cwd, in parent: after a child of
+// it, or at its end.
+func (m *Manager) Create(name, parent, after, cwd string, resume ResumeMode, resumeMessage string, args []string) (*Session, error) {
 	if err := resume.valid(); err != nil {
 		return nil, err
 	}
@@ -139,11 +152,19 @@ func (m *Manager) Create(name, group, cwd string, resume ResumeMode, resumeMessa
 	if name == "" {
 		name = filepath.Base(cwd)
 	}
-	s := &Session{ID: newID(), Name: name, Group: group, Cwd: cwd, Args: args, Resume: resume, ResumeMessage: strings.TrimSpace(resumeMessage)}
+	s := &Session{ID: newID(), Name: name, Parent: parent, Cwd: cwd, Args: args, Resume: resume, ResumeMessage: strings.TrimSpace(resumeMessage)}
 	m.mu.Lock()
-	m.sessions = append(m.sessions, s)
-	m.groupTogether()
+	err := m.validParent(parent, "")
+	if err == nil {
+		s.Order, err = m.place(s.ID, parent, "", after)
+	}
+	if err == nil {
+		m.sessions = append(m.sessions, s)
+	}
 	m.mu.Unlock()
+	if err != nil {
+		return nil, err
+	}
 	if err := m.Start(s.ID); err != nil {
 		_ = m.Close(s.ID)
 		return nil, err
@@ -310,8 +331,8 @@ func (m *Manager) followName(pid int, name string) {
 
 // Configure sets what a tab starts with: its group, directory, resume
 // message and extra arguments. Everything but the group applies from the
-// next start.
-func (m *Manager) Configure(id, group, cwd string, resume ResumeMode, resumeMessage string, args []string) error {
+// next start. A new group puts the tab at that group's end.
+func (m *Manager) Configure(id, parent, cwd string, resume ResumeMode, resumeMessage string, args []string) error {
 	if err := resume.valid(); err != nil {
 		return err
 	}
@@ -324,10 +345,23 @@ func (m *Manager) Configure(id, group, cwd string, resume ResumeMode, resumeMess
 	}
 	m.mu.Lock()
 	s.mu.Lock()
-	s.Group, s.Cwd, s.Resume, s.ResumeMessage, s.Args = strings.TrimSpace(group), cwd, resume, strings.TrimSpace(resumeMessage), args
+	moved := s.Parent != parent
+	s.Cwd, s.Resume, s.ResumeMessage, s.Args = cwd, resume, strings.TrimSpace(resumeMessage), args
 	s.mu.Unlock()
-	m.groupTogether()
+	if moved {
+		err = m.validParent(parent, "")
+		var key string
+		if err == nil {
+			key, err = m.place(id, parent, "", "")
+		}
+		if err == nil {
+			err = m.setPlace(id, parent, key)
+		}
+	}
 	m.mu.Unlock()
+	if err != nil {
+		return err
+	}
 	m.save()
 	m.changes.Notify()
 	m.refreshBranch(s)
@@ -397,90 +431,6 @@ func (m *Manager) MarkSeen(id string) error {
 	if changed {
 		m.changes.Notify()
 	}
-	return nil
-}
-
-// Reorder puts the sessions in the order of ids. Sessions it doesn't name
-// keep their relative order after the named ones.
-func (m *Manager) Reorder(ids []string) {
-	m.mu.Lock()
-	rank := map[string]int{}
-	for i, id := range ids {
-		rank[id] = i
-	}
-	slices.SortStableFunc(m.sessions, func(a, b *Session) int {
-		ra, oka := rank[a.ID]
-		rb, okb := rank[b.ID]
-		switch {
-		case oka && okb:
-			return ra - rb
-		case oka:
-			return -1
-		case okb:
-			return 1
-		}
-		return 0
-	})
-	m.groupTogether()
-	m.mu.Unlock()
-	m.save()
-	m.changes.Notify()
-}
-
-// groupTogether keeps each group's tabs in one run, where its first tab is;
-// tabs without a group keep their places. The caller holds m.mu.
-func (m *Manager) groupTogether() {
-	first := map[string]int{}
-	rank := make(map[*Session]int, len(m.sessions))
-	for i, s := range m.sessions {
-		if s.Group == "" {
-			rank[s] = i
-			continue
-		}
-		if _, ok := first[s.Group]; !ok {
-			first[s.Group] = i
-		}
-		rank[s] = first[s.Group]
-	}
-	slices.SortStableFunc(m.sessions, func(a, b *Session) int { return rank[a] - rank[b] })
-}
-
-// SetGroup moves a tab into group, or out of any with "".
-func (m *Manager) SetGroup(id, group string) error {
-	s, err := m.Get(id)
-	if err != nil {
-		return err
-	}
-	m.mu.Lock()
-	s.mu.Lock()
-	s.Group = strings.TrimSpace(group)
-	s.mu.Unlock()
-	m.groupTogether()
-	m.mu.Unlock()
-	m.save()
-	m.changes.Notify()
-	return nil
-}
-
-// RenameGroup renames a group on every tab; renaming to "" dissolves it,
-// and renaming to an existing group merges the two.
-func (m *Manager) RenameGroup(from, to string) error {
-	if from == "" {
-		return errors.New("no group to rename")
-	}
-	to = strings.TrimSpace(to)
-	m.mu.Lock()
-	for _, s := range m.sessions {
-		s.mu.Lock()
-		if s.Group == from {
-			s.Group = to
-		}
-		s.mu.Unlock()
-	}
-	m.groupTogether()
-	m.mu.Unlock()
-	m.save()
-	m.changes.Notify()
 	return nil
 }
 

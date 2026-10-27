@@ -35,16 +35,17 @@ func NewHandler(m *Manager, defaultCwd string) http.Handler {
 	api.GET("/state", h.state)
 	api.GET("/events", h.events)
 	api.POST("/sessions", h.create)
-	api.PUT("/sessions/order", h.reorder)
 	api.PUT("/sessions/:id", h.configure)
-	api.PUT("/sessions/:id/group", h.setGroup)
 	api.PUT("/resume-default", h.setResumeDefault)
 	api.DELETE("/sessions/:id", h.close)
 	api.POST("/sessions/:id/start", h.start)
 	api.POST("/sessions/:id/restart", h.restart)
 	api.POST("/sessions/:id/seen", h.seen)
 	api.GET("/sessions/:id/term", h.term)
-	api.POST("/groups/rename", h.renameGroup)
+	api.POST("/groups", h.createGroup)
+	api.PUT("/groups/:id", h.renameGroup)
+	api.DELETE("/groups/:id", h.deleteGroup)
+	api.PUT("/nodes/:id/place", h.move)
 	api.POST("/claude/check", h.checkClaude)
 	api.POST("/claude/install", h.installClaude)
 	return r
@@ -89,11 +90,12 @@ func respond(c *gin.Context, v any, err error) {
 type StateView struct {
 	Claude     Claude        `json:"claude"`
 	Sessions   []SessionView `json:"sessions"`
+	Groups     []Group       `json:"groups"`
 	DefaultCwd string        `json:"defaultCwd"`
 }
 
 func (h *Handler) snapshot() StateView {
-	return StateView{Claude: h.m.Claude(), Sessions: h.m.List(), DefaultCwd: h.defaultCwd}
+	return StateView{Claude: h.m.Claude(), Sessions: h.m.List(), Groups: h.m.Groups(), DefaultCwd: h.defaultCwd}
 }
 
 func (h *Handler) state(c *gin.Context) { c.JSON(http.StatusOK, h.snapshot()) }
@@ -115,7 +117,8 @@ func expandHome(p string) string {
 func (h *Handler) create(c *gin.Context) {
 	var req struct {
 		Name          string     `json:"name"`
-		Group         string     `json:"group"`
+		Parent        string     `json:"parent"`
+		After         string     `json:"after"` // a child of parent to go after; "" for its end
 		Cwd           string     `json:"cwd"`
 		Args          string     `json:"args"`
 		Resume        ResumeMode `json:"resume"`
@@ -129,7 +132,7 @@ func (h *Handler) create(c *gin.Context) {
 	if cwd == "" {
 		cwd = h.defaultCwd
 	}
-	s, err := h.m.Create(strings.TrimSpace(req.Name), strings.TrimSpace(req.Group), cwd, req.Resume, req.ResumeMessage, strings.Fields(req.Args))
+	s, err := h.m.Create(strings.TrimSpace(req.Name), req.Parent, req.After, cwd, req.Resume, req.ResumeMessage, strings.Fields(req.Args))
 	if err != nil {
 		respond(c, nil, err)
 		return
@@ -137,22 +140,10 @@ func (h *Handler) create(c *gin.Context) {
 	respond(c, s.View(), nil)
 }
 
-func (h *Handler) reorder(c *gin.Context) {
-	var req struct {
-		IDs []string `json:"ids" binding:"required"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		respond(c, nil, err)
-		return
-	}
-	h.m.Reorder(req.IDs)
-	respond(c, nil, nil)
-}
-
 // configure takes the tab's settings as Tab settings saves them.
 func (h *Handler) configure(c *gin.Context) {
 	var req struct {
-		Group         string     `json:"group"`
+		Parent        string     `json:"parent"`
 		Cwd           string     `json:"cwd" binding:"required"`
 		Args          string     `json:"args"`
 		Resume        ResumeMode `json:"resume"`
@@ -162,7 +153,7 @@ func (h *Handler) configure(c *gin.Context) {
 		respond(c, nil, err)
 		return
 	}
-	respond(c, nil, h.m.Configure(c.Param("id"), req.Group, expandHome(strings.TrimSpace(req.Cwd)), req.Resume, req.ResumeMessage, strings.Fields(req.Args)))
+	respond(c, nil, h.m.Configure(c.Param("id"), req.Parent, expandHome(strings.TrimSpace(req.Cwd)), req.Resume, req.ResumeMessage, strings.Fields(req.Args)))
 }
 
 // setResumeDefault takes the message tabs get when they start again, which
@@ -177,27 +168,50 @@ func (h *Handler) setResumeDefault(c *gin.Context) {
 	respond(c, nil, nil)
 }
 
-func (h *Handler) setGroup(c *gin.Context) {
+func (h *Handler) createGroup(c *gin.Context) {
 	var req struct {
-		Group string `json:"group"`
+		Name   string `json:"name" binding:"required"`
+		Parent string `json:"parent"`
+		After  string `json:"after"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		respond(c, nil, err)
 		return
 	}
-	respond(c, nil, h.m.SetGroup(c.Param("id"), req.Group))
+	g, err := h.m.CreateGroup(req.Name, req.Parent, req.After)
+	if err != nil {
+		respond(c, nil, err)
+		return
+	}
+	respond(c, g, nil)
 }
 
 func (h *Handler) renameGroup(c *gin.Context) {
 	var req struct {
-		From string `json:"from" binding:"required"`
-		To   string `json:"to"`
+		Name string `json:"name" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		respond(c, nil, err)
 		return
 	}
-	respond(c, nil, h.m.RenameGroup(req.From, req.To))
+	respond(c, nil, h.m.RenameGroup(c.Param("id"), req.Name))
+}
+
+func (h *Handler) deleteGroup(c *gin.Context) { respond(c, nil, h.m.DeleteGroup(c.Param("id"))) }
+
+// move places a tab or a group: into parent, before or after one of its
+// children, or at its end.
+func (h *Handler) move(c *gin.Context) {
+	var req struct {
+		Parent string `json:"parent"`
+		Before string `json:"before"`
+		After  string `json:"after"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respond(c, nil, err)
+		return
+	}
+	respond(c, nil, h.m.Move(c.Param("id"), req.Parent, req.Before, req.After))
 }
 
 func (h *Handler) checkClaude(c *gin.Context) { respond(c, h.m.CheckClaude(), nil) }

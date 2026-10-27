@@ -125,7 +125,7 @@ func (h *Hub) Start(addr string) (stop func(), err error) {
 // got one at launch, which a change since may have outdated.
 func (h *Hub) pushResume(e *Env) {
 	if err := e.call(http.MethodPut, "/api/resume-default", h.st.get().Settings.Resume); err != nil && !errors.Is(err, errNotConnected) {
-		fmt.Fprintf(os.Stderr, "env %s: resume message: %v\n", e.Name, err)
+		fmt.Fprintf(os.Stderr, "env %s: resume message: %v\n", e.Config().Name, err)
 	}
 }
 
@@ -158,7 +158,7 @@ func (h *Hub) list() []*Env {
 
 func (h *Hub) env(name string) *Env {
 	for _, e := range h.list() {
-		if e.Name == name {
+		if e.Config().Name == name {
 			return e
 		}
 	}
@@ -178,17 +178,45 @@ func (h *Hub) Add(name string, kind Kind, target string) error {
 	if target == "" || strings.HasPrefix(target, "-") || strings.ContainsAny(target, " \t\n") {
 		return errors.New("give the host as ssh takes it (host, user@host, an alias from ~/.ssh/config), the container or the distro")
 	}
-	if !validName.MatchString(name) {
-		return errors.New("a name is up to 40 letters, digits, dots, dashes and underscores")
-	}
-	if h.env(name) != nil {
-		return fmt.Errorf("there is already an environment named %s", name)
+	if err := h.checkName(name); err != nil {
+		return err
 	}
 	e := h.newEnv(EnvConfig{Name: name, Kind: kind, Target: target})
 	h.mu.Lock()
 	h.envs = append(h.envs, e)
 	h.mu.Unlock()
 	go e.Supervise()
+	h.save()
+	h.changes.Notify()
+	return nil
+}
+
+func (h *Hub) checkName(name string) error {
+	if !validName.MatchString(name) {
+		return errors.New("a name is up to 40 letters, digits, dots, dashes and underscores")
+	}
+	if h.env(name) != nil {
+		return fmt.Errorf("there is already an environment named %s", name)
+	}
+	return nil
+}
+
+// Rename renames an environment; local keeps its name. Its backend goes on
+// running: only the hub and the page know environments by name.
+func (h *Hub) Rename(name, to string) error {
+	e := h.env(name)
+	switch {
+	case e == nil:
+		return errors.New("no such environment")
+	case e.Config().Kind == KindLocal:
+		return errors.New("the local environment keeps its name")
+	case to == name:
+		return nil
+	}
+	if err := h.checkName(to); err != nil {
+		return err
+	}
+	e.rename(to)
 	h.save()
 	h.changes.Notify()
 	return nil
@@ -201,7 +229,7 @@ func (h *Hub) Remove(name string) error {
 	if e == nil {
 		return errors.New("no such environment")
 	}
-	if e.Kind == KindLocal {
+	if e.Config().Kind == KindLocal {
 		return errors.New("the local environment stays")
 	}
 	h.mu.Lock()
@@ -216,7 +244,7 @@ func (h *Hub) Remove(name string) error {
 func (h *Hub) save() {
 	var envs []EnvConfig
 	for _, e := range h.list() {
-		envs = append(envs, e.EnvConfig)
+		envs = append(envs, e.Config())
 	}
 	h.st.change(func(st *hubState) { st.Environments = envs })
 }
@@ -227,7 +255,7 @@ func (h *Hub) Reorder(names []string) error {
 	h.mu.Lock()
 	byName := map[string]*Env{}
 	for _, e := range h.envs {
-		byName[e.Name] = e
+		byName[e.Config().Name] = e
 	}
 	var envs []*Env
 	for _, n := range names {
@@ -305,6 +333,16 @@ func (h *Hub) Handler() http.Handler {
 		}
 		e.Reconnect()
 		c.Status(http.StatusNoContent)
+	})
+	r.PUT("/hub/environments/:name", func(c *gin.Context) {
+		var req struct {
+			Name string `json:"name" binding:"required"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		respond(c, h.Rename(c.Param("name"), strings.TrimSpace(req.Name)))
 	})
 	r.DELETE("/hub/environments/:name", func(c *gin.Context) { respond(c, h.Remove(c.Param("name"))) })
 	r.PUT("/hub/settings", func(c *gin.Context) {

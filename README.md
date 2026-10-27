@@ -97,9 +97,9 @@ back.
 
 ## Using it
 
-- **New tab** (the + New tab row under an environment, or ⌥N for the
-  current tab's environment): pick the directory. Optional:
-  a group and extra `claude` arguments. Frequent flags such as
+- **New tab**: the **+** on an environment or a group, then New tab, or
+  ⌥N for one next to the current tab. Pick the directory; optionally extra
+  `claude` arguments. Frequent flags such as
   `--dangerously-skip-permissions` are checkboxes.
 - **The dot**:
   - blue: working
@@ -112,9 +112,14 @@ back.
 - **Tab settings** (… above the terminal, or right-click a tab): its
   group, directory, arguments and resume message, plus Restart and Close.
   The name belongs to claude: type `/rename <name>` in the tab.
-- **Groups**: drag a tab onto a group's label or next to its tabs. Click a
-  label to fold it, right-click it to rename it. Environments fold the
-  same way, by their headers.
+- **Groups** hold tabs and other groups, as deep as you like. Make one
+  with **+** › New group. Fold groups and environments by their chevrons.
+  Rename a group (or an environment) by double-clicking it or with F2.
+  Deleting a group moves what it held up a level; no tab is closed.
+- **Moving**: drag a tab or a group onto a group to put it inside, or
+  between rows. The line shows where it lands, and its left edge the
+  level: drag left or right to change it. ⌘⇧↑/↓ moves the selected row
+  within its group, and Tab settings › Group puts a tab in any group.
 - **Tab rows** (Settings › Appearance): Detailed shows each tab's
   directory under its name, Compact only the name.
 - **Environments**: **Connect environment…**, under the last one, adds one.
@@ -132,7 +137,10 @@ back.
   | ⌥1–9 | go to tab 1–9 |
   | ⌥↑ / ⌥↓ | previous / next tab |
   | ⌥J | next tab that waits for you |
-  | ⌥N | new tab |
+  | ⌥N | new tab next to this one |
+  | ⌘W | close the tab (asks first) |
+  | ⌘⇧↑ / ⌘⇧↓ | move a row up / down in its group |
+  | ↑↓←→, Enter, F2 | in the sidebar: move, fold, open, rename |
   | ⌘, | Settings |
   | ⇧↵ | newline in the prompt |
 

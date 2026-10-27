@@ -61,40 +61,50 @@ body{margin:0}
 </a>
 </div>
 <div style="flex: 1 1 auto; overflow-y: auto; padding: 0 8px 12px">
-<sc-for list="{{envs}}" as="e" hint-placeholder-count="3">
-<div style="margin-top: 8px">
-<div style="display: flex; align-items: center; gap: 8px; padding: 6px 6px 4px">
-<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="{{c.muted}}" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
-<span style="font-weight: 600; font-size: 12px; color: {{c.text}}">{{e.label}}</span>
-<span style="font-size: 11px; color: {{c.muted}}; padding: 0 5px; border: 1px solid {{c.line}}; border-radius: 4px">{{e.kind}}</span>
+<div role="tree" aria-label="Tabs">
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="12">
+<div role="{{r.role}}" aria-level="{{r.level}}" aria-expanded="{{r.expanded}}" style="{{r.wrapStyle}}">
+<sc-for list="{{r.guides}}" as="gd" hint-placeholder-count="1"><span aria-hidden="true" style="{{gd.style}}"></span></sc-for>
+<sc-if value="{{r.isEnv}}" hint-placeholder-val="{{ false }}">
+<div style="{{r.rowStyle}}">
+<button type="button" onClick="{{r.toggle}}" aria-label="Collapse or expand {{r.label}}" style="width: 16px; height: 22px; display: grid; place-items: center; border: 0; padding: 0; background: transparent; color: {{c.muted}}; cursor: pointer; flex: none"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="{{r.chevStyle}}"><path d="m6 9 6 6 6-6"></path></svg></button>
+<span style="font-weight: 600; font-size: 12px; color: {{c.text}}">{{r.label}}</span>
+<span style="font-size: 11px; color: {{c.muted}}; padding: 0 5px; border: 1px solid {{c.line}}; border-radius: 4px">{{r.kind}}</span>
 <span style="flex: 1"></span>
-<span style="{{e.healthDot}}"></span>
-<span style="font-size: 11px; color: {{c.muted}}">{{e.metaShort}}</span>
-<sc-if value="{{e.hasClaude}}" hint-placeholder-val="{{ true }}"><button type="button" aria-label="New tab in {{e.label}}" title="New tab in {{e.label}}" style="width: 22px; height: 22px; display: grid; place-items: center; border: 0; border-radius: 5px; background: transparent; color: {{c.muted}}; cursor: pointer; flex: none"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button></sc-if>
+<span style="{{r.healthDot}}"></span>
+<span style="font-size: 11px; color: {{c.muted}}">{{r.metaShort}}</span>
+<sc-if value="{{r.hasClaude}}" hint-placeholder-val="{{ true }}"><button type="button" onClick="{{r.toggleMenu}}" aria-label="Add to {{r.label}}" aria-expanded="{{r.menuOpen}}" title="New tab or group in {{r.label}}" style="{{r.plusStyle}}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button></sc-if>
 </div>
-<sc-if value="{{e.noClaude}}" hint-placeholder-val="{{ false }}">
-<div style="padding: 4px 8px 4px 24px; font-size: 12px; color: {{c.muted}}">No claude here · <button type="button" style="border: 0; padding: 0; background: transparent; color: {{c.accentText}}; font: inherit; cursor: pointer">Install</button></div>
+<sc-if value="{{r.noClaude}}" hint-placeholder-val="{{ false }}">
+<div style="padding: 2px 8px 6px 28px; font-size: 12px; color: {{c.muted}}">No claude here · <button type="button" style="border: 0; padding: 0; background: transparent; color: {{c.accentText}}; font: inherit; cursor: pointer">Install</button></div>
 </sc-if>
-<sc-for list="{{e.groups}}" as="g" hint-placeholder-count="2">
-<div>
-<sc-if value="{{g.hasLabel}}" hint-placeholder-val="{{ true }}">
-<div style="display: flex; align-items: center; gap: 6px; padding: 6px 6px 2px 24px; color: {{c.muted}}; font-size: 11px; font-weight: 600">
-<span style="flex: 1">{{g.label}}</span><span style="font-weight: 500">{{g.count}}</span><button type="button" aria-label="New tab in {{g.label}}" title="New tab in {{g.label}}" style="width: 22px; height: 22px; display: grid; place-items: center; border: 0; border-radius: 5px; background: transparent; color: {{c.muted}}; cursor: pointer; flex: none"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button>
+</sc-if>
+<sc-if value="{{r.isGroup}}" hint-placeholder-val="{{ false }}">
+<div style="{{r.rowStyle}}">
+<button type="button" onClick="{{r.toggle}}" aria-label="Collapse or expand {{r.label}}" style="width: 16px; height: 22px; display: grid; place-items: center; border: 0; padding: 0; background: transparent; color: {{c.muted}}; cursor: pointer; flex: none"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="{{r.chevStyle}}"><path d="m6 9 6 6 6-6"></path></svg></button>
+<span style="font-weight: 600; font-size: 12px; color: {{c.text2}}; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.label}}</span>
+<sc-if value="{{r.collapsed}}" hint-placeholder-val="{{ false }}"><span style="{{r.aggDot}}"></span><span style="font-size: 11px; color: {{c.muted}}">{{r.count}}</span></sc-if>
+<button type="button" onClick="{{r.toggleMenu}}" aria-label="Add to {{r.label}}" aria-expanded="{{r.menuOpen}}" title="New tab or group in {{r.label}}" style="{{r.plusStyle}}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button>
 </div>
 </sc-if>
-<sc-for list="{{g.tabs}}" as="t" hint-placeholder-count="3">
-<button type="button" onClick="{{t.select}}" style="{{t.rowStyle}}">
-<span style="{{t.dotStyle}}"></span>
+<sc-if value="{{r.isMenu}}" hint-placeholder-val="{{ false }}">
+<div role="menu" aria-label="Add to {{r.label}}" style="{{r.rowStyle}}">
+<button type="button" role="menuitem" style="display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border: 1px solid {{c.line}}; border-radius: 6px; background: {{c.field}}; color: {{c.text}}; font: inherit; font-size: 12px; cursor: pointer"><span style="width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid {{c.muted}}; box-sizing: border-box"></span>New tab</button>
+<button type="button" role="menuitem" style="display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border: 1px solid {{c.line}}; border-radius: 6px; background: {{c.field}}; color: {{c.text}}; font: inherit; font-size: 12px; cursor: pointer"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>New group</button>
+</div>
+</sc-if>
+<sc-if value="{{r.isTab}}" hint-placeholder-val="{{ true }}">
+<button type="button" onClick="{{r.select}}" style="{{r.rowStyle}}">
+<span style="{{r.dotStyle}}"></span>
 <span style="display: flex; flex-direction: column; flex: 1; min-width: 0">
-<span style="display: flex; align-items: center; gap: 6px; min-width: 0"><span style="{{t.nameStyle}}">{{t.name}}</span><sc-if value="{{t.startup}}" hint-placeholder-val="{{ false }}"><span title="Has a startup message" style="font-size: 11px; color: {{c.muted}}">↻</span></sc-if></span>
-<sc-if value="{{t.twoLine}}" hint-placeholder-val="{{ true }}"><span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: {{c.muted}}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{t.cwd}}</span></sc-if>
+<span style="display: flex; align-items: center; gap: 6px; min-width: 0"><span style="{{r.nameStyle}}">{{r.name}}</span><sc-if value="{{r.startup}}" hint-placeholder-val="{{ false }}"><span title="Has a startup message" style="font-size: 11px; color: {{c.muted}}">↻</span></sc-if></span>
+<sc-if value="{{r.twoLine}}" hint-placeholder-val="{{ true }}"><span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: {{c.muted}}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.cwd}}</span></sc-if>
 </span>
 </button>
-</sc-for>
+</sc-if>
 </div>
 </sc-for>
 </div>
-</sc-for>
 <button type="button" title="An SSH host, a Docker container or a WSL distro" style="display: flex; align-items: center; gap: 8px; width: 100%; height: 34px; margin-top: 14px; padding: 0 10px; border: 1px dashed {{c.line}}; border-radius: 6px; background: transparent; color: {{c.muted}}; font: inherit; font-size: 12px; text-align: left; cursor: pointer"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 2v5M15 2v5M6 7h12v4a6 6 0 0 1-12 0zM12 17v5"></path></svg>Connect environment…</button>
 </div>
 <div style="display: flex; align-items: center; gap: 8px; margin: 0 10px 10px; padding: 8px 10px; border-radius: 6px; background: {{c.accentSoft}}; font-size: 12px">
@@ -136,7 +146,7 @@ body{margin:0}
 </div>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"rows":{"editor":"enum","options":["two","one"],"default":"two"},"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"layout":{"editor":"enum","options":["left","top"],"default":"left"},"activeTab":{"editor":"enum","options":["rpc-gateway","billing-fix","docs-site","terraform-plan","k8s-watch","release-v0.9","flaky-tests"],"default":"billing-fix"},"$preview":{"width":1440,"height":900}}'>
+<script type="text/x-dc" data-dc-script data-props='{"rows":{"editor":"enum","options":["two","one"],"default":"two"},"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"layout":{"editor":"enum","options":["left","top"],"default":"left"},"openMenu":{"editor":"enum","options":["","local","g-api","g-pay","g-infra","build-box"],"default":""},"activeTab":{"editor":"enum","options":["rpc-gateway","billing-fix","ledger-sync","invoice-export","docs-site","terraform-plan","k8s-watch","release-v0.9","flaky-tests"],"default":"billing-fix"},"$preview":{"width":1440,"height":900}}'>
 class Component extends DCLogic {
   renderVals() {
     const s = this.state || {};
@@ -150,51 +160,119 @@ class Component extends DCLogic {
     const activeId = s.active || this.props.activeTab || 'billing-fix';
     const COL = { working: c.working, ready: c.ready, needs: c.needs };
     const TABS = [
-      { id: 'rpc-gateway', env: 'local', group: 'api', cwd: '~/src/rpc-gateway', branch: 'feat/rate-limits', status: 'working' },
-      { id: 'billing-fix', env: 'local', group: 'api', cwd: '~/src/billing', branch: 'fix/invoice-rounding', status: 'needs' },
-      { id: 'docs-site', env: 'local', group: 'api', cwd: '~/src/docs', branch: 'main', status: 'ready', unread: true },
-      { id: 'terraform-plan', env: 'local', group: 'infra', cwd: '~/infra/terraform', branch: 'main', status: 'ready' },
-      { id: 'k8s-watch', env: 'local', group: 'infra', cwd: '~/infra/k8s', branch: 'main', status: 'working', startup: true },
-      { id: 'release-v0.9', env: 'build-box', group: '', cwd: '/srv/claude-mux', branch: 'release/v0.9', status: 'working' },
-      { id: 'flaky-tests', env: 'build-box', group: '', cwd: '/srv/claude-mux', branch: 'main', status: 'exited' }
+      { id: 'rpc-gateway', cwd: '~/src/rpc-gateway', branch: 'feat/rate-limits', status: 'working' },
+      { id: 'billing-fix', cwd: '~/src/billing', branch: 'fix/invoice-rounding', status: 'needs' },
+      { id: 'ledger-sync', cwd: '~/src/ledger', branch: 'main', status: 'working' },
+      { id: 'invoice-export', cwd: '~/src/billing', branch: 'feat/csv-export', status: 'ready', unread: true },
+      { id: 'terraform-plan', cwd: '~/infra/terraform', branch: 'main', status: 'ready' },
+      { id: 'k8s-watch', cwd: '~/infra/k8s', branch: 'main', status: 'working', startup: true },
+      { id: 'docs-site', cwd: '~/src/docs', branch: 'main', status: 'ready' },
+      { id: 'release-v0.9', cwd: '/srv/claude-mux', branch: 'release/v0.9', status: 'working' },
+      { id: 'flaky-tests', cwd: '/srv/claude-mux', branch: 'main', status: 'exited' }
     ];
+    const ENVS = [
+      { id: 'local', label: 'local', kind: 'this Mac', metaShort: 'connected', health: c.ready },
+      { id: 'build-box', label: 'build-box', kind: 'ssh', metaShort: '42 ms', health: c.ready },
+      { id: 'sandbox', label: 'sandbox', kind: 'docker', metaShort: 'no claude', health: c.needs, noClaude: true }
+    ];
+    const GROUPS = { 'g-api': 'api', 'g-pay': 'payments', 'g-infra': 'infra' };
+    // The tree: every container lists its children in the user's order. Groups and tabs mix freely.
+    const KIDS = {
+      'local': ['g-api', 'g-infra', 'docs-site'],
+      'g-api': ['rpc-gateway', 'billing-fix', 'g-pay'],
+      'g-pay': ['ledger-sync', 'invoice-export'],
+      'g-infra': ['terraform-plan', 'k8s-watch'],
+      'build-box': ['release-v0.9', 'flaky-tests'],
+      'sandbox': []
+    };
     const byId = {}; TABS.forEach((t) => { byId[t.id] = t; });
+    const envOf = {}; const pathOf = {};
+    const index = (id, env, path) => {
+      (KIDS[id] || []).forEach((k) => {
+        envOf[k] = env; pathOf[k] = path;
+        if (GROUPS[k]) index(k, env, path.concat([GROUPS[k]]));
+      });
+    };
+    ENVS.forEach((e) => index(e.id, e.id, []));
+    const tabsUnder = (id) => (KIDS[id] || []).reduce((acc, k) => GROUPS[k] ? acc.concat(tabsUnder(k)) : acc.concat([byId[k]]), []);
+    const RANK = { needs: 4, unread: 3, working: 2, ready: 1, exited: 0 };
+    const rankOf = (t) => t.status === 'needs' ? 4 : (t.unread ? 3 : RANK[t.status]);
     const dot = (t) => {
       if (t.status === 'exited') return 'width:8px;height:8px;border-radius:50%;border:1.5px solid ' + c.exited + ';box-sizing:border-box;flex:none';
       const halo = t.status === 'needs' ? ';box-shadow:0 0 0 3px ' + c.halo : '';
       return 'width:8px;height:8px;border-radius:50%;flex:none;background:' + COL[t.status] + halo;
     };
+    const collapsed = s.collapsed || { 'g-infra': true };
+    const menu = s.menu !== undefined ? s.menu : (this.props.openMenu || '');
+    const INDENT = 16;
+    const padFor = (depth) => 6 + depth * INDENT;
+    const guidesFor = (depth) => {
+      const g = [];
+      for (let k = 1; k < depth; k++) g.push({ style: 'position:absolute;top:0;bottom:0;left:' + (padFor(k) + 7) + 'px;width:1px;background:' + c.line });
+      return g;
+    };
     const dec = (t) => {
       const active = t.id === activeId;
       const bold = active || t.unread || t.status === 'needs';
+      const path = pathOf[t.id] || [];
       return Object.assign({}, t, {
-        name: t.id, startup: !!t.startup, twoLine: twoLine,
+        name: t.id, startup: !!t.startup, twoLine: twoLine, env: envOf[t.id],
         dotStyle: dot(t),
         nameStyle: 'flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:' + (bold ? '600' : '400') + ';color:' + (t.status === 'exited' ? c.exitedText : c.text),
-        rowStyle: 'display:flex;align-items:center;gap:10px;width:100%;padding:' + (twoLine ? '6px' : '5px') + ' 10px ' + (twoLine ? '6px' : '5px') + (t.group ? ' 40px' : ' 24px') + ';margin:1px 0;border:0;border-radius:6px;cursor:pointer;text-align:left;font:inherit;color:inherit;background:' + (active ? c.sel : 'transparent'),
         topStyle: 'display:flex;align-items:center;gap:7px;height:28px;padding:0 11px;border:0;border-radius:999px;font-size:12px;font:inherit;cursor:pointer;flex:none;color:inherit;background:' + (active ? c.sel : 'transparent'),
-        crumb: t.env + (t.group ? ' / ' + t.group : '') + '  ·  ' + t.cwd + '  ·  ' + t.branch,
+        crumb: [envOf[t.id]].concat(path).join(' / ') + '  ·  ' + t.cwd + '  ·  ' + t.branch,
         select: () => this.setState({ active: t.id })
       });
     };
-    const ENVS = [
-      { id: 'local', label: 'local', kind: 'this Mac', metaShort: 'connected', meta: 'This Mac · connected', health: c.ready, isLocal: true },
-      { id: 'build-box', label: 'build-box', kind: 'ssh', metaShort: '42 ms', meta: 'SSH · 42 ms', health: c.ready, isSsh: true },
-      { id: 'sandbox', label: 'sandbox', kind: 'docker', metaShort: 'no claude', meta: 'Docker · no claude', health: c.needs, noClaude: true, isDocker: true }
-    ];
-    const envs = ENVS.map((e, ei) => {
-      const tabs = TABS.filter((t) => t.env === e.id);
-      const gs = [];
-      tabs.forEach((t) => { if (gs.indexOf(t.group) < 0) gs.push(t.group); });
-      return Object.assign({}, e, {
-        noClaude: !!e.noClaude, hasClaude: !e.noClaude, isLocal: !!e.isLocal, isSsh: !!e.isSsh, isDocker: !!e.isDocker,
-        flat: tabs.map(dec),
-        topSep: 'display:flex;align-items:center;gap:2px;flex:none;' + (ei === 0 ? '' : 'margin-left:8px;padding-left:10px;border-left:1px solid ' + c.line),
-        sepStyle: ei === 0 ? 'padding:2px 0 8px' : 'padding:8px 0;margin-top:2px;border-top:1px solid ' + c.line,
-        healthDot: 'width:6px;height:6px;border-radius:50%;flex:none;background:' + e.health,
-        groups: gs.map((g) => ({ label: g, hasLabel: !!g, count: tabs.filter((t) => t.group === g).length, wrapStyle: g ? 'margin-left:15px;padding-left:4px;border-left:1px solid ' + c.line : '', tabs: tabs.filter((t) => t.group === g).map(dec) }))
+    const blank = { isEnv: false, isGroup: false, isTab: false, isMenu: false, noClaude: false, hasClaude: false, collapsed: false, menuOpen: false, guides: [] };
+    const plusStyle = (open) => 'width:22px;height:22px;display:grid;place-items:center;border:0;border-radius:5px;cursor:pointer;flex:none;background:' + (open ? c.sel : 'transparent') + ';color:' + (open ? c.text : c.muted);
+    const rows = [];
+    const toggle = (id) => () => this.setState({ collapsed: Object.assign({}, collapsed, { [id]: !collapsed[id] }) });
+    const toggleMenu = (id) => () => this.setState({ menu: menu === id ? '' : id });
+    const walk = (id, depth) => {
+      (KIDS[id] || []).forEach((k) => {
+        if (GROUPS[k]) {
+          const isC = !!collapsed[k];
+          const under = tabsUnder(k);
+          const top = under.slice().sort((x, y) => rankOf(y) - rankOf(x))[0];
+          rows.push(Object.assign({}, blank, {
+            isGroup: true, role: 'treeitem', level: depth + 1, expanded: !isC, label: GROUPS[k], collapsed: isC, count: under.length,
+            aggDot: top ? dot(top) : 'display:none', menuOpen: menu === k, plusStyle: plusStyle(menu === k),
+            toggle: toggle(k), toggleMenu: toggleMenu(k), guides: guidesFor(depth),
+            chevStyle: 'transition:transform 120ms;transform:rotate(' + (isC ? '-90' : '0') + 'deg)',
+            wrapStyle: 'position:relative', rowStyle: 'display:flex;align-items:center;gap:6px;height:28px;padding:0 4px 0 ' + (padFor(depth) - 2) + 'px'
+          }));
+          if (menu === k) rows.push(Object.assign({}, blank, { isMenu: true, role: 'none', label: GROUPS[k], guides: guidesFor(depth + 1), wrapStyle: 'position:relative', rowStyle: 'display:flex;gap:6px;padding:2px 4px 6px ' + padFor(depth + 1) + 'px' }));
+          if (!isC) walk(k, depth + 1);
+        } else {
+          const t = dec(byId[k]);
+          rows.push(Object.assign({}, blank, t, {
+            isTab: true, role: 'treeitem', level: depth + 1, expanded: undefined, guides: guidesFor(depth), wrapStyle: 'position:relative',
+            rowStyle: 'display:flex;align-items:center;gap:10px;width:100%;padding:' + (twoLine ? '6px' : '5px') + ' 10px ' + (twoLine ? '6px' : '5px') + ' ' + (padFor(depth) + 4) + 'px;margin:1px 0;border:0;border-radius:6px;cursor:pointer;text-align:left;font:inherit;color:inherit;background:' + (t.id === activeId ? c.sel : 'transparent')
+          }));
+        }
       });
+    };
+    ENVS.forEach((e, ei) => {
+      const isC = !!collapsed[e.id];
+      rows.push(Object.assign({}, blank, {
+        isEnv: true, role: 'treeitem', level: 1, expanded: !isC, label: e.label, kind: e.kind, metaShort: e.metaShort,
+        noClaude: !!e.noClaude, hasClaude: !e.noClaude, menuOpen: menu === e.id, plusStyle: plusStyle(menu === e.id),
+        healthDot: 'width:6px;height:6px;border-radius:50%;flex:none;background:' + e.health,
+        toggle: toggle(e.id), toggleMenu: toggleMenu(e.id),
+        chevStyle: 'transition:transform 120ms;transform:rotate(' + (isC ? '-90' : '0') + 'deg)',
+        wrapStyle: 'position:relative;' + (ei === 0 ? 'margin-top:4px' : 'margin-top:10px'),
+        rowStyle: 'display:flex;align-items:center;gap:6px;height:30px;padding:0 4px 0 4px'
+      }));
+      if (menu === e.id) rows.push(Object.assign({}, blank, { isMenu: true, role: 'none', label: e.label, wrapStyle: 'position:relative', rowStyle: 'display:flex;gap:6px;padding:2px 4px 6px ' + padFor(1) + 'px' }));
+      if (!isC) walk(e.id, 1);
     });
+    const envs = ENVS.map((e, ei) => Object.assign({}, e, {
+      meta: e.kind + ' · ' + e.metaShort, noClaude: !!e.noClaude, hasClaude: !e.noClaude, isLocal: e.id === 'local', isSsh: e.id === 'build-box', isDocker: e.id === 'sandbox',
+      flat: tabsUnder(e.id).map(dec),
+      topSep: 'display:flex;align-items:center;gap:2px;flex:none;' + (ei === 0 ? '' : 'margin-left:8px;padding-left:10px;border-left:1px solid ' + c.line),
+      healthDot: 'width:6px;height:6px;border-radius:50%;flex:none;background:' + e.health
+    }));
     const cur = dec(byId[activeId] || byId['billing-fix']);
     const T = (t, col) => ({ isText: true, isBox: false, isPrompt: false, t: t, style: 'white-space:pre-wrap;color:' + (col || c.termText) });
     let lines;
@@ -220,8 +298,8 @@ class Component extends DCLogic {
     ];
     return {
       c: c, isLeft: layout === 'left', isTop: layout === 'top',
-      envs: envs, cur: cur, lines: lines,
-      topTabs: TABS.filter((t) => t.env === cur.env).map(dec)
+      envs: envs, rows: rows, cur: cur, lines: lines,
+      topTabs: tabsUnder(cur.env).map(dec)
     };
   }
 }

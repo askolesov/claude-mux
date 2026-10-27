@@ -76,3 +76,23 @@ func TestPageFiles(t *testing.T) {
 		}
 	}
 }
+
+func TestRename(t *testing.T) {
+	h, err := New(t.TempDir(), Backends{}, Connectors{}, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.envs = append(h.envs, newEnv(EnvConfig{Name: "devbox", Kind: KindSSH, Target: "devbox"}, nil, func() {}))
+	if err := h.Rename("local", "here"); err == nil {
+		t.Error("renamed local")
+	}
+	if err := h.Rename("devbox", "local"); err == nil {
+		t.Error("took a name in use")
+	}
+	if err := h.Rename("devbox", "build-box"); err != nil {
+		t.Fatal(err)
+	}
+	if envs := h.st.get().Environments; envs[1].Name != "build-box" || envs[1].Target != "devbox" {
+		t.Errorf("saved %+v", envs)
+	}
+}

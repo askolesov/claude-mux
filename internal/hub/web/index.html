@@ -21,6 +21,7 @@
   </div>
   <button class="jump" id="jump"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><span>Jump to tab</span><kbd id="jumpKey">⌘K</kbd></button>
   <div class="list" id="list"></div>
+  <div class="dropline" id="dropline" hidden></div>
   <div class="updatebar" id="updatebar" hidden></div>
 </aside>
 <div class="strip" id="strip"></div>
@@ -57,7 +58,6 @@
   </div>
 </div>
 
-<datalist id="groupsList"></datalist>
 <datalist id="cwds"></datalist>
 <datalist id="targets"></datalist>
 
@@ -99,15 +99,6 @@
     <h3 id="mTitle"></h3>
     <div class="note" id="mText" style="color:var(--text2)"></div>
     <div class="dfoot" style="padding:14px 0 0"><span class="gap"></span><button type="button" class="btn" id="mCancel">Cancel</button><button class="btn primary" id="mOk">OK</button></div>
-  </form>
-</dialog>
-
-<dialog id="askDlg">
-  <form method="dialog" id="askForm">
-    <h3 id="aTitle"></h3>
-    <div class="note" id="aHint"></div>
-    <input id="aLine" class="input" list="groupsList" autocomplete="off">
-    <div class="dfoot" style="padding:14px 0 0"><span class="gap"></span><button type="button" class="btn" id="aCancel">Cancel</button><button class="btn primary">Save</button></div>
   </form>
 </dialog>
 
