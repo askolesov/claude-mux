@@ -11,8 +11,9 @@ for where this is going: backends over SSH, in Docker, in WSL and on
 Windows.
 
 ```sh
-go build -o /tmp/claude-mux-backend ./cmd/backend
-go run ./cmd/hub -backend /tmp/claude-mux-backend -cwd ~/Documents/@Ankr/codespace
+mkdir -p /tmp/backends
+go build -o /tmp/backends/claude-mux-backend-$(go env GOOS)-$(go env GOARCH) ./cmd/backend
+go run ./cmd/hub -backend-dir /tmp/backends -cwd ~/Documents/@Ankr/codespace
 # → http://127.0.0.1:7777
 ```
 
@@ -48,6 +49,24 @@ shown; claude running in other terminals is left alone.
   header to start a new tab in it, rename it (an existing name merges the
   two) or ungroup it. Collapsing is kept per browser.
 - **Resume** restarts a tab whose claude exited (`/exit`, a crash).
+- **Environments**: **+ Host** adds an SSH host (as ssh takes it: host,
+  user@host or a `~/.ssh/config` alias; it must take your key without a
+  password prompt). The sidebar then shows a block per environment, each
+  with its own tabs and groups; New asks where. On connect the hub checks
+  the host's platform (`uname -sm`) and, if the right backend build isn't
+  in `~/.claude-mux/bin/<version>/` there yet, copies it over the same ssh.
+  The remote backend lives as long as the connection: when the hub quits or
+  ssh drops, it hangs up its tabs, and the next connect resumes them. Right-
+  click an environment's header to open a tab there or remove it (its tabs
+  stay on the host for when it's added again). Hosts are kept in
+  `~/.claude-mux/environments.json`.
+- **No claude in an environment**: its block says so, with **Install…**
+  (runs Anthropic's official installer there, `curl -fsSL
+  https://claude.ai/install.sh | bash`, and shows its output) and **Retry**
+  (looks again, after you installed it yourself). The backend also finds
+  claude in `~/.local/bin`, which a non-interactive ssh usually leaves off
+  the PATH. The first tab in a fresh environment walks through claude's
+  setup and login.
 - **Status dot**: blue pulsing = working, green = ready for input, amber
   pulsing = needs you (a permission prompt, or a prompt shown before startup
   such as trusting the folder), hollow = exited. A tab that finished while
@@ -63,9 +82,11 @@ shown; claude running in other terminals is left alone.
 
 ## How it works
 
-- The page talks to the hub, which forwards `/env/local/…` to the backend
-  over one pipe (the backend's stdin and stdout, split into streams by
-  yamux). The backend's API listens on no port.
+- The page talks to the hub, which forwards `/env/<name>/…` to that
+  environment's backend over one pipe: the backend's stdin and stdout,
+  directly for local and through `ssh -T` for a host, split into streams by
+  yamux. A backend's API listens on no port. The hub's own API is `/hub/`
+  (the environments, as server-sent events; add, remove).
 - State is one file, `~/.claude-mux/state.json`: the tabs in sidebar order,
   each with its name, group, directory, args, claude session id and startup
   message. (Older versions' `sessions.json` and `favourites.json` are

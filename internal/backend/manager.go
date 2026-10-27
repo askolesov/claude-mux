@@ -30,6 +30,7 @@ type Manager struct {
 	hookURL   string // the hook port's base, ".../hook/<token>"; a session adds its id
 
 	mu       sync.Mutex
+	claude   Claude
 	sessions []*Session
 	subs     map[chan struct{}]struct{}
 }
@@ -57,6 +58,7 @@ func NewManager(stateDir, hookURL, exe string) (*Manager, error) {
 	if err := m.load(stateDir); err != nil {
 		return nil, err
 	}
+	m.claude = findClaude()
 	for _, s := range m.List() {
 		if err := m.Start(s.ID); err != nil {
 			fmt.Fprintf(os.Stderr, "start %s: %v\n", s.Name, err)
@@ -214,6 +216,10 @@ func (m *Manager) Start(id string) error {
 	if s.running() {
 		return errRunning
 	}
+	claude := m.claudePath()
+	if claude == "" {
+		return errNoClaude
+	}
 	s.mu.Lock()
 	name, sid, startupMessage := s.Name, s.ClaudeSessionID, s.StartupMessage
 	args := append([]string{"--settings", m.hooksFile, "--name", name}, s.Args...)
@@ -225,7 +231,7 @@ func (m *Manager) Start(id string) error {
 		args = append(args, "--", startupMessage) // after "--", a message starting with "-" stays a prompt
 	}
 	env := append(childEnv(), "CLAUDE_MUX_ID="+s.ID, "CLAUDE_MUX_HOOK="+m.hookURL+"/"+s.ID, "TERM=xterm-256color", "COLORTERM=truecolor")
-	if err := s.start(args, env, func() {
+	if err := s.start(claude, args, env, func() {
 		s.setStatus(StatusExited)
 		m.notify()
 	}); err != nil {
@@ -297,22 +303,33 @@ func (m *Manager) WatchStartup(ctx context.Context) {
 // renames the tab. The name is passed back as --name on the next start.
 func (m *Manager) PollNames(ctx context.Context, every time.Duration) {
 	for {
-		if out, err := exec.CommandContext(ctx, "claude", "agents", "--json").Output(); err == nil {
-			var agents []struct {
-				PID  int    `json:"pid"`
-				Name string `json:"name"`
-			}
-			if json.Unmarshal(out, &agents) == nil {
-				for _, a := range agents {
-					m.followName(a.PID, a.Name)
-				}
-			}
-		}
+		m.followNames(ctx)
 		select {
 		case <-ctx.Done():
 			return
 		case <-time.After(every):
 		}
+	}
+}
+
+func (m *Manager) followNames(ctx context.Context) {
+	claude := m.claudePath()
+	if claude == "" {
+		return
+	}
+	out, err := exec.CommandContext(ctx, claude, "agents", "--json").Output()
+	if err != nil {
+		return
+	}
+	var agents []struct {
+		PID  int    `json:"pid"`
+		Name string `json:"name"`
+	}
+	if json.Unmarshal(out, &agents) != nil {
+		return
+	}
+	for _, a := range agents {
+		m.followName(a.PID, a.Name)
 	}
 }
 

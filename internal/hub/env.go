@@ -1,6 +1,7 @@
 package hub
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"net/http/httputil"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
@@ -18,15 +20,39 @@ import (
 
 var errNotConnected = errors.New("the environment's backend isn't running")
 
+// EnvConfig is an environment as environments.json keeps it.
+type EnvConfig struct {
+	Name string `json:"name"`
+	Kind string `json:"kind"`           // local, ssh
+	Host string `json:"host,omitempty"` // ssh: the host as ssh takes it, an alias from ~/.ssh/config included
+}
+
+// Connection states, as the page shows them.
+const (
+	StateConnecting = "connecting"
+	StateConnected  = "connected"
+	StateFailed     = "failed" // Error says why; the hub tries again
+)
+
+// EnvView is what the page sees of an environment.
+type EnvView struct {
+	EnvConfig
+	State string `json:"state"`
+	Error string `json:"error,omitempty"`
+}
+
 // Env is one environment: a backend the hub runs as its child and talks to
-// over the child's stdin and stdout. A backend that dies is started again.
+// over the child's stdin and stdout. A backend that stops is started again.
 type Env struct {
-	Name string
-	argv []string // the command that starts the backend
+	EnvConfig
+	prepare  func() ([]string, error) // installs the backend if needed and returns the command that runs it
+	onChange func()
 
 	mu      sync.Mutex
 	session *yamux.Session
 	cmd     *exec.Cmd
+	state   string
+	err     string
 
 	quit chan struct{} // closed by Close
 	done chan struct{} // closed when Supervise returns
@@ -34,11 +60,12 @@ type Env struct {
 	proxy *httputil.ReverseProxy
 }
 
-func NewEnv(name string, argv []string) *Env {
-	e := &Env{Name: name, argv: argv, quit: make(chan struct{}), done: make(chan struct{})}
+func NewEnv(cfg EnvConfig, prepare func() ([]string, error), onChange func()) *Env {
+	e := &Env{EnvConfig: cfg, prepare: prepare, onChange: onChange, state: StateConnecting,
+		quit: make(chan struct{}), done: make(chan struct{})}
 	e.proxy = &httputil.ReverseProxy{
 		Rewrite: func(r *httputil.ProxyRequest) {
-			r.Out.URL.Scheme, r.Out.URL.Host = "http", name
+			r.Out.URL.Scheme, r.Out.URL.Host = "http", "backend"
 			r.Out.Host = r.In.Host
 		},
 		// Every request and every terminal is a stream of the pipe.
@@ -48,6 +75,22 @@ func NewEnv(name string, argv []string) *Env {
 		FlushInterval: -1, // server-sent events go out as they come
 	}
 	return e
+}
+
+func (e *Env) View() EnvView {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return EnvView{EnvConfig: e.EnvConfig, State: e.state, Error: e.err}
+}
+
+func (e *Env) setState(state, err string) {
+	e.mu.Lock()
+	changed := e.state != state || e.err != err
+	e.state, e.err = state, err
+	e.mu.Unlock()
+	if changed {
+		e.onChange()
+	}
 }
 
 // ServeHTTP forwards a request to the backend; the caller has cut the
@@ -64,7 +107,7 @@ func (e *Env) open() (net.Conn, error) {
 	return s.Open()
 }
 
-// Supervise runs the backend until Close, starting it again after it dies,
+// Supervise runs the backend until Close, starting it again after it stops,
 // with a growing pause while it keeps failing.
 func (e *Env) Supervise() {
 	defer close(e.done)
@@ -80,7 +123,8 @@ func (e *Env) Supervise() {
 			return
 		default:
 		}
-		fmt.Fprintf(os.Stderr, "env %s: backend stopped (%v); starting it again in %s\n", e.Name, err, pause)
+		e.setState(StateFailed, err.Error())
+		fmt.Fprintf(os.Stderr, "env %s: %v; trying again in %s\n", e.Name, err, pause)
 		select {
 		case <-e.quit:
 			return
@@ -90,10 +134,15 @@ func (e *Env) Supervise() {
 	}
 }
 
-// run starts the backend and returns when it exits.
+// run prepares and starts the backend and returns when it exits, with the
+// reason: its last line on stderr, if it left one.
 func (e *Env) run() error {
-	cmd := exec.Command(e.argv[0], e.argv[1:]...)
-	cmd.Stderr = os.Stderr
+	e.setState(StateConnecting, "")
+	argv, err := e.prepare()
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command(argv[0], argv[1:]...)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return err
@@ -102,6 +151,8 @@ func (e *Env) run() error {
 	if err != nil {
 		return err
 	}
+	stderr := &lastLine{prefix: "env " + e.Name + ": "}
+	cmd.Stderr = stderr
 	if err := cmd.Start(); err != nil {
 		return err
 	}
@@ -114,17 +165,29 @@ func (e *Env) run() error {
 	e.mu.Lock()
 	e.session, e.cmd = session, cmd
 	e.mu.Unlock()
+	go func() {
+		// Connected once the backend answers; over SSH that can take a while.
+		if _, err := session.Ping(); err == nil {
+			e.setState(StateConnected, "")
+		}
+	}()
 
 	err = cmd.Wait()
 	e.mu.Lock()
 	e.session, e.cmd = nil, nil
 	e.mu.Unlock()
 	_ = session.Close()
+	if line := stderr.Last(); line != "" {
+		return errors.New(line)
+	}
+	if err == nil {
+		err = errors.New("the backend exited")
+	}
 	return err
 }
 
 // Close ends the backend the way a quitting hub does: it closes the pipe, so
-// the backend hangs up its sessions, noting which ran, and exits. It waits
+// the backend hangs up its sessions, keeping its tabs, and exits. It waits
 // for that, and kills a backend that takes longer than a minute.
 func (e *Env) Close() {
 	close(e.quit)
@@ -159,3 +222,37 @@ type pipe struct {
 
 func (p pipe) Write(b []byte) (int, error) { return p.w.Write(b) }
 func (p pipe) Close() error                { return p.w.Close() }
+
+// lastLine passes a child's stderr on to the hub's, prefixed, and keeps its
+// last line: why the child stopped.
+type lastLine struct {
+	prefix string
+
+	mu   sync.Mutex
+	buf  []byte
+	last string
+}
+
+func (l *lastLine) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.buf = append(l.buf, p...)
+	for {
+		i := bytes.IndexByte(l.buf, '\n')
+		if i < 0 {
+			return len(p), nil
+		}
+		line := strings.TrimSpace(string(l.buf[:i]))
+		l.buf = l.buf[i+1:]
+		fmt.Fprintln(os.Stderr, l.prefix+line)
+		if line != "" {
+			l.last = line
+		}
+	}
+}
+
+func (l *lastLine) Last() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.last
+}

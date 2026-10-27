@@ -83,6 +83,7 @@
   .grip:hover, .grip.dragging { background: linear-gradient(to right, transparent 3px, var(--accent) 3px, var(--accent) 5px, transparent 5px); }
   body.resizing { cursor: col-resize; user-select: none; }
   .brand { display: flex; align-items: center; justify-content: space-between; padding: 12px 12px 8px; }
+  .brand .row { display: flex; gap: 6px; }
   .brand b { font-family: var(--mono); font-size: 14px; letter-spacing: .02em; }
   .summary { padding: 0 12px 8px; color: var(--muted); font-size: 12px; }
   .summary .n { color: var(--text); font-weight: 600; }
@@ -115,6 +116,20 @@
   .group .dot { width: 8px; height: 8px; margin-left: auto; }
   .group.drop-into { border-color: var(--accent); }
   .tab.in-group { margin-left: 18px; }
+  .env {
+    display: flex; align-items: center; gap: 7px; padding: 12px 12px 4px; font-size: 12px; color: var(--text);
+    border-top: 1px solid var(--line); margin-top: 6px; cursor: default;
+  }
+  .env:first-child { border-top: 0; margin-top: 0; }
+  .env .where { color: var(--muted); font-family: var(--mono); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .env .estate { margin-left: auto; color: var(--muted); font-size: 11px; }
+  .env .dot { width: 8px; height: 8px; }
+  .dot.env-connected { background: var(--ready); }
+  .dot.env-connecting { background: var(--muted); animation: pulse 1.2s ease-in-out infinite; }
+  .dot.env-failed { background: var(--danger); }
+  .notice { margin: 4px 12px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; font-size: 12px; color: var(--muted); }
+  .notice.err { color: var(--danger); word-break: break-word; }
+  .notice .row { display: flex; gap: 6px; margin-top: 6px; }
 
   .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--dead); justify-self: center; }
   .dot.working { background: var(--working); animation: pulse 1.2s ease-in-out infinite; }
@@ -181,13 +196,16 @@
     border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; resize: vertical;
   }
   dialog textarea:focus { outline: none; border-color: var(--accent); }
+  dialog code { display: block; font: 12px var(--mono); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; }
+  dialog pre { font: 11.5px/1.4 var(--mono); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px; max-height: 260px; overflow: auto; white-space: pre-wrap; }
+  dialog select { width: 100%; font: 13px var(--mono); color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
   dialog .err { color: var(--danger); font-size: 12px; margin-top: 8px; min-height: 1em; }
 </style>
 </head>
 <body>
 <aside>
   <div class="grip" id="grip" title="Drag to resize · double-click to reset"></div>
-  <div class="brand"><b>claude-mux</b><button id="new" title="New session (⌥N)">+ New</button></div>
+  <div class="brand"><b>claude-mux</b><span class="row"><button id="addHost" title="Add an SSH host">+ Host</button><button id="new" title="New tab (⌥N)">+ New</button></span></div>
   <div class="summary" id="summary"></div>
   <div class="list" id="list"></div>
   <div class="foot">
@@ -223,9 +241,30 @@
   </form>
 </dialog>
 
+<dialog id="hostDlg">
+  <form method="dialog" id="hostForm">
+    <h3>Add an SSH host</h3>
+    <label for="hHost">Host, as ssh takes it: host, user@host or an alias from ~/.ssh/config. It must take your key without a password prompt.</label>
+    <input id="hHost" placeholder="devbox" autocomplete="off">
+    <label for="hName">Name</label>
+    <input id="hName" placeholder="defaults to the host" autocomplete="off">
+    <div class="err" id="hostErr"></div>
+    <div class="row"><button type="button" id="hostCancel">Cancel</button><button class="primary">Add</button></div>
+  </form>
+</dialog>
+
+<dialog id="installDlg">
+  <h3 id="iTitle"></h3>
+  <label>Runs Anthropic's official installer there:</label>
+  <code id="iCmd"></code>
+  <pre id="iOut" hidden></pre>
+  <div class="row"><button type="button" id="iClose">Cancel</button><button class="primary" id="iRun">Install</button></div>
+</dialog>
+
 <dialog id="dlg">
   <form method="dialog" id="dlgForm">
-    <h3 id="dlgTitle">New session</h3>
+    <h3 id="dlgTitle">New tab</h3>
+    <div id="fEnvRow"><label for="fEnv">Environment</label><select id="fEnv"></select></div>
     <label for="fName">Name</label>
     <input id="fName" placeholder="defaults to the folder name" autocomplete="off">
     <label for="fGroup">Group</label>
@@ -253,10 +292,16 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, v); } catch {} },
 };
 
-let state = { sessions: [], defaultCwd: "" };
-let selected = null;             // the selected tab's id
-const terms = new Map();         // session id -> {term, fit, ws, el, closed}
-const lastStatus = new Map();    // session id -> status, for notifications
+// The hub reports the environments; each environment's backend reports its
+// tabs. A tab's key is "<environment>/<id>".
+let envs = [];                   // [{name, kind, host, state, error}]
+const envData = new Map();       // environment -> its backend's state: {claude, sessions, defaultCwd}
+const streams = new Map();       // environment -> EventSource of its backend's state
+let tabs = [];                   // every environment's tabs in sidebar order: {...session, env, key}
+let selected = null;             // the selected tab's key
+let pendingSelect = store.get("mux.selected"); // the last selection, until its tab shows up
+const terms = new Map();         // tab key -> {term, fit, ws, el, closed}
+const lastStatus = new Map();    // tab key -> status, for notifications
 
 const STATUS_TEXT = {
   starting: "starting", working: "working", ready: "ready for input",
@@ -264,23 +309,23 @@ const STATUS_TEXT = {
 };
 
 // ---------- api ----------
-// Every API path goes to an environment's backend through the hub; for now
-// there is one, this machine.
-const ENV = "/env/local";
-
-async function api(method, path, body) {
-  const res = await fetch(ENV + path, {
+async function request(method, url, body) {
+  const res = await fetch(url, {
     method,
     headers: body ? { "Content-Type": "application/json" } : {},
     body: body ? JSON.stringify(body) : undefined,
   });
+  let data = null;
+  try { data = res.status === 204 ? null : await res.json(); } catch {}
   if (!res.ok) {
-    let msg = res.statusText;
-    try { msg = (await res.json()).error || msg; } catch {}
-    throw new Error(msg);
+    const err = new Error(data?.error || res.statusText);
+    err.data = data;
+    throw err;
   }
-  return res.status === 204 ? null : res.json();
+  return data;
 }
+// api calls an environment's backend, through the hub.
+const api = (env, method, path, body) => request(method, `/env/${encodeURIComponent(env)}${path}`, body);
 
 // ---------- helpers ----------
 function ago(ts) {
@@ -292,19 +337,21 @@ function ago(ts) {
 }
 const base = (p) => p.split("/").filter(Boolean).pop() || p;
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-const waiting = (s) => s.status === "needs-you" || (s.status === "ready" && s.unseen);
-const session = (id) => state.sessions.find((s) => s.id === id);
-const dead = (s) => s.status === "exited" || s.status === "stopped";
+const waiting = (t) => t.status === "needs-you" || (t.status === "ready" && t.unseen);
+const tab = (key) => tabs.find((t) => t.key === key);
+const env = (name) => envs.find((e) => e.name === name);
+const dead = (t) => t.status === "exited" || t.status === "stopped";
+const sessionsOf = (name) => envData.get(name)?.sessions || [];
 
 // ---------- groups ----------
 // A group is a label on tabs; its tabs sit together under one header.
-// Collapsing is per browser.
+// Collapsing is per browser, per environment.
 const collapsed = new Set((() => { try { return JSON.parse(store.get("mux.collapsed") || "[]"); } catch { return []; } })());
-function setCollapsed(group, shut) {
-  shut ? collapsed.add(group) : collapsed.delete(group);
+function setCollapsed(key, shut) {
+  shut ? collapsed.add(key) : collapsed.delete(key);
   store.set("mux.collapsed", JSON.stringify([...collapsed]));
 }
-const allGroups = () => [...new Set(state.sessions.map((s) => s.group).filter(Boolean))];
+const groupsOf = (name) => [...new Set(sessionsOf(name).map((s) => s.group).filter(Boolean))];
 
 // grouped splits items into runs: each group, at its first item, and every
 // ungrouped item on its own.
@@ -320,30 +367,12 @@ function grouped(items, groupOf) {
   return runs;
 }
 
-// The most urgent status in a group, shown on its header while it's collapsed.
-function groupDot(sessions) {
-  if (sessions.some((s) => s.status === "needs-you")) return "needs-you";
-  if (sessions.some((s) => s.status === "ready" && s.unseen)) return "ready";
-  if (sessions.some((s) => s.status === "working" || s.status === "starting")) return "working";
+// The most urgent status among tabs, shown on a collapsed group's header.
+function urgent(list) {
+  if (list.some((t) => t.status === "needs-you")) return "needs-you";
+  if (list.some((t) => t.status === "ready" && t.unseen)) return "ready";
+  if (list.some((t) => t.status === "working" || t.status === "starting")) return "working";
   return "";
-}
-
-function groupHeader(run, dot) {
-  const shut = collapsed.has(run.group);
-  return `<div class="group" data-group="${esc(run.group)}" title="Click to ${shut ? "expand" : "collapse"} · right-click for actions">
-    <span class="caret">${shut ? "▸" : "▾"}</span><span class="gname">${esc(run.group)}</span><span class="gcount">${run.items.length}</span>
-    ${shut && dot ? `<span class="dot ${dot}"></span>` : ""}</div>`;
-}
-
-// renderRuns renders the tabs, grouped; tabs of a collapsed group are left out.
-function renderRuns(runs, tab) {
-  let html = "";
-  for (const run of runs) {
-    if (!run.group) { html += tab(run.items[0], false); continue; }
-    html += groupHeader(run, groupDot(run.items));
-    if (!collapsed.has(run.group)) for (const it of run.items) html += tab(it, true);
-  }
-  return html;
 }
 
 // ---------- icon ----------
@@ -363,46 +392,78 @@ function favicon(dot) {
 }
 
 // ---------- rendering ----------
-let dragId = null;        // the tab being dragged; renders wait for the drop
+let dragKey = null;       // the tab being dragged; renders wait for the drop
 let renderPending = false;
 
 function render() {
-  if (dragId) { renderPending = true; return; }
-  const { sessions } = state;
-  const needs = sessions.filter((s) => s.status === "needs-you").length;
-  const ready = sessions.filter((s) => s.status === "ready").length;
-  const working = sessions.filter((s) => s.status === "working" || s.status === "starting").length;
+  if (dragKey) { renderPending = true; return; }
+  const needs = tabs.filter((t) => t.status === "needs-you").length;
+  const ready = tabs.filter((t) => t.status === "ready").length;
+  const working = tabs.filter((t) => t.status === "working" || t.status === "starting").length;
   $("summary").innerHTML =
     `<span class="n">${needs}</span> need you · <span class="n">${ready}</span> ready · <span class="n">${working}</span> working`;
-
-  const waitingCount = sessions.filter(waiting).length;
+  const waitingCount = tabs.filter(waiting).length;
   document.title = waitingCount ? `(${waitingCount}) claude-mux` : "claude-mux";
   favicon(needs ? "#f5b14c" : waitingCount ? "#4fd18b" : null);
 
-  $("list").innerHTML = !sessions.length ? `<div class="empty">No tabs — ⌥N starts one.</div>` :
-    renderRuns(grouped(sessions, (s) => s.group), (s, inGroup) => {
-      const i = sessions.indexOf(s);
-      const cls = ["tab", inGroup && "in-group", selected === s.id && "active", s.unseen && "unseen", s.status === "needs-you" && "needs-you"].filter(Boolean).join(" ");
-      return `<div class="${cls}" data-id="${esc(s.id)}" title="${esc(s.cwd)}" draggable="true">
-        <span class="dot ${esc(s.status)}"></span>
-        <span class="name">${s.startupMessage ? `<span class="mark" title="Startup message: ${esc(s.startupMessage)}">↻</span> ` : ""}${esc(s.name)}</span>
-        <span class="key">${i < 9 ? "⌥" + (i + 1) : ""}</span>
-        <span class="sub">${esc(STATUS_TEXT[s.status] || s.status)} · ${ago(s.statusSince)} · ${esc(base(s.cwd))}</span>
-      </div>`;
-    });
+  // With only this machine, connected and with claude, the page has no
+  // environment headers: it looks as it did before environments.
+  const plain = envs.length === 1 && envs[0].state === "connected" && envData.get(envs[0].name)?.claude?.path;
+  let html = "";
+  for (const e of envs) {
+    const data = envData.get(e.name);
+    const own = tabs.filter((t) => t.env === e.name);
+    if (!plain) html += envHeader(e);
+    if (e.state === "failed") html += `<div class="notice err">${esc(e.error)}</div>`;
+    if (e.state === "connected" && data && !data.claude?.path) {
+      html += `<div class="notice">claude isn't installed here.
+        <span class="row"><button data-env-act="install" data-env="${esc(e.name)}">Install…</button><button data-env-act="retry" data-env="${esc(e.name)}">Retry</button></span></div>`;
+    }
+    for (const run of grouped(own, (t) => t.group)) {
+      if (!run.group) { html += tabRow(run.items[0], false); continue; }
+      const key = e.name + "/" + run.group;
+      const shut = collapsed.has(key);
+      const dot = shut ? urgent(run.items) : "";
+      html += `<div class="group" data-env="${esc(e.name)}" data-group="${esc(run.group)}" title="Click to ${shut ? "expand" : "collapse"} · right-click for actions">
+        <span class="caret">${shut ? "▸" : "▾"}</span><span class="gname">${esc(run.group)}</span><span class="gcount">${run.items.length}</span>
+        ${dot ? `<span class="dot ${dot}"></span>` : ""}</div>`;
+      if (!shut) for (const t of run.items) html += tabRow(t, true);
+    }
+    if (!own.length && e.state === "connected" && data?.claude?.path) html += `<div class="empty">No tabs — ⌥N starts one.</div>`;
+  }
+  $("list").innerHTML = html || `<div class="empty">Connecting…</div>`;
   renderBar();
+}
+
+function envHeader(e) {
+  const where = e.kind === "local" ? "this machine" : e.host;
+  return `<div class="env" data-env="${esc(e.name)}" title="Right-click for actions">
+    <span class="dot env-${esc(e.state)}"></span><b>${esc(e.name)}</b><span class="where">${esc(where)}</span>
+    ${e.state !== "connected" ? `<span class="estate">${esc(e.state)}</span>` : ""}</div>`;
+}
+
+function tabRow(t, inGroup) {
+  const i = tabs.indexOf(t);
+  const cls = ["tab", inGroup && "in-group", selected === t.key && "active", t.unseen && "unseen", t.status === "needs-you" && "needs-you"].filter(Boolean).join(" ");
+  return `<div class="${cls}" data-key="${esc(t.key)}" title="${esc(t.cwd)}" draggable="true">
+    <span class="dot ${esc(t.status)}"></span>
+    <span class="name">${t.startupMessage ? `<span class="mark" title="Startup message: ${esc(t.startupMessage)}">↻</span> ` : ""}${esc(t.name)}</span>
+    <span class="key">${i < 9 ? "⌥" + (i + 1) : ""}</span>
+    <span class="sub">${esc(STATUS_TEXT[t.status] || t.status)} · ${ago(t.statusSince)} · ${esc(base(t.cwd))}</span>
+  </div>`;
 }
 
 // The top bar's buttons are the context menu's actions, minus copying and
 // the startup message, so the two never disagree.
 function renderBar() {
-  const s = session(selected);
-  if (!s) { $("bar").innerHTML = `<span class="cwd">Pick a tab on the left.</span>`; return; }
-  const items = menuItems(s.id).filter((it) => it && !it[0].startsWith("copy-") && it[0] !== "startup-msg");
+  const t = tab(selected);
+  if (!t) { $("bar").innerHTML = `<span class="cwd">Pick a tab on the left.</span>`; return; }
+  const items = menuItems({ kind: "tab", key: t.key }).filter((it) => it && !it[0].startsWith("copy-") && it[0] !== "startup-msg");
+  const where = envs.length > 1 ? `${t.env}: ` : "";
   $("bar").innerHTML = `
-    <span class="title" title="/rename in the session renames it">${esc(s.name)}</span>
-    <span class="pill ${esc(s.status)}">${esc(STATUS_TEXT[s.status] || s.status)}</span>
-    <span class="cwd" title="${esc(s.cwd)}">${esc(s.cwd)}</span>
+    <span class="title" title="/rename in the session renames it">${esc(t.name)}</span>
+    <span class="pill ${esc(t.status)}">${esc(STATUS_TEXT[t.status] || t.status)}</span>
+    <span class="cwd" title="${esc(t.cwd)}">${esc(where + t.cwd)}</span>
     <span class="actions">${items.map(([act, label, cls]) => `<button data-act="${act}" class="${cls || ""}">${esc(label)}</button>`).join("")}</span>`;
 }
 
@@ -468,8 +529,8 @@ systemDark.addEventListener("change", applyTheme);
 applyTheme();
 
 // ---------- terminals ----------
-function ensureTerm(id) {
-  if (terms.has(id)) return terms.get(id);
+function ensureTerm(key) {
+  if (terms.has(key)) return terms.get(key);
   const el = document.createElement("div");
   el.className = "term";
   $("stage").appendChild(el);
@@ -498,8 +559,8 @@ function ensureTerm(id) {
   });
   term.onData((d) => send(t, { t: "in", d }));
   term.onResize(({ cols, rows }) => send(t, { t: "resize", c: cols, r: rows }));
-  connect(id, t);
-  terms.set(id, t);
+  connect(key, t);
+  terms.set(key, t);
   return t;
 }
 
@@ -507,8 +568,9 @@ function send(t, msg) {
   if (t.ws && t.ws.readyState === WebSocket.OPEN) t.ws.send(JSON.stringify(msg));
 }
 
-function connect(id, t) {
-  const ws = new WebSocket(`ws://${location.host}${ENV}/api/sessions/${encodeURIComponent(id)}/term`);
+function connect(key, t) {
+  const { env, id } = tab(key);
+  const ws = new WebSocket(`ws://${location.host}/env/${encodeURIComponent(env)}/api/sessions/${encodeURIComponent(id)}/term`);
   ws.binaryType = "arraybuffer";
   t.ws = ws;
   ws.onopen = () => {
@@ -520,18 +582,18 @@ function connect(id, t) {
   ws.onclose = () => {
     if (t.closed) return;
     t.retry = Math.min(t.retry + 1, 6);
-    setTimeout(() => { if (!t.closed && state.sessions.some((s) => s.id === id)) connect(id, t); }, 500 * t.retry);
+    setTimeout(() => { if (!t.closed && tab(key)) connect(key, t); }, 500 * t.retry);
   };
 }
 
-function dropTerm(id) {
-  const t = terms.get(id);
+function dropTerm(key) {
+  const t = terms.get(key);
   if (!t) return;
   t.closed = true;
   t.ws?.close();
   t.term.dispose();
   t.el.remove();
-  terms.delete(id);
+  terms.delete(key);
 }
 
 function fitSelected() {
@@ -539,56 +601,55 @@ function fitSelected() {
 }
 
 // ---------- selection ----------
-function select(id) {
-  const s = session(id);
-  if (!s) return;
-  selected = id;
-  store.set("mux.selected", id);
-  if (s.group) setCollapsed(s.group, false);
-  for (const [tid, t] of terms) t.el.classList.toggle("shown", tid === id);
+function select(key) {
+  const t = tab(key);
+  if (!t) return;
+  selected = key;
+  store.set("mux.selected", key);
+  if (t.group) setCollapsed(t.env + "/" + t.group, false);
+  for (const [k, x] of terms) x.el.classList.toggle("shown", k === key);
   $("placeholder").style.display = "none";
-  const t = ensureTerm(id);
-  t.el.classList.add("shown");
-  requestAnimationFrame(() => { fitSelected(); t.term.focus(); });
-  markSeen(id);
+  const term = ensureTerm(key);
+  term.el.classList.add("shown");
+  requestAnimationFrame(() => { fitSelected(); term.term.focus(); });
+  markSeen(key);
   render();
 }
 
-function markSeen(id) {
-  if (session(id)?.unseen && document.visibilityState === "visible") api("POST", `/api/sessions/${id}/seen`).catch(() => {});
+function markSeen(key) {
+  const t = tab(key);
+  if (t?.unseen && document.visibilityState === "visible") api(t.env, "POST", `/api/sessions/${t.id}/seen`).catch(() => {});
 }
 
 function step(dir) {
-  const list = state.sessions;
-  if (!list.length) return;
-  const i = list.findIndex((s) => s.id === selected);
-  select(list[(i + dir + list.length) % list.length].id);
+  if (!tabs.length) return;
+  const i = tabs.findIndex((t) => t.key === selected);
+  select(tabs[(i + dir + tabs.length) % tabs.length].key);
 }
 
 // ⌥J: the next tab that waits for you, permission prompts first.
 function jumpWaiting() {
-  const list = state.sessions;
-  const start = Math.max(0, list.findIndex((s) => s.id === selected));
-  const rot = [...list.slice(start + 1), ...list.slice(0, start + 1)];
-  const next = rot.find((s) => s.status === "needs-you") || rot.find((s) => s.status === "ready" && s.unseen);
-  if (next) select(next.id);
+  const start = Math.max(0, tabs.findIndex((t) => t.key === selected));
+  const rot = [...tabs.slice(start + 1), ...tabs.slice(0, start + 1)];
+  const next = rot.find((t) => t.status === "needs-you") || rot.find((t) => t.status === "ready" && t.unseen);
+  if (next) select(next.key);
 }
 
 // ---------- notifications ----------
 function notifyTransitions() {
-  for (const s of state.sessions) {
-    const prev = lastStatus.get(s.id);
-    lastStatus.set(s.id, s.status);
-    if (!prev || prev === s.status) continue;
-    if (s.status === "starting" || prev === "exited" || prev === "stopped") {
-      const t = terms.get(s.id);
-      if (t && t.ws?.readyState !== WebSocket.OPEN) { t.retry = 0; connect(s.id, t); }
+  for (const t of tabs) {
+    const prev = lastStatus.get(t.key);
+    lastStatus.set(t.key, t.status);
+    if (!prev || prev === t.status) continue;
+    if (t.status === "starting" || prev === "exited" || prev === "stopped") {
+      const term = terms.get(t.key);
+      if (term && term.ws?.readyState !== WebSocket.OPEN) { term.retry = 0; connect(t.key, term); }
     }
-    if (s.status !== "ready" && s.status !== "needs-you") continue;
-    const looking = document.visibilityState === "visible" && document.hasFocus() && selected === s.id;
+    if (t.status !== "ready" && t.status !== "needs-you") continue;
+    const looking = document.visibilityState === "visible" && document.hasFocus() && selected === t.key;
     if (looking || typeof Notification === "undefined" || Notification.permission !== "granted") continue;
-    const n = new Notification(s.name, { body: s.status === "needs-you" ? "needs you" : "ready for input", tag: s.id });
-    n.onclick = () => { window.focus(); select(s.id); n.close(); };
+    const n = new Notification(t.name, { body: t.status === "needs-you" ? "needs you" : "ready for input", tag: t.key });
+    n.onclick = () => { window.focus(); select(t.key); n.close(); };
   }
 }
 
@@ -597,58 +658,98 @@ function updateNotifyButton() {
   b.hidden = typeof Notification === "undefined" || Notification.permission !== "default";
 }
 
-// ---------- state stream ----------
-function applyState(next) {
-  state = { ...next, sessions: next.sessions || [] };
-  for (const id of [...terms.keys()]) if (!session(id)) dropTerm(id);
-  if (selected && !session(selected)) {
+// ---------- state streams ----------
+// refresh rebuilds the flat tab list after any state arrived.
+function refresh() {
+  tabs = envs.flatMap((e) => sessionsOf(e.name).map((s) => ({ ...s, env: e.name, key: e.name + "/" + s.id })));
+  for (const key of [...terms.keys()]) if (!tab(key)) dropTerm(key);
+  if (selected && !tab(selected)) {
     selected = null;
     $("placeholder").style.display = "";
   }
+  if (pendingSelect && tab(pendingSelect)) { select(pendingSelect); pendingSelect = null; }
   notifyTransitions();
   if (selected) markSeen(selected);
   render();
 }
 
-function stream() {
-  const es = new EventSource(ENV + "/api/events");
-  es.onmessage = (e) => applyState(JSON.parse(e.data));
-  es.onerror = () => { $("summary").textContent = "server unreachable — retrying…"; };
+// Each connected environment streams its backend's state; one that goes
+// away takes its tabs with it.
+function syncStreams() {
+  for (const e of envs) {
+    const es = streams.get(e.name);
+    if (e.state !== "connected" || (es && es.readyState !== EventSource.CLOSED)) continue;
+    const next = new EventSource(`/env/${encodeURIComponent(e.name)}/api/events`);
+    next.onmessage = (m) => {
+      const st = JSON.parse(m.data);
+      envData.set(e.name, { ...st, sessions: st.sessions || [] });
+      refresh();
+    };
+    streams.set(e.name, next);
+  }
+  for (const [name, es] of streams) {
+    if (env(name)) continue;
+    es.close();
+    streams.delete(name);
+    envData.delete(name);
+  }
+}
+
+function streamHub() {
+  const es = new EventSource("/hub/events");
+  es.onmessage = (m) => { envs = JSON.parse(m.data) || []; syncStreams(); refresh(); };
+  es.onerror = () => { $("summary").textContent = "claude-mux unreachable — retrying…"; };
 }
 
 // ---------- actions ----------
 function openNew(prefill = {}) {
-  const cwds = new Set([state.defaultCwd, ...state.sessions.map((s) => s.cwd)]);
-  $("cwds").innerHTML = [...cwds].filter(Boolean).map((c) => `<option value="${esc(c)}">`).join("");
-  $("groups").innerHTML = allGroups().map((g) => `<option value="${esc(g)}">`).join("");
+  const sel = tab(selected);
+  const envName = prefill.env ?? sel?.env ?? "local";
+  $("fEnv").innerHTML = envs.filter((e) => e.state === "connected").map((e) => `<option value="${esc(e.name)}">${esc(e.name)}</option>`).join("");
+  $("fEnv").value = envName;
+  $("fEnvRow").hidden = envs.length < 2;
   $("fName").value = "";
-  $("fGroup").value = prefill.group ?? (session(selected)?.group || "");
-  $("fCwd").value = store.get("mux.lastCwd") || state.defaultCwd;
+  $("fGroup").value = prefill.group ?? (sel && sel.env === envName ? sel.group || "" : "");
   $("fArgs").value = store.get("mux.lastArgs") || "";
   $("fStartup").value = "";
   $("fSkip").checked = store.get("mux.skip") === "1";
   $("fChrome").checked = store.get("mux.chrome") === "1";
   $("dlgErr").textContent = "";
+  fillEnvFields();
   $("dlg").showModal();
   $("fName").focus();
 }
 
+// The directory and groups offered depend on the environment.
+function fillEnvFields() {
+  const name = $("fEnv").value;
+  const data = envData.get(name);
+  const cwds = new Set([data?.defaultCwd, ...sessionsOf(name).map((s) => s.cwd)]);
+  $("cwds").innerHTML = [...cwds].filter(Boolean).map((c) => `<option value="${esc(c)}">`).join("");
+  $("groups").innerHTML = groupsOf(name).map((g) => `<option value="${esc(g)}">`).join("");
+  $("fCwd").value = store.get("mux.lastCwd." + name) || (name === "local" && store.get("mux.lastCwd")) || data?.defaultCwd || "";
+}
+$("fEnv").addEventListener("change", fillEnvFields);
+
 $("dlgForm").addEventListener("submit", async (e) => {
   e.preventDefault();
+  const name = $("fEnv").value;
   const flags = [$("fSkip").checked && "--dangerously-skip-permissions", $("fChrome").checked && "--chrome"].filter(Boolean);
   const body = {
     name: $("fName").value, group: $("fGroup").value, cwd: $("fCwd").value,
     args: [...flags, $("fArgs").value].join(" "), startupMessage: $("fStartup").value,
   };
   try {
-    const s = await api("POST", "/api/sessions", body);
-    store.set("mux.lastCwd", body.cwd);
+    const s = await api(name, "POST", "/api/sessions", body);
+    store.set("mux.lastCwd." + name, body.cwd);
     store.set("mux.lastArgs", $("fArgs").value);
     store.set("mux.skip", $("fSkip").checked ? "1" : "0");
     store.set("mux.chrome", $("fChrome").checked ? "1" : "0");
     $("dlg").close();
-    state.sessions = [...state.sessions.filter((x) => x.id !== s.id), s];
-    select(s.id);
+    const data = envData.get(name);
+    if (data && !data.sessions.some((x) => x.id === s.id)) data.sessions.push(s);
+    refresh();
+    select(name + "/" + s.id);
   } catch (err) {
     $("dlgErr").textContent = err.message;
   }
@@ -656,90 +757,157 @@ $("dlgForm").addEventListener("submit", async (e) => {
 $("dlgCancel").onclick = () => $("dlg").close();
 $("new").onclick = () => openNew();
 $("new2").onclick = () => openNew();
+$("addHost").onclick = () => {
+  $("hHost").value = "";
+  $("hName").value = "";
+  $("hostErr").textContent = "";
+  $("hostDlg").showModal();
+  $("hHost").focus();
+};
+$("hostCancel").onclick = () => $("hostDlg").close();
+$("hostForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  try {
+    await request("POST", "/hub/environments", { host: $("hHost").value, name: $("hName").value });
+    $("hostDlg").close();
+  } catch (err) {
+    $("hostErr").textContent = err.message;
+  }
+});
 $("notify").onclick = async () => { await Notification.requestPermission(); updateNotifyButton(); };
 
 $("list").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-env-act]");
+  if (b) { envAct(b.dataset.envAct, b.dataset.env); return; }
   const head = e.target.closest(".group");
   if (head) {
-    setCollapsed(head.dataset.group, !collapsed.has(head.dataset.group));
+    const key = head.dataset.env + "/" + head.dataset.group;
+    setCollapsed(key, !collapsed.has(key));
     render();
     return;
   }
-  const tab = e.target.closest(".tab");
-  if (tab) select(tab.dataset.id);
+  const row = e.target.closest(".tab");
+  if (row) select(row.dataset.key);
 });
 
-// Drag a tab to reorder; the backend keeps the order. Dropped on a tab, a
-// tab takes that tab's group; dropped on a group's header, it joins the
-// group at its end.
-function dropSide(tab, e) {
-  const r = tab.getBoundingClientRect();
+// Install or look for claude again in an environment that has none.
+async function envAct(what, name) {
+  if (what === "retry") {
+    await api(name, "POST", "/api/claude/check").catch((err) => alert(err.message));
+    return;
+  }
+  $("iTitle").textContent = `Install claude on ${name}`;
+  $("iCmd").textContent = envData.get(name)?.claude?.installer || "";
+  $("iOut").textContent = "";
+  $("iOut").hidden = true;
+  $("iRun").hidden = false;
+  $("iRun").disabled = false;
+  $("iClose").textContent = "Cancel";
+  $("iRun").onclick = async () => {
+    $("iRun").disabled = true;
+    $("iOut").hidden = false;
+    $("iOut").textContent = "Installing… this takes a minute.";
+    try {
+      const res = await api(name, "POST", "/api/claude/install");
+      const c = envData.get(name)?.claude;
+      $("iOut").textContent = `${res.output.trim()}\n\nDone${c?.version ? ": " + c.version : ""}. In a new tab there, claude asks you to log in the first time.`;
+    } catch (err) {
+      $("iOut").textContent = `${err.data?.output?.trim() || ""}\n\nThe installer failed: ${err.message}`;
+    }
+    $("iRun").hidden = true;
+    $("iClose").textContent = "Close";
+  };
+  $("iClose").onclick = () => $("installDlg").close();
+  $("installDlg").showModal();
+}
+
+// Drag a tab to reorder it within its environment; the backend keeps the
+// order. Dropped on a tab, a tab takes that tab's group; dropped on a
+// group's header, it joins the group at its end.
+function dropSide(el, e) {
+  const r = el.getBoundingClientRect();
   return e.clientY < r.top + r.height / 2 ? "before" : "after";
 }
 function clearDrop() {
   for (const t of $("list").querySelectorAll(".drop-before, .drop-after, .drop-into")) t.classList.remove("drop-before", "drop-after", "drop-into");
 }
+// dropTarget is the tab or group header under the pointer, if it is in the
+// dragged tab's environment.
+function dropTarget(e) {
+  const el = e.target.closest(".tab, .group");
+  if (!dragKey || !el) return null;
+  const elEnv = el.classList.contains("group") ? el.dataset.env : tab(el.dataset.key)?.env;
+  return elEnv === tab(dragKey)?.env ? el : null;
+}
 $("list").addEventListener("dragstart", (e) => {
-  const tab = e.target.closest(".tab");
-  if (!tab) return;
-  dragId = tab.dataset.id;
+  const row = e.target.closest(".tab");
+  if (!row) return;
+  dragKey = row.dataset.key;
   e.dataTransfer.effectAllowed = "move";
-  e.dataTransfer.setData("text/plain", dragId);
-  tab.classList.add("dragging");
+  e.dataTransfer.setData("text/plain", dragKey);
+  row.classList.add("dragging");
 });
 $("list").addEventListener("dragover", (e) => {
-  const tab = e.target.closest(".tab, .group");
-  if (!dragId || !tab) return;
+  const el = dropTarget(e);
+  if (!el) return;
   e.preventDefault();
   clearDrop();
-  if (tab.classList.contains("group")) tab.classList.add("drop-into");
-  else if (tab.dataset.id !== dragId) tab.classList.add("drop-" + dropSide(tab, e));
+  if (el.classList.contains("group")) el.classList.add("drop-into");
+  else if (el.dataset.key !== dragKey) el.classList.add("drop-" + dropSide(el, e));
 });
 $("list").addEventListener("drop", async (e) => {
-  const tab = e.target.closest(".tab, .group");
-  if (!dragId || !tab || tab.dataset.id === dragId) return;
+  const el = dropTarget(e);
+  if (!el || el.dataset.key === dragKey) return;
   e.preventDefault();
-  const id = dragId;
-  const ids = state.sessions.map((s) => s.id).filter((x) => x !== id);
+  const moved = tab(dragKey);
+  const data = envData.get(moved.env);
+  const ids = data.sessions.map((s) => s.id).filter((x) => x !== moved.id);
   let group;
-  if (tab.classList.contains("group")) {
-    group = tab.dataset.group;
-    const last = state.sessions.filter((s) => s.group === group && s.id !== id).pop();
-    ids.splice(last ? ids.indexOf(last.id) + 1 : ids.length, 0, id);
+  if (el.classList.contains("group")) {
+    group = el.dataset.group;
+    const last = data.sessions.filter((s) => s.group === group && s.id !== moved.id).pop();
+    ids.splice(last ? ids.indexOf(last.id) + 1 : ids.length, 0, moved.id);
   } else {
-    group = session(tab.dataset.id)?.group || "";
-    ids.splice(ids.indexOf(tab.dataset.id) + (dropSide(tab, e) === "after" ? 1 : 0), 0, id);
+    const over = tab(el.dataset.key);
+    group = over.group || "";
+    ids.splice(ids.indexOf(over.id) + (dropSide(el, e) === "after" ? 1 : 0), 0, moved.id);
   }
-  const moved = session(id);
   const regroup = (moved.group || "") !== group;
-  state.sessions = ids.map(session);
-  moved.group = group;
+  const s = data.sessions.find((x) => x.id === moved.id);
+  s.group = group;
+  data.sessions = ids.map((id) => data.sessions.find((x) => x.id === id));
+  refresh();
   try {
-    if (regroup) await api("PUT", `/api/sessions/${id}/group`, { group });
-    await api("PUT", "/api/sessions/order", { ids });
+    if (regroup) await api(moved.env, "PUT", `/api/sessions/${moved.id}/group`, { group });
+    await api(moved.env, "PUT", "/api/sessions/order", { ids });
   } catch (err) {
     alert(err.message);
   }
 });
 $("list").addEventListener("dragend", () => {
-  dragId = null;
+  dragKey = null;
   renderPending = false;
   clearDrop();
   render();
 });
 
-// Right-click a tab or a group's header for its actions. kind is "tab" or
-// "group"; id is the tab's id or the group's name.
-function menuItems(id, kind = "tab") {
-  if (kind === "group") return [["new-in-group", "New session in group…"], ["rename-group", "Rename group…"], null, ["ungroup", "Ungroup"]];
-  const s = session(id);
-  if (!s) return [];
+// Right-click a tab, a group's header or an environment's header for its
+// actions. A target is {kind: "tab", key}, {kind: "group", env, group} or
+// {kind: "env", env}.
+function menuItems(target) {
+  if (target.kind === "env") {
+    const e = env(target.env);
+    return [["new-in-env", "New tab here…"], e?.kind !== "local" && null, e?.kind !== "local" && ["remove-env", "Remove environment", "danger"]].filter((x) => x !== false);
+  }
+  if (target.kind === "group") return [["new-in-group", "New tab in group…"], ["rename-group", "Rename group…"], null, ["ungroup", "Ungroup"]];
+  const t = tab(target.key);
+  if (!t) return [];
   return [
-    dead(s) && ["start", "Resume"],
+    dead(t) && ["start", "Resume"],
     ["group", "Group…"],
     ["startup-msg", "Startup message…"],
     null,
-    s.claudeSessionId && ["copy-id", "Copy session id"],
+    t.claudeSessionId && ["copy-id", "Copy session id"],
     ["copy-cwd", "Copy directory"],
     null,
     ["close", "Close", "danger"],
@@ -749,18 +917,20 @@ function menuItems(id, kind = "tab") {
 function closeMenu() { $("menu").classList.remove("open"); }
 
 $("list").addEventListener("contextmenu", (e) => {
-  const el = e.target.closest(".tab, .group");
+  const el = e.target.closest(".tab, .group, .env");
   if (!el) return;
   e.preventDefault();
-  const target = el.classList.contains("group") ? { kind: "group", id: el.dataset.group } : { kind: "tab", id: el.dataset.id };
+  const target = el.classList.contains("tab") ? { kind: "tab", key: el.dataset.key }
+    : el.classList.contains("group") ? { kind: "group", env: el.dataset.env, group: el.dataset.group }
+    : { kind: "env", env: el.dataset.env };
   const menu = $("menu");
-  menu.innerHTML = menuItems(target.id, target.kind)
+  menu.innerHTML = menuItems(target)
     .map((it) => it ? `<button data-act="${it[0]}" class="${it[2] || ""}">${esc(it[1])}</button>` : "<hr>").join("");
   menu.onclick = (ev) => {
     const b = ev.target.closest("button[data-act]");
     if (!b) return;
     closeMenu();
-    act(b.dataset.act, target.id);
+    act(b.dataset.act, target);
   };
   menu.classList.add("open");
   const r = menu.getBoundingClientRect();
@@ -771,33 +941,41 @@ window.addEventListener("pointerdown", (e) => { if (!e.target.closest("#menu")) 
 window.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMenu(); });
 window.addEventListener("blur", closeMenu);
 
-$("bar").addEventListener("click", (e) => { const b = e.target.closest("button[data-act]"); if (b) act(b.dataset.act, selected); });
+$("bar").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-act]");
+  if (b && selected) act(b.dataset.act, { kind: "tab", key: selected });
+});
 
-// act runs one action on a tab (or, for the group actions, a group): the
-// selected tab from the top bar, or what was right-clicked.
-async function act(what, id) {
+// act runs one action on a target: the selected tab from the top bar, or
+// what was right-clicked.
+async function act(what, target) {
+  const t = target.kind === "tab" ? tab(target.key) : null;
+  const name = t?.env ?? target.env;
   try {
     if (what === "start") {
-      await api("POST", `/api/sessions/${id}/start`);
-      terms.get(id)?.term.focus();
+      await api(name, "POST", `/api/sessions/${t.id}/start`);
+      terms.get(t.key)?.term.focus();
     } else if (what === "close") {
-      if (session(id)?.status !== "working" || confirm("It is working — close it anyway? The turn in progress is cut off.")) await api("DELETE", `/api/sessions/${id}`);
+      if (t.status !== "working" || confirm("It is working — close it anyway? The turn in progress is cut off.")) await api(name, "DELETE", `/api/sessions/${t.id}`);
     } else if (what === "group") {
-      const group = await ask("Group", "Tabs with the same group sit together under one header. Empty takes it out of its group.", session(id)?.group || "", true);
-      if (group !== null) await api("PUT", `/api/sessions/${id}/group`, { group });
+      const group = await ask("Group", "Tabs with the same group sit together under one header. Empty takes it out of its group.", t.group || "", groupsOf(name));
+      if (group !== null) await api(name, "PUT", `/api/sessions/${t.id}/group`, { group });
     } else if (what === "startup-msg") {
-      const msg = await ask("Startup message", "Sent as the first prompt whenever this tab's claude starts: when it opens, on Resume, and on every claude-mux start. Empty means none.", session(id)?.startupMessage || "", false);
-      if (msg !== null) await api("PUT", `/api/sessions/${id}/startup-message`, { startupMessage: msg });
+      const msg = await ask("Startup message", "Sent as the first prompt whenever this tab's claude starts: when it opens, on Resume, and on every claude-mux start. Empty means none.", t.startupMessage || null);
+      if (msg !== null) await api(name, "PUT", `/api/sessions/${t.id}/startup-message`, { startupMessage: msg });
     } else if (what === "rename-group") {
-      const to = await ask("Rename group", "Renames it on every tab; an existing group's name merges the two.", id, true);
-      if (to && to !== id) await api("POST", "/api/groups/rename", { from: id, to });
+      const to = await ask("Rename group", "Renames it on every tab; an existing group's name merges the two.", target.group, groupsOf(name));
+      if (to && to !== target.group) await api(name, "POST", "/api/groups/rename", { from: target.group, to });
     } else if (what === "ungroup") {
-      await api("POST", "/api/groups/rename", { from: id, to: "" });
+      await api(name, "POST", "/api/groups/rename", { from: target.group, to: "" });
     } else if (what === "new-in-group") {
-      openNew({ group: id });
+      openNew({ env: name, group: target.group });
+    } else if (what === "new-in-env") {
+      openNew({ env: name });
+    } else if (what === "remove-env") {
+      if (confirm(`Disconnect ${name} and remove it from the list? Its tabs are hung up and kept there: adding it again brings them back.`)) await request("DELETE", `/hub/environments/${encodeURIComponent(name)}`);
     } else if (what === "copy-id" || what === "copy-cwd") {
-      const s = session(id);
-      const text = what === "copy-cwd" ? s?.cwd : s?.claudeSessionId;
+      const text = what === "copy-cwd" ? t.cwd : t.claudeSessionId;
       if (text) await navigator.clipboard.writeText(text);
     }
   } catch (err) {
@@ -805,16 +983,17 @@ async function act(what, id) {
   }
 }
 
-// ask asks for one value: a group name (one line, existing groups offered)
-// or a message (several lines). null when cancelled.
-function ask(title, hint, value, oneLine) {
-  $("groups").innerHTML = allGroups().map((g) => `<option value="${esc(g)}">`).join("");
+// ask asks for one value: a name, with options to pick from (one line), or
+// a message (several lines, when options is null). null when cancelled.
+function ask(title, hint, value, options) {
+  const oneLine = !!options;
+  $("groups").innerHTML = (options || []).map((g) => `<option value="${esc(g)}">`).join("");
   $("aTitle").textContent = title;
   $("aHint").textContent = hint;
   $("aLine").hidden = !oneLine;
   $("aText").hidden = oneLine;
   const field = oneLine ? $("aLine") : $("aText");
-  field.value = value;
+  field.value = value || "";
   return new Promise((resolve) => {
     const done = (v) => { $("askDlg").close(); resolve(v); };
     $("askForm").onsubmit = (e) => { e.preventDefault(); done(field.value.trim()); };
@@ -830,8 +1009,8 @@ window.addEventListener("keydown", (e) => {
   if (!e.altKey || e.metaKey || e.ctrlKey) return;
   let handled = true;
   if (/^Digit[1-9]$/.test(e.code)) {
-    const s = state.sessions[Number(e.code.slice(5)) - 1];
-    if (s) select(s.id);
+    const t = tabs[Number(e.code.slice(5)) - 1];
+    if (t) select(t.key);
   } else if (e.code === "KeyN") openNew();
   else if (e.code === "KeyJ") jumpWaiting();
   else if (e.code === "ArrowUp") step(-1);
@@ -876,15 +1055,8 @@ window.addEventListener("focus", () => { if (selected) markSeen(selected); });
 setInterval(render, 15000); // keep the "3m ago" labels moving
 
 // ---------- boot ----------
-(async () => {
-  updateNotifyButton();
-  try {
-    applyState(await api("GET", "/api/state"));
-    const last = store.get("mux.selected");
-    if (session(last)) select(last);
-  } catch {}
-  stream();
-})();
+updateNotifyButton();
+streamHub();
 </script>
 </body>
 </html>

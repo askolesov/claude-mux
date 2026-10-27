@@ -101,10 +101,10 @@ func (s *Session) running() bool {
 	return s.ptmx != nil
 }
 
-// start runs claude with args in a new pty and pumps its output until it exits,
-// then calls onExit.
-func (s *Session) start(claudeArgs []string, env []string, onExit func()) error {
-	cmd := exec.Command("claude", claudeArgs...)
+// start runs claude (its path) with args in a new pty and pumps its output
+// until it exits, then calls onExit.
+func (s *Session) start(claude string, claudeArgs []string, env []string, onExit func()) error {
+	cmd := exec.Command(claude, claudeArgs...)
 	cmd.Dir = s.Cwd
 	cmd.Env = env
 	s.mu.Lock()

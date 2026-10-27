@@ -1,6 +1,6 @@
 # claude-mux: hub and backends
 
-Status: step 1 done (2026-10-27); the rest is design. Today claude-mux is one Mac program that runs
+Status: steps 1 and 2 done (2026-10-27); the rest is design. Today claude-mux is one Mac program that runs
 claude sessions on this machine. This design splits it into a **hub** (the
 window and the page) and **backends** (the sessions), so one window can
 show sessions running here, over SSH, in Docker, in WSL and on Windows.
@@ -200,5 +200,7 @@ Each step ships something that runs.
 - The hub's window: `webview/webview_go` (small, C bindings) or Wails (more
   framework than needed)? Decided in step 6.
 - Public releases, so environments download for themselves?
-- What the page shows when an environment has no claude, or claude isn't
-  logged in, and whether it offers to install it.
+- ~~What the page shows when an environment has no claude.~~ Done in
+  step 2: the environment's block offers Install (the official installer,
+  `install.sh` or `install.ps1` by platform) and Retry. Logging in happens
+  in the first tab, in claude's own setup.

@@ -9,7 +9,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"os/signal"
 	"syscall"
 	"time"
@@ -21,9 +20,6 @@ import (
 // closes them: the hub quit or the connection to it broke. It then hangs up
 // its sessions, noting which ran, so the next start resumes them.
 func Run(stateDir, defaultCwd string) error {
-	if _, err := exec.LookPath("claude"); err != nil {
-		return err
-	}
 	exe, err := os.Executable()
 	if err != nil {
 		return err

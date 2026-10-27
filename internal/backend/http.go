@@ -42,6 +42,8 @@ func NewHandler(m *Manager, defaultCwd string) http.Handler {
 	api.POST("/sessions/:id/seen", h.seen)
 	api.GET("/sessions/:id/term", h.term)
 	api.POST("/groups/rename", h.renameGroup)
+	api.POST("/claude/check", h.checkClaude)
+	api.POST("/claude/install", h.installClaude)
 	return r
 }
 
@@ -82,12 +84,16 @@ func respond(c *gin.Context, v any, err error) {
 }
 
 type StateView struct {
+	Claude     Claude        `json:"claude"`
 	Sessions   []SessionView `json:"sessions"`
 	DefaultCwd string        `json:"defaultCwd"`
 }
 
 func (h *Handler) snapshot() StateView {
-	return StateView{Sessions: h.m.List(), DefaultCwd: h.defaultCwd}
+	h.m.mu.Lock()
+	claude := h.m.claude
+	h.m.mu.Unlock()
+	return StateView{Claude: claude, Sessions: h.m.List(), DefaultCwd: h.defaultCwd}
 }
 
 func (h *Handler) state(c *gin.Context) { c.JSON(http.StatusOK, h.snapshot()) }
@@ -192,6 +198,19 @@ func (h *Handler) renameGroup(c *gin.Context) {
 		return
 	}
 	respond(c, nil, h.m.RenameGroup(req.From, req.To))
+}
+
+func (h *Handler) checkClaude(c *gin.Context) { respond(c, h.m.CheckClaude(), nil) }
+
+// installClaude runs the official installer; it takes a while, and the page
+// shows its output.
+func (h *Handler) installClaude(c *gin.Context) {
+	out, err := h.m.InstallClaude(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error(), "output": out})
+		return
+	}
+	respond(c, gin.H{"output": out}, nil)
 }
 
 func (h *Handler) close(c *gin.Context) { respond(c, nil, h.m.Close(c.Param("id"))) }
