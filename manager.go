@@ -152,14 +152,18 @@ func (m *Manager) Get(id string) (*Session, error) {
 }
 
 // Create starts a new claude session in cwd.
-func (m *Manager) Create(name, cwd string, args []string) (*Session, error) {
-	s := &Session{ID: newID(), Name: name, Cwd: cwd, Args: args, CreatedAt: time.Now()}
+func (m *Manager) Create(name, group, cwd string, args []string) (*Session, error) {
+	s := &Session{ID: newID(), Name: name, Group: group, Cwd: cwd, Args: args, CreatedAt: time.Now()}
 	return s, m.add(s, args)
 }
 
-// Takeover continues a claude conversation that ran somewhere else, here.
+// Takeover continues a claude conversation that ran somewhere else, here. A
+// saved conversation's tab joins its group.
 func (m *Manager) Takeover(claudeSessionID, name, cwd string, args []string) (*Session, error) {
 	s := &Session{ID: newID(), Name: name, Cwd: cwd, Args: args, ClaudeSessionID: claudeSessionID, CreatedAt: time.Now()}
+	if f, err := m.Favourite(claudeSessionID); err == nil {
+		s.Group = f.Group
+	}
 	return s, m.add(s, append(append([]string{"--resume", claudeSessionID}, args...), m.restorePrompt(claudeSessionID)...))
 }
 
@@ -175,6 +179,7 @@ func (m *Manager) add(s *Session, args []string) error {
 	}
 	m.mu.Lock()
 	m.sessions = append(m.sessions, s)
+	m.groupTogether()
 	m.mu.Unlock()
 	m.save()
 	m.notify()
@@ -375,9 +380,73 @@ func (m *Manager) Reorder(ids []string) {
 		}
 		return 0
 	})
+	m.groupTogether()
 	m.mu.Unlock()
 	m.save()
 	m.notify()
+}
+
+// groupTogether keeps each group's tabs in one run, where its first tab is;
+// tabs without a group keep their places. The caller holds m.mu.
+func (m *Manager) groupTogether() {
+	first := map[string]int{}
+	rank := make(map[*Session]int, len(m.sessions))
+	for i, s := range m.sessions {
+		if s.Group == "" {
+			rank[s] = i
+			continue
+		}
+		if _, ok := first[s.Group]; !ok {
+			first[s.Group] = i
+		}
+		rank[s] = first[s.Group]
+	}
+	slices.SortStableFunc(m.sessions, func(a, b *Session) int { return rank[a] - rank[b] })
+}
+
+// SetGroup moves a tab into group, or out of any with "". Its saved
+// conversation, if any, keeps the group for its next start.
+func (m *Manager) SetGroup(id, group string) error {
+	s, err := m.Get(id)
+	if err != nil {
+		return err
+	}
+	group = strings.TrimSpace(group)
+	m.mu.Lock()
+	s.Group = group
+	sid := s.ClaudeSessionID
+	m.groupTogether()
+	m.mu.Unlock()
+	m.setFavouriteGroup(sid, group)
+	m.save()
+	m.notify()
+	return nil
+}
+
+// RenameGroup renames a group on every tab and saved conversation; renaming
+// to "" dissolves it, and renaming to an existing group merges the two.
+func (m *Manager) RenameGroup(from, to string) error {
+	if from == "" {
+		return errors.New("no group to rename")
+	}
+	to = strings.TrimSpace(to)
+	m.mu.Lock()
+	for _, s := range m.sessions {
+		if s.Group == from {
+			s.Group = to
+		}
+	}
+	for i := range m.favourites {
+		if m.favourites[i].Group == from {
+			m.favourites[i].Group = to
+		}
+	}
+	m.groupTogether()
+	m.mu.Unlock()
+	m.save()
+	m.saveFavourites()
+	m.notify()
+	return nil
 }
 
 // Close ends the session if it runs and removes its tab. A favourite stays

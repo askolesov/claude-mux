@@ -44,6 +44,7 @@ func NewHandler(m *Manager, ext *Externals, defaultCwd string) http.Handler {
 	api.POST("/sessions", h.create)
 	api.PUT("/sessions/order", h.reorder)
 	api.PATCH("/sessions/:id", h.rename)
+	api.PUT("/sessions/:id/group", h.setGroup)
 	api.DELETE("/sessions/:id", h.close)
 	api.POST("/sessions/:id/resume", h.resume)
 	api.POST("/sessions/:id/handoff", h.handoff)
@@ -58,6 +59,7 @@ func NewHandler(m *Manager, ext *Externals, defaultCwd string) http.Handler {
 	api.DELETE("/favourites/:sid", h.unfavourite)
 	api.POST("/favourites/:sid/start", h.startFavourite)
 	api.POST("/favourites/:sid/terminal", h.favouriteInTerminal)
+	api.POST("/groups/rename", h.renameGroup)
 
 	r.POST("/hook/:id", h.hook)
 	return r
@@ -146,9 +148,10 @@ func expandHome(p string) string {
 
 func (h *Handler) create(c *gin.Context) {
 	var req struct {
-		Name string `json:"name"`
-		Cwd  string `json:"cwd"`
-		Args string `json:"args"`
+		Name  string `json:"name"`
+		Group string `json:"group"`
+		Cwd   string `json:"cwd"`
+		Args  string `json:"args"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		respond(c, nil, err)
@@ -158,7 +161,7 @@ func (h *Handler) create(c *gin.Context) {
 	if cwd == "" {
 		cwd = h.defaultCwd
 	}
-	s, err := h.m.Create(strings.TrimSpace(req.Name), cwd, strings.Fields(req.Args))
+	s, err := h.m.Create(strings.TrimSpace(req.Name), strings.TrimSpace(req.Group), cwd, strings.Fields(req.Args))
 	if err != nil {
 		respond(c, nil, err)
 		return
@@ -187,6 +190,29 @@ func (h *Handler) rename(c *gin.Context) {
 		return
 	}
 	respond(c, nil, h.m.Rename(c.Param("id"), strings.TrimSpace(req.Name)))
+}
+
+func (h *Handler) setGroup(c *gin.Context) {
+	var req struct {
+		Group string `json:"group"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respond(c, nil, err)
+		return
+	}
+	respond(c, nil, h.m.SetGroup(c.Param("id"), req.Group))
+}
+
+func (h *Handler) renameGroup(c *gin.Context) {
+	var req struct {
+		From string `json:"from" binding:"required"`
+		To   string `json:"to"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respond(c, nil, err)
+		return
+	}
+	respond(c, nil, h.m.RenameGroup(req.From, req.To))
 }
 
 func (h *Handler) close(c *gin.Context)   { respond(c, nil, h.m.Close(c.Param("id"))) }

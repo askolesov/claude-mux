@@ -14,6 +14,7 @@ import (
 type Favourite struct {
 	ClaudeSessionID string   `json:"claudeSessionId"`
 	Name            string   `json:"name"`
+	Group           string   `json:"group,omitempty"` // the group its tab joins when it starts here
 	Cwd             string   `json:"cwd"`
 	Args            []string `json:"args"`
 	OnRestore       string   `json:"onRestore,omitempty"` // first prompt whenever it starts in a new process
@@ -88,6 +89,20 @@ func (m *Manager) renameFavourite(sid, name string) {
 	changed := i >= 0 && m.favourites[i].Name != name
 	if changed {
 		m.favourites[i].Name = name
+	}
+	m.mu.Unlock()
+	if changed {
+		m.saveFavourites()
+	}
+}
+
+// setFavouriteGroup keeps a saved conversation's group in step with its tab.
+func (m *Manager) setFavouriteGroup(sid, group string) {
+	m.mu.Lock()
+	i := slices.IndexFunc(m.favourites, func(f Favourite) bool { return f.ClaudeSessionID == sid })
+	changed := i >= 0 && m.favourites[i].Group != group
+	if changed {
+		m.favourites[i].Group = group
 	}
 	m.mu.Unlock()
 	if changed {

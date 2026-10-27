@@ -29,6 +29,7 @@ const scrollbackLimit = 1 << 20
 type Session struct {
 	ID              string    `json:"id"`
 	Name            string    `json:"name"`
+	Group           string    `json:"group,omitempty"` // tabs with one group sit together under its header
 	Cwd             string    `json:"cwd"`
 	Args            []string  `json:"args"`
 	ClaudeSessionID string    `json:"claudeSessionId"`
@@ -52,6 +53,7 @@ type Session struct {
 type SessionView struct {
 	ID              string    `json:"id"`
 	Name            string    `json:"name"`
+	Group           string    `json:"group"`
 	Cwd             string    `json:"cwd"`
 	ClaudeSessionID string    `json:"claudeSessionId"`
 	Args            []string  `json:"args"`
@@ -67,6 +69,7 @@ func (s *Session) View() SessionView {
 	v := SessionView{
 		ID:              s.ID,
 		Name:            s.Name,
+		Group:           s.Group,
 		Cwd:             s.Cwd,
 		ClaudeSessionID: s.ClaudeSessionID,
 		Args:            s.Args,

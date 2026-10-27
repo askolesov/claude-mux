@@ -109,6 +109,17 @@
   .tab.drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
   .tab.dragging { opacity: .4; }
   .empty { padding: 4px 18px; color: var(--muted); font-size: 12px; }
+  .group {
+    display: flex; align-items: center; gap: 6px; padding: 5px 12px; margin: 4px 6px 1px; border-radius: 6px;
+    cursor: pointer; color: var(--muted); font-size: 12px; font-weight: 600; user-select: none; border: 1px solid transparent;
+  }
+  .group:hover { background: var(--panel-2); color: var(--text); }
+  .group .caret { width: 10px; font-size: 10px; }
+  .group .gname { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .group .gcount { font-weight: 400; font-size: 11px; }
+  .group .dot { width: 8px; height: 8px; margin-left: auto; }
+  .group.drop-into { border-color: var(--accent); }
+  .tab.in-group { margin-left: 18px; }
 
   .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--dead); justify-self: center; }
   .dot.working { background: var(--working); animation: pulse 1.2s ease-in-out infinite; }
@@ -251,11 +262,24 @@
   </form>
 </dialog>
 
+<datalist id="groups"></datalist>
+
+<dialog id="groupDlg">
+  <form method="dialog" id="groupForm">
+    <h3 id="gTitle">Group</h3>
+    <label for="gName" id="gHint"></label>
+    <input id="gName" list="groups" autocomplete="off">
+    <div class="row"><button type="button" id="gCancel">Cancel</button><button class="primary">Save</button></div>
+  </form>
+</dialog>
+
 <dialog id="dlg">
   <form method="dialog" id="dlgForm">
     <h3 id="dlgTitle">New session</h3>
     <label for="fName">Name</label>
     <input id="fName" placeholder="defaults to the folder name" autocomplete="off">
+    <label for="fGroup">Group</label>
+    <input id="fGroup" list="groups" placeholder="none" autocomplete="off">
     <label for="fCwd">Directory</label>
     <input id="fCwd" list="cwds" autocomplete="off">
     <datalist id="cwds"></datalist>
@@ -323,6 +347,56 @@ const idleSaved = () => state.favourites.filter((f) =>
   !state.sessions.some((s) => s.claudeSessionId === f.claudeSessionId) &&
   !state.external.some((x) => x.sessionId === f.claudeSessionId));
 
+// ---------- groups ----------
+// A group is a label on tabs and saved conversations; its items sit together
+// under one header. Collapsing is per browser, per section.
+const collapsed = new Set((() => { try { return JSON.parse(store.get("mux.collapsed") || "[]"); } catch { return []; } })());
+function setCollapsed(key, shut) {
+  shut ? collapsed.add(key) : collapsed.delete(key);
+  store.set("mux.collapsed", JSON.stringify([...collapsed]));
+}
+const allGroups = () => [...new Set([...state.sessions.map((s) => s.group), ...state.favourites.map((f) => f.group)].filter(Boolean))];
+
+// grouped splits items into runs: each group, at its first item, and every
+// ungrouped item on its own.
+function grouped(items, groupOf) {
+  const runs = [];
+  const byName = new Map();
+  for (const it of items) {
+    const g = groupOf(it);
+    if (!g) { runs.push({ group: "", items: [it] }); continue; }
+    if (!byName.has(g)) { byName.set(g, { group: g, items: [] }); runs.push(byName.get(g)); }
+    byName.get(g).items.push(it);
+  }
+  return runs;
+}
+
+// The most urgent status in a group, shown on its header while it's collapsed.
+function groupDot(sessions) {
+  if (sessions.some((s) => s.status === "needs-you")) return "needs-you";
+  if (sessions.some((s) => s.status === "ready" && s.unseen)) return "ready";
+  if (sessions.some((s) => s.status === "working" || s.status === "starting")) return "working";
+  return "";
+}
+
+function groupHeader(kind, run, dot) {
+  const shut = collapsed.has(kind + ":" + run.group);
+  return `<div class="group" data-kind="${kind}" data-group="${esc(run.group)}" title="Click to ${shut ? "expand" : "collapse"} · right-click for actions">
+    <span class="caret">${shut ? "▸" : "▾"}</span><span class="gname">${esc(run.group)}</span><span class="gcount">${run.items.length}</span>
+    ${shut && dot ? `<span class="dot ${dot}"></span>` : ""}</div>`;
+}
+
+// renderRuns renders a section's items, grouped; tabs of a collapsed group are left out.
+function renderRuns(kind, runs, tab, dot = () => "") {
+  let html = "";
+  for (const run of runs) {
+    if (!run.group) { html += tab(run.items[0], false); continue; }
+    html += groupHeader(kind, run, dot(run.items));
+    if (!collapsed.has(kind + ":" + run.group)) for (const it of run.items) html += tab(it, true);
+  }
+  return html;
+}
+
 // ---------- icon ----------
 // Tabs on the left, a prompt on the right; a dot when something waits:
 // amber for a session that needs you, green for one that finished unseen.
@@ -358,16 +432,17 @@ function render() {
 
   let html = `<div class="section">Running here</div>`;
   if (!sessions.length) html += `<div class="empty">None yet — ⌥N starts one.</div>`;
-  sessions.forEach((s, i) => {
+  html += renderRuns("s", grouped(sessions, (s) => s.group), (s, inGroup) => {
+    const i = sessions.indexOf(s);
     const active = selected?.kind === "s" && selected.id === s.id;
-    const cls = ["tab", active && "active", s.unseen && "unseen", s.status === "needs-you" && "needs-you"].filter(Boolean).join(" ");
-    html += `<div class="${cls}" data-kind="s" data-id="${esc(s.id)}" title="${esc(s.cwd)}" draggable="true">
+    const cls = ["tab", inGroup && "in-group", active && "active", s.unseen && "unseen", s.status === "needs-you" && "needs-you"].filter(Boolean).join(" ");
+    return `<div class="${cls}" data-kind="s" data-id="${esc(s.id)}" title="${esc(s.cwd)}" draggable="true">
       <span class="dot ${esc(s.status)}"></span>
       <span class="name">${star(s.claudeSessionId)}${esc(s.name)}</span>
       <span class="key">${i < 9 ? "⌥" + (i + 1) : ""}</span>
       <span class="sub">${esc(STATUS_TEXT[s.status] || s.status)} · ${ago(s.statusSince)} · ${esc(base(s.cwd))}</span>
     </div>`;
-  });
+  }, groupDot);
 
   html += `<div class="section">Running in Terminal</div>`;
   if (!external.length) html += `<div class="empty">No claude running in other terminals.</div>`;
@@ -384,15 +459,15 @@ function render() {
   html += `<div class="section">Saved</div>`;
   const saved = idleSaved();
   if (!saved.length) html += `<div class="empty">Right-click a session → Save to keep it here.</div>`;
-  for (const f of saved) {
+  html += renderRuns("f", grouped(saved, (f) => f.group), (f, inGroup) => {
     const active = selected?.kind === "f" && selected.id === f.claudeSessionId;
-    html += `<div class="tab ${active ? "active" : ""}" data-kind="f" data-id="${esc(f.claudeSessionId)}" title="${esc(f.cwd)}">
+    return `<div class="tab ${inGroup ? "in-group" : ""} ${active ? "active" : ""}" data-kind="f" data-id="${esc(f.claudeSessionId)}" title="${esc(f.cwd)}">
       <span class="dot saved"></span>
       <span class="name">${f.onRestore ? `<span class="star" title="Restore message: ${esc(f.onRestore)}">↻</span> ` : ""}${esc(f.name)}</span>
       <span class="key"></span>
       <span class="sub">not running · ${esc(base(f.cwd))}</span>
     </div>`;
-  }
+  });
   $("list").innerHTML = html;
   renderBar();
 }
@@ -578,6 +653,8 @@ function markdown(text) {
 // ---------- selection ----------
 function select(kind, id, extra = {}) {
   selected = { kind, id, ...extra };
+  const g = kind === "s" ? state.sessions.find((s) => s.id === id)?.group : kind === "f" ? favourite(id)?.group : "";
+  if (g) setCollapsed(kind + ":" + g, false);
   store.set("mux.selected", JSON.stringify({ kind, id }));
   for (const [tid, t] of terms) t.el.classList.toggle("shown", kind === "s" && tid === id);
   $("placeholder").style.display = "none";
@@ -703,7 +780,9 @@ function stream() {
 function openNew(prefill = {}) {
   const cwds = new Set([state.defaultCwd, ...state.sessions.map((s) => s.cwd), ...state.external.map((x) => x.cwd)]);
   $("cwds").innerHTML = [...cwds].filter(Boolean).map((c) => `<option value="${esc(c)}">`).join("");
+  $("groups").innerHTML = allGroups().map((g) => `<option value="${esc(g)}">`).join("");
   $("fName").value = prefill.name || "";
+  $("fGroup").value = prefill.group ?? (selected?.kind === "s" ? state.sessions.find((s) => s.id === selected.id)?.group || "" : "");
   $("fCwd").value = prefill.cwd || store.get("mux.lastCwd") || state.defaultCwd;
   $("fArgs").value = store.get("mux.lastArgs") || "";
   $("fSkip").checked = store.get("mux.skip") === "1";
@@ -716,7 +795,7 @@ function openNew(prefill = {}) {
 $("dlgForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   const flags = [$("fSkip").checked && "--dangerously-skip-permissions", $("fChrome").checked && "--chrome"].filter(Boolean);
-  const body = { name: $("fName").value, cwd: $("fCwd").value, args: [...flags, $("fArgs").value].join(" ") };
+  const body = { name: $("fName").value, group: $("fGroup").value, cwd: $("fCwd").value, args: [...flags, $("fArgs").value].join(" ") };
   try {
     const s = await api("POST", "/api/sessions", body);
     store.set("mux.lastCwd", body.cwd);
@@ -768,6 +847,13 @@ $("new2").onclick = () => openNew();
 $("notify").onclick = async () => { await Notification.requestPermission(); updateNotifyButton(); };
 
 $("list").addEventListener("click", (e) => {
+  const head = e.target.closest(".group");
+  if (head) {
+    const key = head.dataset.kind + ":" + head.dataset.group;
+    setCollapsed(key, !collapsed.has(key));
+    render();
+    return;
+  }
   const tab = e.target.closest(".tab");
   if (!tab) return;
   const extra = tab.dataset.kind === "x" ? { cwd: state.external.find((x) => x.sessionId === tab.dataset.id)?.cwd } : {};
@@ -780,7 +866,7 @@ function dropSide(tab, e) {
   return e.clientY < r.top + r.height / 2 ? "before" : "after";
 }
 function clearDrop() {
-  for (const t of $("list").querySelectorAll(".drop-before, .drop-after")) t.classList.remove("drop-before", "drop-after");
+  for (const t of $("list").querySelectorAll(".drop-before, .drop-after, .drop-into")) t.classList.remove("drop-before", "drop-after", "drop-into");
 }
 $("list").addEventListener("dragstart", (e) => {
   const tab = e.target.closest('.tab[data-kind="s"]');
@@ -790,21 +876,41 @@ $("list").addEventListener("dragstart", (e) => {
   e.dataTransfer.setData("text/plain", dragId);
   tab.classList.add("dragging");
 });
+// Dropped on a tab, a tab takes that tab's group; dropped on a group's header,
+// it joins the group at its end.
 $("list").addEventListener("dragover", (e) => {
-  const tab = e.target.closest('.tab[data-kind="s"]');
+  const tab = e.target.closest('.tab[data-kind="s"], .group[data-kind="s"]');
   if (!dragId || !tab) return;
   e.preventDefault();
   clearDrop();
-  if (tab.dataset.id !== dragId) tab.classList.add("drop-" + dropSide(tab, e));
+  if (tab.classList.contains("group")) tab.classList.add("drop-into");
+  else if (tab.dataset.id !== dragId) tab.classList.add("drop-" + dropSide(tab, e));
 });
-$("list").addEventListener("drop", (e) => {
-  const tab = e.target.closest('.tab[data-kind="s"]');
+$("list").addEventListener("drop", async (e) => {
+  const tab = e.target.closest('.tab[data-kind="s"], .group[data-kind="s"]');
   if (!dragId || !tab || tab.dataset.id === dragId) return;
   e.preventDefault();
-  const ids = state.sessions.map((s) => s.id).filter((id) => id !== dragId);
-  ids.splice(ids.indexOf(tab.dataset.id) + (dropSide(tab, e) === "after" ? 1 : 0), 0, dragId);
-  state.sessions = ids.map((id) => state.sessions.find((s) => s.id === id));
-  api("PUT", "/api/sessions/order", { ids }).catch((err) => alert(err.message));
+  const id = dragId;
+  const ids = state.sessions.map((s) => s.id).filter((x) => x !== id);
+  let group;
+  if (tab.classList.contains("group")) {
+    group = tab.dataset.group;
+    const last = state.sessions.filter((s) => s.group === group && s.id !== id).pop();
+    ids.splice(last ? ids.indexOf(last.id) + 1 : ids.length, 0, id);
+  } else {
+    group = state.sessions.find((s) => s.id === tab.dataset.id)?.group || "";
+    ids.splice(ids.indexOf(tab.dataset.id) + (dropSide(tab, e) === "after" ? 1 : 0), 0, id);
+  }
+  const moved = state.sessions.find((s) => s.id === id);
+  const regroup = (moved.group || "") !== group;
+  state.sessions = ids.map((x) => state.sessions.find((s) => s.id === x));
+  moved.group = group;
+  try {
+    if (regroup) await api("PUT", `/api/sessions/${id}/group`, { group });
+    await api("PUT", "/api/sessions/order", { ids });
+  } catch (err) {
+    alert(err.message);
+  }
 });
 $("list").addEventListener("dragend", () => {
   dragId = null;
@@ -819,8 +925,10 @@ function menuItems(kind, id) {
   const restore = (sid) => isSaved(sid) && ["restore-msg", "Restore message…"];
   const copy = (sid) => [sid && ["copy-id", "Copy session id"], ["copy-cwd", "Copy directory"]];
   let items;
-  if (kind === "f") {
-    items = [["open-here", "Open here"], ["open-terminal", "Open in Terminal"], restore(id), null, ...copy(id), null, ["unsave", "Remove from saved", "danger"]];
+  if (kind === "g") {
+    items = [["new-in-group", "New session in group…"], ["rename-group", "Rename group…"], null, ["ungroup", "Ungroup"]];
+  } else if (kind === "f") {
+    items = [["open-here", "Open here"], ["open-terminal", "Open in Terminal"], ["group", "Group…"], restore(id), null, ...copy(id), null, ["unsave", "Remove from saved", "danger"]];
   } else if (kind === "x") {
     items = [["rename", "Rename…"], ["takeover", "Move here"], save(id), restore(id), null, ...copy(id), null, ["close-ext", "Close", "danger"]];
   } else {
@@ -829,6 +937,7 @@ function menuItems(kind, id) {
     const dead = s.status === "exited" || s.status === "stopped";
     items = [
       ["rename", "Rename…"],
+      ["group", "Group…"],
       dead && s.claudeSessionId && ["resume", "Resume"],
       s.claudeSessionId && ["handoff", "Move to Terminal"],
       save(s.claudeSessionId),
@@ -845,10 +954,10 @@ function menuItems(kind, id) {
 function closeMenu() { $("menu").classList.remove("open"); }
 
 $("list").addEventListener("contextmenu", (e) => {
-  const tab = e.target.closest(".tab");
+  const tab = e.target.closest(".tab, .group");
   if (!tab) return;
   e.preventDefault();
-  const target = { kind: tab.dataset.kind, id: tab.dataset.id };
+  const target = tab.classList.contains("group") ? { kind: "g", id: tab.dataset.group } : { kind: tab.dataset.kind, id: tab.dataset.id };
   const menu = $("menu");
   menu.innerHTML = menuItems(target.kind, target.id)
     .map((it) => it ? `<button data-act="${it[0]}" class="${it[2] || ""}">${esc(it[1])}</button>` : "<hr>").join("");
@@ -884,6 +993,19 @@ async function act(what, target = selected) {
         if (target.kind === "s") await api("PATCH", `/api/sessions/${id}`, { name: name.trim() });
         else await api("POST", `/api/external/${encodeURIComponent(id)}/rename`, { name: name.trim() });
       }
+    } else if (what === "group") {
+      const cur = target.kind === "s" ? state.sessions.find((x) => x.id === id)?.group : favourite(id)?.group;
+      const group = await askGroup("Group", "Tabs with the same group sit together under one header. Empty takes it out of its group.", cur || "");
+      if (group === null) return;
+      if (target.kind === "s") await api("PUT", `/api/sessions/${id}/group`, { group });
+      else await api("PUT", `/api/favourites/${encodeURIComponent(id)}`, { ...favourite(id), group });
+    } else if (what === "rename-group") {
+      const to = await askGroup("Rename group", "Renames it on every tab and saved conversation; an existing group's name merges the two.", id);
+      if (to && to !== id) await api("POST", "/api/groups/rename", { from: id, to });
+    } else if (what === "ungroup") {
+      await api("POST", "/api/groups/rename", { from: id, to: "" });
+    } else if (what === "new-in-group") {
+      openNew({ group: id });
     } else if (what === "handoff") {
       await api("POST", `/api/sessions/${id}/handoff`);
     } else if (what === "resume") {
@@ -901,7 +1023,7 @@ async function act(what, target = selected) {
       const sid = s ? s.claudeSessionId : id;
       if (what === "unsave") await api("DELETE", `/api/favourites/${encodeURIComponent(sid)}`);
       else await api("PUT", `/api/favourites/${encodeURIComponent(sid)}`, s
-        ? { name: s.name, cwd: s.cwd, args: s.args || [] }
+        ? { name: s.name, group: s.group || "", cwd: s.cwd, args: s.args || [] }
         : { name: x?.title || x?.name || "", cwd: x?.cwd || "", args: [] });
     } else if (what === "restore-msg") {
       const sid = target.kind === "s" ? state.sessions.find((x) => x.id === id)?.claudeSessionId : id;
@@ -939,6 +1061,22 @@ async function act(what, target = selected) {
   } catch (err) {
     alert(err.message);
   }
+}
+
+// askGroup asks for a group name, offering the existing ones; null when cancelled.
+function askGroup(title, hint, value) {
+  $("groups").innerHTML = allGroups().map((g) => `<option value="${esc(g)}">`).join("");
+  $("gTitle").textContent = title;
+  $("gHint").textContent = hint;
+  $("gName").value = value;
+  return new Promise((resolve) => {
+    const done = (v) => { $("groupDlg").close(); resolve(v); };
+    $("groupForm").onsubmit = (e) => { e.preventDefault(); done($("gName").value.trim()); };
+    $("gCancel").onclick = () => done(null);
+    $("groupDlg").oncancel = () => resolve(null);
+    $("groupDlg").showModal();
+    $("gName").select();
+  });
 }
 
 // Shortcuts are caught before the terminal sees them.

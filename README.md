@@ -43,6 +43,13 @@ The sidebar has three sections, by where a conversation is:
 
 Also:
 
+- **Groups**: right-click a tab or saved conversation → Group… (or the
+  Group field in New) puts it under a collapsible header. Drag a tab onto a
+  header to put it in that group, or next to a tab to take that tab's group.
+  A collapsed header shows the most urgent status inside it. Right-click a
+  header to start a new session in it, rename it (an existing name merges
+  the two) or ungroup it. A tab's group goes with it to its saved
+  conversation and back; collapsing is kept per browser.
 - **Status dot**: blue pulsing = working, green = ready for input, amber
   pulsing = needs you (a permission prompt, or a prompt shown before startup
   such as trusting the folder), hollow = exited. A session that finished
