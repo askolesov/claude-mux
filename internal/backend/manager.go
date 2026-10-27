@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/askolesov/claude-mux/internal/sysproc"
 )
 
 var (
@@ -317,7 +319,7 @@ func (m *Manager) followNames(ctx context.Context) {
 	if claude == "" {
 		return
 	}
-	out, err := exec.CommandContext(ctx, claude, "agents", "--json").Output()
+	out, err := sysproc.Hide(exec.CommandContext(ctx, claude, "agents", "--json")).Output()
 	if err != nil {
 		return
 	}

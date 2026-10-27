@@ -9,6 +9,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/askolesov/claude-mux/internal/sysproc"
 )
 
 var errNoClaude = errors.New("claude isn't installed in this environment")
@@ -44,7 +46,7 @@ func findClaude() Claude {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	out, _ := exec.CommandContext(ctx, path, "--version").Output()
+	out, _ := sysproc.Hide(exec.CommandContext(ctx, path, "--version")).Output()
 	return Claude{Path: path, Version: strings.TrimSpace(string(out)), Installer: installer}
 }
 
@@ -65,7 +67,7 @@ func (m *Manager) InstallClaude(ctx context.Context) (string, error) {
 	argv, _ := installCommand()
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, argv[0], argv[1:]...).CombinedOutput()
+	out, err := sysproc.Hide(exec.CommandContext(ctx, argv[0], argv[1:]...)).CombinedOutput()
 	m.CheckClaude()
 	return string(out), err
 }

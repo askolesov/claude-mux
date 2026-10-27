@@ -8,6 +8,8 @@ require (
 	github.com/gin-gonic/gin v1.12.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/hashicorp/yamux v0.1.2
+	github.com/webview/webview_go v0.0.0-20240831120633-6173450d4dd6
+	golang.org/x/sys v0.44.0
 )
 
 require (
@@ -38,7 +40,6 @@ require (
 	golang.org/x/arch v0.22.0 // indirect
 	golang.org/x/crypto v0.51.0 // indirect
 	golang.org/x/net v0.53.0 // indirect
-	golang.org/x/sys v0.44.0 // indirect
 	golang.org/x/text v0.37.0 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
 )

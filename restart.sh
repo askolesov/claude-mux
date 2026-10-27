@@ -14,7 +14,7 @@ state=$HOME/.claude-mux
 bin=$state/dev
 
 mkdir -p "$bin"
-go -C "$dir" build -o "$state/claude-mux.new" ./cmd/hub
+CGO_CXXFLAGS=-Wno-deprecated-literal-operator go -C "$dir" build -o "$state/claude-mux.new" ./cmd/hub
 for p in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64; do
 	CGO_ENABLED=0 GOOS=${p%-*} GOARCH=${p#*-} go -C "$dir" build -trimpath -ldflags=-s -o "$bin/claude-mux-backend-$p.new" ./cmd/backend
 done
@@ -29,7 +29,7 @@ fi
 mv -f "$state/claude-mux.new" "$state/claude-mux"
 for f in "$bin"/*.new; do mv -f "$f" "${f%.new}"; done
 rm -rf "$state/bin/dev" # where the builds were before the backends were installed by version
-nohup "$state/claude-mux" -backend-dir "$bin" -cwd "${CLAUDE_MUX_CWD:-$HOME/Documents/@Ankr/codespace}" >"$state/server.log" 2>&1 </dev/null &
+nohup "$state/claude-mux" -headless -backend-dir "$bin" -cwd "${CLAUDE_MUX_CWD:-$HOME/Documents/@Ankr/codespace}" >"$state/server.log" 2>&1 </dev/null &
 until [ "$(curl -s "$url/env/local/api/state" | jq -r '.sessions | type' 2>/dev/null)" = array ]; do sleep 0.2; done
 curl -s "$url/env/local/api/state" | jq -r '.sessions[] | "resumed \(.name)"'
 echo "claude-mux on $url"

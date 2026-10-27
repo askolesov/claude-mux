@@ -20,6 +20,11 @@ import (
 // closes them: the hub quit or the connection to it broke. It then hangs up
 // its sessions, noting which ran, so the next start resumes them.
 func Run(stateDir, defaultCwd string) error {
+	lock, err := lockState(stateDir)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = lock.Close() }()
 	exe, err := os.Executable()
 	if err != nil {
 		return err

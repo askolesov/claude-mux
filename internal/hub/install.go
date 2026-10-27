@@ -14,6 +14,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/askolesov/claude-mux/internal/sysproc"
 )
 
 const releases = "https://github.com/askolesov/claude-mux/releases/download/"
@@ -266,9 +268,9 @@ func (c Connectors) Targets(kind string) []string {
 		}
 		return hosts
 	case "docker":
-		out, _ = exec.Command(c.Docker[0], append(c.Docker[1:], "ps", "--format", "{{.Names}}")...).Output()
+		out, _ = sysproc.Hide(exec.Command(c.Docker[0], append(c.Docker[1:], "ps", "--format", "{{.Names}}")...)).Output()
 	case "wsl":
-		out, _ = exec.Command(c.WSL[0], append(c.WSL[1:], "-l", "-q")...).Output()
+		out, _ = sysproc.Hide(exec.Command(c.WSL[0], append(c.WSL[1:], "-l", "-q")...)).Output()
 		// wsl.exe prints UTF-16.
 		out = bytes.ReplaceAll(bytes.TrimPrefix(out, []byte{0xff, 0xfe}), []byte{0}, nil)
 	}
@@ -282,7 +284,7 @@ func (c Connectors) Targets(kind string) []string {
 }
 
 func run(argv []string, stdin io.Reader) ([]byte, error) {
-	cmd := exec.Command(argv[0], argv[1:]...)
+	cmd := sysproc.Hide(exec.Command(argv[0], argv[1:]...))
 	cmd.Stdin = stdin
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr

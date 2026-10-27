@@ -1,17 +1,28 @@
 # A v* tag builds the hub and the backends and publishes them as a release.
-# A hub downloads the backends from the release of its own version.
+# A hub downloads the backends from the release of its own version. Run it by
+# hand to try the builds without publishing.
+#
+# The backends are pure Go, cross-compiled. The hub's window needs cgo and
+# each system's web view, so each hub is built on its own system.
 name: Release
 
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: write
 
+env:
+  VERSION: ${{ github.ref_name }}
+  CGO_CXXFLAGS: -Wno-deprecated-literal-operator
+
 jobs:
-  release:
+  backends:
     runs-on: ubuntu-latest
+    env:
+      CGO_ENABLED: "0"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -19,17 +30,84 @@ jobs:
           go-version-file: go.mod
       - run: go vet ./... && go test ./...
       - name: Build
-        env:
-          CGO_ENABLED: "0"
         run: |
           mkdir dist
           for p in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 windows-amd64 windows-arm64; do
             ext=; [ "${p%-*}" = windows ] && ext=.exe
             GOOS=${p%-*} GOARCH=${p#*-} go build -trimpath -ldflags=-s -o dist/claude-mux-backend-$p$ext ./cmd/backend
-            GOOS=${p%-*} GOARCH=${p#*-} go build -trimpath -ldflags="-s -X main.version=$GITHUB_REF_NAME" -o dist/claude-mux-$p$ext ./cmd/hub
           done
-          cd dist && sha256sum * > checksums.txt
+          # No cgo for Windows on Arm here: that hub opens the page in the
+          # browser, and keeps its console, which closing quits it.
+          GOOS=windows GOARCH=arm64 go build -trimpath -ldflags="-s -X main.version=$VERSION" -o dist/claude-mux-windows-arm64.exe ./cmd/hub
+      - uses: actions/upload-artifact@v4
+        with: { name: backends, path: dist/* }
+
+  mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build
+        run: |
+          scripts/macapp.sh "$VERSION" out
+          mkdir dist
+          ditto -c -k --keepParent out/claude-mux.app dist/claude-mux-mac.zip
+      - uses: actions/upload-artifact@v4
+        with: { name: mac, path: dist/* }
+
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    env:
+      CGO_ENABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build
+        run: go build -trimpath -ldflags="-s -H=windowsgui -X main.version=$VERSION" -o dist/claude-mux-windows-amd64.exe ./cmd/hub
+      - uses: actions/upload-artifact@v4
+        with: { name: windows, path: dist/* }
+
+  linux:
+    strategy:
+      matrix:
+        include:
+          - { runner: ubuntu-24.04, arch: amd64 }
+          - { runner: ubuntu-24.04-arm, arch: arm64 }
+    runs-on: ${{ matrix.runner }}
+    env:
+      CGO_ENABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq libgtk-3-dev libwebkit2gtk-4.1-dev
+          # webview_go asks for webkit2gtk-4.0, which current distros replaced
+          # with 4.1, the same API on a newer libsoup.
+          mkdir pc
+          printf 'Name: webkit2gtk-4.0\nDescription: webkit2gtk-4.1 by the old name\nVersion: 2.0\nRequires: webkit2gtk-4.1\n' > pc/webkit2gtk-4.0.pc
+          PKG_CONFIG_PATH=$PWD/pc go build -trimpath -ldflags="-s -X main.version=$VERSION" -o dist/claude-mux-linux-${{ matrix.arch }} ./cmd/hub
+      - uses: actions/upload-artifact@v4
+        with: { name: linux-${{ matrix.arch }}, path: dist/* }
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [backends, mac, windows, linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: dist, merge-multiple: true }
+      - run: cd dist && sha256sum * > checksums.txt && ls -l
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/* --generate-notes
+        run: gh release create "$VERSION" dist/* --repo "$GITHUB_REPOSITORY" --generate-notes

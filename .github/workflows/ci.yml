@@ -8,6 +8,10 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # Without cgo the hub builds without its window (the release builds that
+    # on each system); everything else is the same.
+    env:
+      CGO_ENABLED: "0"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5

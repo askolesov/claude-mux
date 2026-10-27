@@ -12,15 +12,12 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
-	"os/signal"
 	"path/filepath"
 	"regexp"
 	"runtime"
 	"slices"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -81,66 +78,44 @@ func (h *Hub) newEnv(cfg EnvConfig) *Env {
 	return NewEnv(cfg, prepare, h.notify)
 }
 
-// Run serves the page on addr and the environments' backends until
-// interrupted, opening the page in the browser if asked. On the way out it
-// closes the backends, which hang up their sessions and resume them on the
-// next start.
-func (h *Hub) Run(addr string, open bool) error {
+// Start serves the page on addr and starts the environments' backends. The
+// returned stop closes the backends, which hang up their tabs and resume them
+// on the next start, then the server.
+func (h *Hub) Start(addr string) (stop func(), err error) {
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if ip := net.ParseIP(host); host != "localhost" && (ip == nil || !ip.IsLoopback()) {
-		return fmt.Errorf("refusing to listen on %s: the page runs commands, keep it on loopback", addr)
+		return nil, fmt.Errorf("refusing to listen on %s: the page runs commands, keep it on loopback", addr)
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
+	// The port first: a second hub must not start the same tabs again.
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return nil, err
+	}
 	for _, e := range h.list() {
 		go e.Supervise()
 	}
-	ln, err := net.Listen("tcp", addr)
-	if err != nil {
-		return err
-	}
 	srv := &http.Server{Handler: h.Handler(), ReadHeaderTimeout: 10 * time.Second}
-	errc := make(chan error, 1)
-	go func() { errc <- srv.Serve(ln) }()
-	url := "http://" + addr
-	fmt.Fprintf(os.Stderr, "claude-mux %s on %s\n", h.version, url)
-	if open {
-		openBrowser(url)
-	}
+	go func() {
+		if err := srv.Serve(ln); !errors.Is(err, http.ErrServerClosed) {
+			fmt.Fprintln(os.Stderr, "claude-mux:", err)
+		}
+	}()
+	fmt.Fprintf(os.Stderr, "claude-mux %s on http://%s\n", h.version, addr)
 
-	select {
-	case err = <-errc:
-	case <-ctx.Done():
-	}
-	var wg sync.WaitGroup
-	for _, e := range h.list() {
-		wg.Add(1)
-		go func() { defer wg.Done(); e.Close() }()
-	}
-	wg.Wait()
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	_ = srv.Shutdown(shutdownCtx)
-	return err
-}
-
-func openBrowser(url string) {
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "darwin":
-		cmd = exec.Command("open", url)
-	case "windows":
-		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
-	default:
-		cmd = exec.Command("xdg-open", url)
-	}
-	if err := cmd.Start(); err == nil {
-		go func() { _ = cmd.Wait() }()
-	}
+	return func() {
+		var wg sync.WaitGroup
+		for _, e := range h.list() {
+			wg.Add(1)
+			go func() { defer wg.Done(); e.Close() }()
+		}
+		wg.Wait()
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(ctx)
+	}, nil
 }
 
 func (h *Hub) list() []*Env {

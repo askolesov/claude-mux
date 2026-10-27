@@ -651,8 +651,12 @@ function notifyTransitions() {
     }
     if (t.status !== "ready" && t.status !== "needs-you") continue;
     const looking = document.visibilityState === "visible" && document.hasFocus() && selected === t.key;
-    if (looking || typeof Notification === "undefined" || Notification.permission !== "granted") continue;
-    const n = new Notification(t.name, { body: t.status === "needs-you" ? "needs you" : "ready for input", tag: t.key });
+    if (looking) continue;
+    const body = t.status === "needs-you" ? "needs you" : "ready for input";
+    // In claude-mux's own window the hub posts the notification.
+    if (window.cmuxNotify) { window.cmuxNotify(t.name, body); continue; }
+    if (typeof Notification === "undefined" || Notification.permission !== "granted") continue;
+    const n = new Notification(t.name, { body, tag: t.key });
     n.onclick = () => { window.focus(); select(t.key); n.close(); };
   }
 }

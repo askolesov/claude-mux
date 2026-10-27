@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/askolesov/claude-mux/internal/sysproc"
 	"github.com/hashicorp/yamux"
 )
 
@@ -142,7 +143,7 @@ func (e *Env) run() error {
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command(argv[0], argv[1:]...)
+	cmd := sysproc.Hide(exec.Command(argv[0], argv[1:]...))
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return err
