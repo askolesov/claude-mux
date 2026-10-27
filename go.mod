@@ -1,4 +1,4 @@
-module github.com/askolesov/ankr-codespace/tools/claude-mux
+module github.com/askolesov/claude-mux
 
 go 1.27.2
 

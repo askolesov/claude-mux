@@ -5,11 +5,11 @@ terminal on the right, and a dot per session that says whether it is
 working, ready for input, or waiting on you.
 
 ```sh
-go -C tools/claude-mux run . -cwd ~/Documents/@Ankr/codespace
+go run . -cwd ~/Documents/@Ankr/codespace
 # → http://127.0.0.1:7777
 ```
 
-`tools/claude-mux/restart.sh` rebuilds it, restarts it and resumes the
+`./restart.sh` rebuilds it, restarts it and resumes the
 sessions that were running. Run it from a regular terminal, because a
 session inside claude-mux is hung up by the restart.
 

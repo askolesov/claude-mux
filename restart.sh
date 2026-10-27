@@ -18,7 +18,7 @@ fi
 # A fresh file, not a copy over the old one: macOS kills a binary rewritten
 # in place on its stale code signature.
 mv -f "$state/claude-mux.new" "$state/claude-mux"
-nohup "$state/claude-mux" -resume-running -cwd "$(cd "$dir/../.." && pwd)" >"$state/server.log" 2>&1 </dev/null &
+nohup "$state/claude-mux" -resume-running -cwd "${CLAUDE_MUX_CWD:-$HOME/Documents/@Ankr/codespace}" >"$state/server.log" 2>&1 </dev/null &
 until curl -s -o /dev/null "$url/api/state"; do sleep 0.1; done
 curl -s "$url/api/state" | jq -r '.sessions[] | "resumed \(.name)"'
 echo "claude-mux on $url"
