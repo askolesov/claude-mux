@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>claude-mux v4 tab settings</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="position: relative; min-height: 900px; background: #0F1115; font-family: Inter, system-ui, sans-serif; font-size: 13px; color: #E6E8EC; line-height: 1.4">
+<dc-import name="V4Main" active-tab="billing-fix" hint-size="100%,900px"></dc-import>
+<div style="position: absolute; inset: 0; background: rgba(6,7,9,0.55); display: flex; justify-content: center; align-items: flex-start; padding: 140px 16px 16px">
+<form role="dialog" aria-label="Tab settings" onSubmit="{{noop}}" style="width: 440px; max-width: 100%; background: #171A20; border: 1px solid #2E3440; border-radius: 12px; box-shadow: 0 24px 60px rgba(0,0,0,0.5)">
+
+<div style="padding: 18px 20px 4px">
+<div style="font-size: 15px; font-weight: 600">billing-fix</div>
+<div style="font-size: 12px; color: #8A92A2; margin-top: 2px">local / api · session a71d0b94</div>
+</div>
+
+<div style="padding: 14px 20px 6px; display: flex; flex-direction: column; gap: 12px">
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: #C4C9D3">Name
+<input value="billing-fix" style="height: 34px; padding: 0 10px; border: 1px solid #3A4A6B; border-radius: 6px; background: #0F1115; color: #E6E8EC; font: inherit; font-size: 13px; outline: none">
+</label>
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: #C4C9D3">Directory
+<span style="display: flex; gap: 6px">
+<input value="{{dir}}" onChange="{{onDir}}" style="flex: 1; min-width: 0; height: 34px; padding: 0 10px; border: 1px solid #2B313C; border-radius: 6px; background: #0F1115; color: #E6E8EC; font-family: 'JetBrains Mono', monospace; font-size: 12px; outline: none">
+<button type="button" aria-label="Choose folder" title="Choose folder" style="width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid #2B313C; border-radius: 6px; background: #1B1F26; color: #C4C9D3; cursor: pointer"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M3 6.5h6l2 2h10V19H3z"></path></svg></button>
+</span>
+</label>
+</div>
+
+<div style="margin: 8px 20px 0; border-top: 1px solid #252A33">
+<button type="button" onClick="{{toggleStartup}}" aria-expanded="{{startup}}" style="display: flex; align-items: center; gap: 10px; width: 100%; height: 40px; padding: 0; border: 0; background: transparent; color: #E6E8EC; font: inherit; font-size: 13px; text-align: left; cursor: pointer">
+<span style="flex: 1">Startup message</span>
+<sc-if value="{{noStartup}}" hint-placeholder-val="{{ true }}"><span style="font-size: 12px; color: #8A92A2">none</span></sc-if>
+<span role="switch" aria-checked="{{startup}}" aria-label="Startup message" style="{{sw.startup.track}}"><span style="{{sw.startup.knob}}"></span></span>
+</button>
+<sc-if value="{{startup}}" hint-placeholder-val="{{ false }}">
+<textarea rows="2" aria-label="Startup message text" placeholder="Sent as the first prompt whenever this tab starts" style="width: 100%; box-sizing: border-box; margin-bottom: 10px; padding: 8px 10px; border: 1px solid #2B313C; border-radius: 6px; background: #0F1115; color: #E6E8EC; font: inherit; font-size: 13px; resize: vertical; outline: none"></textarea>
+</sc-if>
+</div>
+
+<div style="margin: 0 20px; border-top: 1px solid #252A33">
+<button type="button" onClick="{{toggleArgs}}" aria-expanded="{{argsOpen}}" style="display: flex; align-items: center; gap: 10px; width: 100%; height: 40px; padding: 0; border: 0; background: transparent; color: #E6E8EC; font: inherit; font-size: 13px; text-align: left; cursor: pointer">
+<span style="flex: 1">Arguments</span>
+<span style="font-size: 12px; color: #8A92A2; max-width: 230px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{argsSummary}}</span>
+<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#8A92A2" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="{{chev}}"><path d="m6 9 6 6 6-6"></path></svg>
+</button>
+<sc-if value="{{argsOpen}}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; flex-direction: column; gap: 8px; padding-bottom: 12px">
+<input value="{{args}}" onChange="{{onArgs}}" aria-label="Extra arguments" placeholder="e.g. --model opus" style="height: 34px; padding: 0 10px; border: 1px solid #2B313C; border-radius: 6px; background: #0F1115; color: #E6E8EC; font-family: 'JetBrains Mono', monospace; font-size: 12px; outline: none">
+<sc-for list="{{checks}}" as="ck" hint-placeholder-count="2">
+<label style="display: flex; align-items: center; gap: 8px; cursor: pointer"><input type="checkbox" checked="{{ck.on}}" onChange="{{ck.flip}}" style="accent-color: #7AA2F7; width: 15px; height: 15px; margin: 0"><span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #E6E8EC">{{ck.flag}}</span></label>
+</sc-for>
+</div>
+</sc-if>
+</div>
+
+<sc-if value="{{dirty}}" hint-placeholder-val="{{ true }}">
+<div role="status" style="display: flex; gap: 10px; margin: 12px 20px 0; padding: 10px 12px; border-radius: 8px; background: rgba(245,177,76,0.10); border: 1px solid rgba(245,177,76,0.35); font-size: 12px; color: #E9D4AE">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F5B14C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none; margin-top: 1px"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"></path><path d="M3 3v5h5"></path></svg>
+<span>Saving restarts claude in this tab. The conversation continues where it was.</span>
+</div>
+</sc-if>
+
+<div style="display: flex; align-items: center; gap: 8px; padding: 16px 20px; border-top: 1px solid #252A33; margin-top: 12px">
+<button type="button" style="height: 32px; padding: 0 4px; border: 0; background: transparent; color: #F38B8B; font: inherit; cursor: pointer">Close tab</button>
+<span style="flex: 1"></span>
+<a href="V4Main.dc.html" style="display: grid; place-items: center; height: 32px; padding: 0 14px; border-radius: 6px; border: 1px solid #2B313C; color: #E6E8EC; text-decoration: none; box-sizing: border-box">Cancel</a>
+<a href="V4Main.dc.html" style="display: grid; place-items: center; height: 32px; padding: 0 16px; border-radius: 6px; background: #7AA2F7; color: #0F1115; font-weight: 600; text-decoration: none">{{saveLabel}}</a>
+</div>
+</form>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const s = this.state || {};
+    const FLAGS = ['--dangerously-skip-permissions', '--chrome'];
+    const SHORT = { '--dangerously-skip-permissions': 'skip permissions', '--chrome': 'chrome' };
+    const dir = s.dir !== undefined ? s.dir : '~/src/billing';
+    const args = s.args !== undefined ? s.args : '--model opus';
+    const ck = s.ck || { '--dangerously-skip-permissions': true, '--chrome': true };
+    const startup = !!s.startup;
+    const argsOpen = s.argsOpen !== undefined ? s.argsOpen : true;
+    const words = args.trim().split(/\s+/);
+    const visible = FLAGS.filter((f) => words.indexOf(f) < 0);
+    const on = visible.filter((f) => ck[f]);
+    const summary = on.map((f) => SHORT[f]).concat(args.trim() ? [args.trim()] : []).join(' · ') || 'none';
+    const sw = (v) => ({
+      track: 'flex:none;width:32px;height:18px;padding:2px;border-radius:999px;box-sizing:border-box;display:flex;justify-content:' + (v ? 'flex-end' : 'flex-start') + ';background:' + (v ? '#7AA2F7' : '#3A4150'),
+      knob: 'width:14px;height:14px;border-radius:50%;background:' + (v ? '#0F1115' : '#C4C9D3')
+    });
+    const dirty = dir !== '~/src/billing' || args.trim() !== '' || startup || !ck['--dangerously-skip-permissions'] || !ck['--chrome'];
+    const base = dir.replace(/\/+$/, '').split('/').pop() || 'new-tab';
+    return {
+      dir: dir, onDir: (e) => this.setState({ dir: e.target.value }),
+      namePh: base,
+      startup: startup, noStartup: !startup, sw: { startup: sw(startup) },
+      toggleStartup: () => this.setState({ startup: !startup }),
+      argsOpen: argsOpen, toggleArgs: () => this.setState({ argsOpen: !argsOpen }),
+      chev: 'flex:none;transition:transform 120ms;transform:rotate(' + (argsOpen ? '180' : '0') + 'deg)',
+      args: args, onArgs: (e) => this.setState({ args: e.target.value }),
+      argsSummary: summary,
+      checks: visible.map((f) => ({ flag: f, on: !!ck[f], flip: () => this.setState({ ck: Object.assign({}, ck, { [f]: !ck[f] }) }) })),
+      dirty: dirty, saveLabel: dirty ? 'Save and restart' : 'Save',
+      noop: (e) => { if (e && e.preventDefault) e.preventDefault(); }
+    };
+  }
+}
+</script>
+</body>
+</html>
