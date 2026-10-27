@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/askolesov/claude-mux/internal/hub"
+	"github.com/askolesov/claude-mux/internal/lockfile"
 	"github.com/askolesov/claude-mux/internal/sysproc"
 )
 
@@ -65,6 +66,20 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	url := "http://" + *addr
+	// One hub per state directory: a second would run every environment's
+	// backends again, which their locks refuse, and race on hub.json.
+	lock, err := lockfile.Acquire(filepath.Join(stateDir, "hub.lock"), fmt.Sprintf("%d %s", os.Getpid(), *addr))
+	if holder, held := lockfile.IsHeld(err); held {
+		pid, other, _ := strings.Cut(holder, " ")
+		if !*headless && other != "" && answers("http://"+other) {
+			window(ctx, "http://"+other) // the running hub's page
+			return
+		}
+		fail(fmt.Errorf("claude-mux is already running for %s (pid %s, http://%s)", stateDir, pid, other))
+	}
+	if err != nil {
+		fail(err)
+	}
 	backends := hub.Backends{Dir: *backendDir, Version: version, Cache: filepath.Join(stateDir, "cache")}
 	connectors := hub.Connectors{SSH: strings.Fields(*ssh), Docker: strings.Fields(*docker), WSL: strings.Fields(*wsl)}
 	h, err := hub.New(stateDir, backends, connectors, *defaultCwd)
@@ -91,6 +106,7 @@ func main() {
 		<-ctx.Done()
 	}
 	stop()
+	_ = lock.Close() // the update starting next takes it
 	if argv := h.Relaunch(); argv != nil {
 		cmd := sysproc.Detach(exec.Command(argv[0], argv[1:]...))
 		cmd.Stdout, cmd.Stderr = os.Stderr, os.Stderr

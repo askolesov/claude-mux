@@ -146,6 +146,7 @@ shown; claude running in other terminals is left alone.
     group, directory, args, claude session id and startup message.
     `backend-hooks.json` (the hooks, rewritten every start),
     `backend.lock` (one backend per environment), `bin/<version>/`.
+  - `hub.lock`: one hub per state directory.
 - Status comes from Claude Code hooks. Each tab's claude gets
   `--settings ~/.claude-mux/backend-hooks.json`, whose hooks run
   `claude-mux-backend hook`; it posts the payload to the backend's hook-only
@@ -160,8 +161,11 @@ shown; claude running in other terminals is left alone.
 
 ## Known rough edges
 
-- **One backend per environment.** A backend locks its state directory
-  (`~/.claude-mux/backend.lock`): a second hub reaching the same machine,
+- **One hub per state directory, one backend per environment.** The hub
+  locks `~/.claude-mux/hub.lock` (its pid and address): a second start
+  with the same state opens a window onto the running hub, or with
+  `-headless` says it's running and where. A backend locks
+  `backend.lock`: a hub with other state reaching the same machine,
   container or host shows it as in use, naming the pid, and connects by
   itself once the first lets go. Two would resume every tab twice.
 - The processes live in the backend: stopping it hangs up every tab.
