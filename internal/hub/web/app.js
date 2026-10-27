@@ -235,11 +235,12 @@ function favicon(dot) {
 // ---------- rendering ----------
 let dragKey = null;       // the tab being dragged; renders wait for the drop
 let dragEnv = null;       // the environment being dragged, by its name
+let dragGroup = null;     // the group being dragged: {env, group}
 let renderPending = false;
 let lastBadge = null;
 
 function render() {
-  if (dragKey || dragEnv) { renderPending = true; return; }
+  if (dragKey || dragEnv || dragGroup) { renderPending = true; return; }
   const waitingCount = tabs.filter(waiting).length;
   const needs = tabs.some((t) => t.status === "needs-you");
   document.title = waitingCount && page.badge ? `(${waitingCount}) claude-mux` : "claude-mux";
@@ -270,7 +271,7 @@ function renderList() {
       const key = e.name + "/" + run.group;
       const shut = collapsed.has(key);
       const dot = shut ? urgent(run.items) : "";
-      html += `<div class="glabel" data-env="${esc(e.name)}" data-group="${esc(run.group)}" title="Click to ${shut ? "show" : "hide"} · right-click for actions">
+      html += `<div class="glabel" data-env="${esc(e.name)}" data-group="${esc(run.group)}" title="Click to ${shut ? "show" : "hide"} · drag to move the group · right-click for actions" draggable="true">
         <span class="gname">${esc(run.group)}</span>${shut ? `<span class="shut">▸</span>` : ""}${dot ? `<span class="dot ${dot}"></span>` : ""}<span class="count">${run.items.length}</span></div>`;
       if (!shut) for (const t of ordered(run.items)) html += tabRow(t);
     }
@@ -1196,8 +1197,9 @@ $("list").addEventListener("click", (e) => {
 
 // Drag a tab to reorder it within its environment; the backend keeps the
 // order. Dropped on a tab, a tab takes that tab's group; dropped on a
-// group's label, it joins the group at its end. Environments reorder by
-// their headers.
+// group's label, it joins the group at its end. A group moves whole by its
+// label, before or after another group or an ungrouped tab. Environments
+// reorder by their headers.
 function dropSide(el, e) {
   const r = el.getBoundingClientRect();
   return e.clientY < r.top + r.height / 2 ? "before" : "after";
@@ -1212,14 +1214,31 @@ function dropTarget(e) {
   return elEnv === tab(dragKey)?.env ? el : null;
 }
 const envTarget = (e) => (dragEnv ? e.target.closest(".envhead") : null);
+// groupDrop is where a dragged group would land: before or after a whole
+// other group, or an ungrouped tab, in the same environment; with the row
+// to mark.
+function groupDrop(e) {
+  const el = dragGroup && e.target.closest(".tab, .glabel");
+  if (!el) return null;
+  const over = el.classList.contains("glabel") ? { env: el.dataset.env, group: el.dataset.group } : tab(el.dataset.key);
+  if (!over || over.env !== dragGroup.env || (over.group || "") === dragGroup.group) return null;
+  const side = dropSide(el, e);
+  if (!over.group) return { side, before: over.id, mark: el };
+  const members = sessionsOf(over.env).filter((s) => s.group === over.group);
+  const label = $("list").querySelector(`.glabel[data-env="${CSS.escape(over.env)}"][data-group="${CSS.escape(over.group)}"]`);
+  const lastRow = $("list").querySelector(`.tab[data-key="${CSS.escape(over.env + "/" + members.at(-1).id)}"]`);
+  return side === "before" ? { side, before: members[0].id, mark: label } : { side, after: members.at(-1).id, mark: lastRow || label };
+}
 $("list").addEventListener("dragstart", (e) => {
   const head = e.target.closest(".envhead");
+  const label = e.target.closest(".glabel");
   const row = e.target.closest(".tab");
   if (head) dragEnv = head.dataset.env;
+  else if (label) { dragGroup = { env: label.dataset.env, group: label.dataset.group }; label.classList.add("dragging"); }
   else if (row) { dragKey = row.dataset.key; row.classList.add("dragging"); }
   else return;
   e.dataTransfer.effectAllowed = "move";
-  e.dataTransfer.setData("text/plain", dragEnv || dragKey);
+  e.dataTransfer.setData("text/plain", dragEnv || dragKey || dragGroup.group);
 });
 $("list").addEventListener("dragover", (e) => {
   const he = envTarget(e);
@@ -1227,6 +1246,14 @@ $("list").addEventListener("dragover", (e) => {
     e.preventDefault();
     clearDrop();
     if (he.dataset.env !== dragEnv) he.classList.add("drop-" + dropSide(he, e));
+    return;
+  }
+  if (dragGroup) {
+    const at = groupDrop(e);
+    clearDrop();
+    if (!at) return;
+    e.preventDefault();
+    at.mark?.classList.add("drop-" + at.side);
     return;
   }
   const el = dropTarget(e);
@@ -1245,6 +1272,21 @@ $("list").addEventListener("drop", async (e) => {
     names.splice(names.indexOf(he.dataset.env) + (dropSide(he, e) === "after" ? 1 : 0), 0, dragEnv);
     envs = names.map((n) => envs.find((x) => x.name === n));
     await request("PUT", "/hub/environments/order", { names }).catch((err) => say(err.message));
+    return;
+  }
+  if (dragGroup) {
+    const at = groupDrop(e);
+    if (!at) return;
+    e.preventDefault();
+    const { env: name, group } = dragGroup;
+    const data = envData.get(name);
+    const members = data.sessions.filter((s) => s.group === group).map((s) => s.id);
+    const ids = data.sessions.map((s) => s.id).filter((id) => !members.includes(id));
+    ids.splice(at.before ? ids.indexOf(at.before) : ids.indexOf(at.after) + 1, 0, ...members);
+    data.sessions = ids.map((id) => data.sessions.find((x) => x.id === id));
+    dragGroup = null;
+    refresh();
+    await api(name, "PUT", "/api/sessions/order", { ids }).catch((err) => say(err.message));
     return;
   }
   const el = dropTarget(e);
@@ -1277,6 +1319,7 @@ $("list").addEventListener("drop", async (e) => {
 $("list").addEventListener("dragend", () => {
   dragEnv = null;
   dragKey = null;
+  dragGroup = null;
   renderPending = false;
   clearDrop();
   render();
