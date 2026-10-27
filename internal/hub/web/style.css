@@ -7,10 +7,9 @@
    or Auto on a light system. */
 :root {
   --bg: #0F1115; --panel: #14171C; --line: #252A33; --field: #1B1F26; --sel: #232834;
-  --term: #0B0D10; --pop: #1B1F26; --dlg-line: #2E3440; --in-line: #2B313C;
-  --card: #1B1F26; --card-in: #252A33; --foot: #111317;
+  --term: #0B0D10; --pop: #1B1F26; --dlg: #171A20; --dlg-line: #2E3440; --in-line: #2B313C; --in-focus: #3A4A6B;
   --text: #E6E8EC; --text2: #C4C9D3; --muted: #8A92A2;
-  --accent: #7AA2F7; --accent-soft: #1B2233; --accent-text: #AFC6FA; --on-accent: #0F1115; --seg-on: #3A4150;
+  --accent: #7AA2F7; --accent-soft: #1B2233; --accent-text: #AFC6FA; --on-accent: #0F1115; --seg-on: #2B3242;
   --working: #7AA2F7; --ready: #4FD18B; --needs: #F5B14C; --halo: rgba(245, 177, 76, .25);
   --needs-bg: rgba(245, 177, 76, .10); --needs-line: rgba(245, 177, 76, .35); --needs-text: #E9D4AE;
   --exited: #6B7383; --exited-text: #8A92A2; --danger: #F38B8B; --switch-off: #3A4150; --knob-off: #C4C9D3;
@@ -21,8 +20,7 @@
 }
 :root[data-theme="light"] {
   --bg: #FFFFFF; --panel: #F6F7F9; --line: #E3E6EB; --field: #ECEEF2; --sel: #E2E7F0;
-  --term: #FBFBFC; --pop: #FFFFFF; --dlg-line: #E3E6EB; --in-line: #D3D8E0;
-  --card: #FFFFFF; --card-in: #ECEEF2; --foot: #ECEEF2;
+  --term: #FBFBFC; --pop: #FFFFFF; --dlg: #FFFFFF; --dlg-line: #E3E6EB; --in-line: #D3D8E0; --in-focus: #9DB3E6;
   --text: #1D2129; --text2: #3D4452; --muted: #626A7A;
   --accent: #2F5FD0; --accent-soft: #E8EEFB; --accent-text: #2A55BD; --on-accent: #FFFFFF; --seg-on: #FFFFFF;
   --working: #2F5FD0; --ready: #1F9D5C; --needs: #B86F0A; --halo: rgba(184, 111, 10, .2);
@@ -173,66 +171,66 @@ main { display: flex; flex-direction: column; min-width: 0; min-height: 0; backg
 .menu button.danger { color: var(--danger); }
 .menu hr { border: 0; height: 1px; background: var(--line); margin: 4px 6px; }
 
-/* dialogs: one family (docs/redesign › Dialogs). A 460 px panel with a
-   header and ×, rows in soft filled cards, a darker footer strip with the
-   one primary button. */
+/* dialogs: one family, 440 px over the window, rows split by thin lines */
 dialog {
-  background: var(--panel); color: var(--text); border: 1px solid var(--dlg-line); border-radius: 14px;
-  padding: 0; width: min(460px, calc(100vw - 32px)); margin: min(140px, 12vh) auto auto; box-shadow: var(--shadow);
+  background: var(--dlg); color: var(--text); border: 1px solid var(--dlg-line); border-radius: 12px;
+  padding: 0; width: min(440px, calc(100vw - 32px)); margin: min(140px, 12vh) auto auto; box-shadow: var(--shadow);
   max-height: calc(100vh - min(140px, 12vh) - 20px); overflow: auto;
 }
-dialog.tall { margin-top: min(90px, 8vh); max-height: min(780px, calc(100vh - min(90px, 8vh) - 20px)); overflow: hidden; }
+dialog.tall { margin-top: min(90px, 8vh); max-height: min(680px, calc(100vh - min(90px, 8vh) - 20px)); overflow: hidden; }
 dialog.tall[open] { display: flex; flex-direction: column; }
 dialog::backdrop { background: var(--shade); }
 dialog h3 { margin: 0; font-size: 15px; font-weight: 600; }
-.dhead { display: flex; align-items: flex-start; gap: 8px; padding: 16px 12px 8px 20px; }
-.dtitle { flex: 1; min-width: 0; }
-.dmeta { font-size: 12px; color: var(--muted); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.dbody { padding: 4px 16px 16px; display: flex; flex-direction: column; gap: 10px; }
-.dbody.scroll { overflow-y: auto; gap: 6px; flex: 1; min-height: 0; }
-.card { background: var(--card); border-radius: 10px; padding: 4px 14px; }
-.card.pad { padding: 10px 14px; }
-.crow { display: flex; align-items: center; gap: 12px; min-height: 42px; color: var(--text); }
-.crow > :first-child { flex: 1; }
-.crow .clabel { flex: none; width: 72px; }
-.crow input, .crow select, .card textarea, .cbody input, .srow select, .srow .num {
-  flex: 1; min-width: 0; height: 30px; padding: 0 10px; border: 0; border-radius: 6px;
-  background: var(--card-in); color: var(--text); font-size: 13px; outline: none;
+.dhead { padding: 18px 20px 4px; }
+.dhead.row { display: flex; align-items: center; padding: 16px 12px 10px 20px; }
+.dhead.row h3 { flex: 1; }
+.dmeta { font-size: 12px; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dbody { padding: 14px 20px 6px; display: flex; flex-direction: column; gap: 12px; }
+.field { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--text2); }
+.field > input, .field > select, .input, .withbtn input, dialog textarea {
+  width: 100%; height: 34px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--in-line);
+  background: var(--bg); color: var(--text); font-size: 13px; outline: none;
 }
-.crow input:focus, .crow select:focus, .card textarea:focus, .cbody input:focus, .srow .num:focus { outline: 1px solid var(--accent); }
-.crow input:disabled, .crow input:read-only { color: var(--muted); }
-.card textarea { display: block; width: 100%; height: auto; margin: 0 0 12px; padding: 8px 10px; resize: vertical; line-height: 1.45; }
+.field > input:focus, .field > select:focus, .input:focus, .withbtn input:focus, dialog textarea:focus { border-color: var(--in-focus); }
+.field > input:disabled, .field > input:read-only { color: var(--muted); }
+dialog textarea { height: auto; padding: 8px 10px; resize: vertical; line-height: 1.45; }
 .mono-in { font-family: var(--mono) !important; font-size: 12px !important; }
+.withbtn { display: flex; gap: 6px; }
+.withbtn input { flex: 1; min-width: 0; }
 .sqbtn {
-  width: 30px; height: 30px; margin-left: -6px; display: grid; place-items: center; flex: none; border: 0;
-  border-radius: 6px; background: var(--card-in); color: var(--text2);
+  width: 34px; height: 34px; display: grid; place-items: center; flex: none; border: 1px solid var(--in-line);
+  border-radius: 6px; background: var(--field); color: var(--text2);
 }
-.sqbtn:hover { color: var(--text); }
-.btnrow { width: 100%; padding: 0; border: 0; background: transparent; text-align: left; font-size: 13px; }
-.btnrow .sum { flex: none; font-size: 12px; color: var(--muted); max-width: 240px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.btnrow .chev { color: var(--muted); }
-.btnrow[aria-expanded="true"] .chev { transform: rotate(180deg); }
-.cbody { display: flex; flex-direction: column; gap: 8px; padding-bottom: 12px; }
-.cbody input { flex: none; }
+.sqbtn:hover { border-color: var(--muted); }
+.fold { margin: 0 20px; border-top: 1px solid var(--line); }
+.fold.first { margin-top: 8px; }
+.foldhead {
+  display: flex; align-items: center; gap: 10px; width: 100%; height: 40px; padding: 0; border: 0;
+  background: transparent; color: var(--text); text-align: left;
+}
+.foldhead > span:first-child { flex: 1; }
+.foldhead .sum { font-size: 12px; color: var(--muted); max-width: 230px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.foldhead .chev { color: var(--muted); }
+.foldhead[aria-expanded="true"] .chev { transform: rotate(180deg); }
+.fold textarea { margin-bottom: 10px; }
+.foldbody { display: flex; flex-direction: column; gap: 8px; padding-bottom: 12px; }
 .checks { display: flex; flex-direction: column; gap: 8px; }
 .checks label { display: flex; align-items: center; gap: 8px; font: 12px var(--mono); color: var(--text); cursor: pointer; }
 .checks input { margin: 0; width: 15px; height: 15px; accent-color: var(--accent); }
-.notice { display: flex; gap: 10px; padding: 10px 14px; border-radius: 10px; background: var(--needs-bg); font-size: 12px; color: var(--needs-text); }
+.notice {
+  display: flex; gap: 10px; margin: 12px 20px 0; padding: 10px 12px; border-radius: 8px;
+  background: var(--needs-bg); border: 1px solid var(--needs-line); font-size: 12px; color: var(--needs-text);
+}
 .notice svg { color: var(--needs); margin-top: 1px; }
-.dfoot { display: flex; align-items: center; gap: 12px; padding: 10px 12px 10px 20px; min-height: 50px; background: var(--foot); }
-.dfoot .gap { flex: 1; min-width: 0; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
-.dfoot .gap.mono { font-size: 11px; }
-.dfoot .link { font-size: 12px; }
-.dfoot .btn.primary { height: 30px; border-radius: 7px; font-size: 12px; }
-.dfoot .btn.danger { font-size: 12px; padding: 0; }
-.err { color: var(--danger); font-size: 12px; padding: 0 4px; word-break: break-word; }
+.dfoot { display: flex; align-items: center; gap: 8px; padding: 16px 20px; border-top: 1px solid var(--line); margin-top: 12px; }
+.dfoot .gap { flex: 1; font-size: 12px; color: var(--muted); }
+.err { color: var(--danger); font-size: 12px; margin: 8px 20px 0; word-break: break-word; }
 .err:empty { display: none; }
-.hint { color: var(--muted); font-size: 12px; padding: 0 4px; }
-.hint:empty { display: none; }
-.note { color: var(--text2); font-size: 13px; padding: 0 4px; word-break: break-word; }
-dialog code { display: block; font: 12px var(--mono); word-break: break-all; }
-dialog pre { margin: 0; font: 11.5px/1.4 var(--mono); background: var(--card); border-radius: 10px; padding: 10px 14px; max-height: 260px; overflow: auto; white-space: pre-wrap; }
-.facts { display: grid; grid-template-columns: 72px 1fr; column-gap: 12px; padding: 10px 14px; row-gap: 8px; font-size: 12px; }
+.note { color: var(--muted); font-size: 12px; word-break: break-word; }
+#msgDlg .note { color: var(--text2); font-size: 13px; }
+dialog code { display: block; font: 12px var(--mono); background: var(--term); border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; word-break: break-all; }
+dialog pre { margin: 0; font: 11.5px/1.4 var(--mono); background: var(--term); border: 1px solid var(--line); border-radius: 6px; padding: 8px; max-height: 260px; overflow: auto; white-space: pre-wrap; }
+.facts { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 12px; }
 .facts span:nth-child(odd) { color: var(--muted); }
 .facts span:nth-child(even) { min-width: 0; overflow-wrap: anywhere; }
 
@@ -243,49 +241,48 @@ dialog pre { margin: 0; font: 11.5px/1.4 var(--mono); background: var(--card); b
 .switch[aria-checked="true"]::after, [aria-checked="true"] > .switch::after { background: var(--on-accent); }
 
 /* settings */
-.ssec { font-size: 12px; font-weight: 600; color: var(--text2); padding: 12px 4px 2px; }
-.ssec:first-child { padding-top: 8px; }
+.sbody { overflow-y: auto; padding: 0 20px 8px; }
+.ssec { font-size: 11px; font-weight: 600; color: var(--muted); padding: 14px 0 2px; margin-top: 10px; border-top: 1px solid var(--line); }
+.ssec:first-child { padding-top: 10px; margin-top: 0; border-top: 0; }
 .srow {
-  display: flex; align-items: center; gap: 12px; width: 100%; min-height: 40px; padding: 0;
-  border: 0; background: transparent; color: var(--text); text-align: left; font-size: 13px;
+  display: flex; align-items: center; gap: 12px; width: 100%; min-height: 36px; padding: 0;
+  border: 0; background: transparent; color: var(--text); text-align: left;
 }
 .srow > :first-child { flex: 1; }
 .srow .quiet { color: var(--muted); }
-.srow select { flex: none; height: 28px; padding: 0 8px; font-size: 12px; }
-.srow .num { flex: none; width: 46px; height: 28px; padding: 0 8px; font-family: var(--mono); font-size: 12px; text-align: right; }
-.srow.every { gap: 8px; margin-top: 8px; }
+.srow.every { gap: 8px; }
 .srow.every > :first-child { flex: none; }
 .srow.every .fill { flex: 1; }
-.srow.every.off > span, .srow.every .num:disabled { color: var(--exited); }
+.srow.every.off > span { color: var(--exited); }
+.srow.every .num:disabled { color: var(--exited); }
+.srow.ver { gap: 8px; min-height: 40px; }
+.srow.ver > :first-child { flex: none; }
+.srow.ver .fill { flex: 1; }
 .srow .switchbtn { padding: 0; border: 0; background: transparent; display: flex; }
-.themes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 8px 0 0; }
-.themes button { display: flex; flex-direction: column; gap: 6px; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 12px; }
-.themes button[aria-pressed="true"] { color: var(--text); font-weight: 500; }
-.themes .pic { position: relative; display: block; height: 58px; border-radius: 8px; overflow: hidden; box-shadow: 0 0 0 1px var(--dlg-line); }
-.themes button[aria-pressed="true"] .pic { box-shadow: 0 0 0 2px var(--accent); }
-.themes .pic i { position: absolute; left: 0; top: 0; bottom: 0; width: 30%; }
-.themes .pic b { position: absolute; left: 8px; top: 10px; width: 18%; height: 5px; border-radius: 3px; }
-.pic.light { background: #FFFFFF; } .pic.light i { background: #F0F2F5; } .pic.light b { background: #2F5FD0; box-shadow: 0 10px 0 #C8CDD6, 0 20px 0 #C8CDD6; }
-.pic.dark { background: #0F1115; } .pic.dark i { background: #14171C; } .pic.dark b { background: #7AA2F7; box-shadow: 0 10px 0 #3A4150, 0 20px 0 #3A4150; }
-.pic.auto { background: linear-gradient(90deg, #FFFFFF 50%, #0F1115 50%); } .pic.auto i { background: #F0F2F5; } .pic.auto b { background: #2F5FD0; box-shadow: 0 10px 0 #C8CDD6, 0 20px 0 #C8CDD6; }
-.upd { display: flex; align-items: center; gap: 12px; padding-top: 8px; }
-.upd .what { flex: 1; min-width: 0; }
-.upd .what b { font-weight: 500; display: block; }
-.upd .what span { display: block; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.upd .what span span { display: inline; }
-.upd .btn.primary { height: 30px; border-radius: 7px; font-size: 12px; padding: 0 12px; }
-.seg { display: flex; padding: 2px; border-radius: 7px; background: var(--card-in); }
+.iconbtn { width: 24px; height: 24px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--muted); }
+.iconbtn:hover:not(:disabled) { background: var(--sel); color: var(--text); }
+.iconbtn:disabled { opacity: .5; cursor: default; }
+.iconbtn.spin svg { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.srow select, .srow .num {
+  height: 28px; padding: 0 8px; border: 1px solid var(--in-line); border-radius: 6px; background: var(--bg); font-size: 12px;
+}
+.srow .num { width: 46px; font-family: var(--mono); text-align: right; }
+.sfoot { flex: none; display: flex; align-items: center; gap: 12px; min-height: 40px; padding: 0 20px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+.sfoot > span { flex: 1; }
+.sfoot .mono { font-size: 11px; }
+.seg { display: flex; padding: 2px; border-radius: 7px; background: var(--bg); border: 1px solid var(--in-line); }
 .seg button { height: 24px; padding: 0 10px; border: 0; border-radius: 5px; background: transparent; color: var(--muted); font-size: 12px; }
 .seg button[aria-pressed="true"] { background: var(--seg-on); color: var(--text); }
 :root[data-theme="light"] .seg button[aria-pressed="true"] { box-shadow: 0 1px 2px rgba(20, 24, 32, .12); }
-.stepper { display: flex; align-items: center; border-radius: 6px; background: var(--card-in); }
-.stepper button { width: 28px; height: 28px; border: 0; background: transparent; color: var(--text2); font-size: 15px; }
-.stepper span { min-width: 24px; text-align: center; font: 12px var(--mono); }
+.stepper { display: flex; align-items: center; border: 1px solid var(--in-line); border-radius: 6px; background: var(--bg); }
+.stepper button { width: 28px; height: 26px; border: 0; background: transparent; color: var(--text2); font-size: 15px; }
+.stepper span { min-width: 28px; text-align: center; font: 12px var(--mono); }
 
 /* jump */
 .palette { position: fixed; inset: 0; z-index: 70; display: none; background: var(--shade); }
 .palette.open { display: block; }
-.palette .box { width: min(640px, calc(100vw - 32px)); margin: 110px auto 0; background: var(--panel); border: 1px solid var(--dlg-line); border-radius: 14px; box-shadow: var(--shadow); overflow: hidden; }
+.palette .box { width: min(640px, calc(100vw - 32px)); margin: 110px auto 0; background: var(--dlg); border: 1px solid var(--dlg-line); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; }
 .palette label { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--line); color: var(--muted); }
 .palette input { flex: 1; min-width: 0; border: 0; background: transparent; font-size: 16px; color: var(--text); outline: none; }
 .palette label kbd { font: 11px var(--mono); padding: 2px 6px; border: 1px solid var(--in-line); border-radius: 4px; }

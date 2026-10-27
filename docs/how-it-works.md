@@ -361,8 +361,7 @@ JetBrains Mono are in `vendor/`, so the page needs no internet.
   rename a group or an environment, ⌫ to delete a group, the Menu key or ⇧F10 for the row's menu, and
   type-ahead. Drag-and-drop works out the target depth from the pointer's x.
 - New tab, Tab settings, Settings and Environment settings are one family
-  of 460 px modals: rows in filled cards, × or Esc to cancel, one primary
-  button in the footer strip; Settings applies each change at once. New tab's directory completes from the environment's
+  of 440 px modals. New tab's directory completes from the environment's
   backend (`/api/dirs`); its folder button, local only, asks the hub for
   the system picker (`osascript`, a PowerShell FolderBrowserDialog, or
   zenity / kdialog).
