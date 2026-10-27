@@ -35,6 +35,10 @@ static void nativeMenu(void) {
 	[edit addItem:item(@"Paste", @selector(paste:), @"v")];
 	[edit addItem:item(@"Select All", @selector(selectAll:), @"a")];
 
+	// The web view answers reload: itself.
+	NSMenu *view = [[NSMenu alloc] initWithTitle:@"View"];
+	[view addItem:item(@"Reload", @selector(reload:), @"r")];
+
 	NSMenu *win = [[NSMenu alloc] initWithTitle:@"Window"];
 	[win addItem:item(@"Minimize", @selector(performMiniaturize:), @"m")];
 	[win addItem:item(@"Close", @selector(performClose:), @"w")];
@@ -42,6 +46,7 @@ static void nativeMenu(void) {
 	NSMenu *bar = [NSMenu new];
 	add(bar, app);
 	add(bar, edit);
+	add(bar, view);
 	add(bar, win);
 	[NSApp setMainMenu:bar];
 	[NSApp setWindowsMenu:win];

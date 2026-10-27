@@ -231,6 +231,14 @@
 
 <datalist id="groups"></datalist>
 
+<dialog id="msgDlg">
+  <form method="dialog" id="msgForm">
+    <h3 id="mTitle"></h3>
+    <label id="mText"></label>
+    <div class="row"><button type="button" id="mCancel">Cancel</button><button class="primary" id="mOk">OK</button></div>
+  </form>
+</dialog>
+
 <dialog id="askDlg">
   <form method="dialog" id="askForm">
     <h3 id="aTitle"></h3>
@@ -817,7 +825,7 @@ $("list").addEventListener("click", (e) => {
 // Install or look for claude again in an environment that has none.
 async function envAct(what, name) {
   if (what === "retry") {
-    await api(name, "POST", "/api/claude/check").catch((err) => alert(err.message));
+    await api(name, "POST", "/api/claude/check").catch((err) => say(err.message));
     return;
   }
   $("iTitle").textContent = `Install claude on ${name}`;
@@ -905,7 +913,7 @@ $("list").addEventListener("drop", async (e) => {
     if (regroup) await api(moved.env, "PUT", `/api/sessions/${moved.id}/group`, { group });
     await api(moved.env, "PUT", "/api/sessions/order", { ids });
   } catch (err) {
-    alert(err.message);
+    say(err.message);
   }
 });
 $("list").addEventListener("dragend", () => {
@@ -980,7 +988,7 @@ async function act(what, target) {
       await api(name, "POST", `/api/sessions/${t.id}/start`);
       terms.get(t.key)?.term.focus();
     } else if (what === "close") {
-      if (t.status !== "working" || confirm("It is working — close it anyway? The turn in progress is cut off.")) await api(name, "DELETE", `/api/sessions/${t.id}`);
+      if (t.status !== "working" || await sure(`Close ${t.name}?`, "It is working: the turn in progress is cut off.", "Close")) await api(name, "DELETE", `/api/sessions/${t.id}`);
     } else if (what === "group") {
       const group = await ask("Group", "Tabs with the same group sit together under one header. Empty takes it out of its group.", t.group || "", groupsOf(name));
       if (group !== null) await api(name, "PUT", `/api/sessions/${t.id}/group`, { group });
@@ -997,18 +1005,40 @@ async function act(what, target) {
     } else if (what === "new-in-env") {
       openNew({ env: name });
     } else if (what === "remove-env") {
-      if (confirm(`Disconnect ${name} and remove it from the list? Its tabs are hung up and kept there: adding it again brings them back.`)) await request("DELETE", `/hub/environments/${encodeURIComponent(name)}`);
+      if (await sure(`Remove ${name}?`, "It is disconnected and taken off the list. Its tabs are hung up and kept there: adding it again brings them back.", "Remove")) await request("DELETE", `/hub/environments/${encodeURIComponent(name)}`);
     } else if (what === "copy-id" || what === "copy-cwd") {
       const text = what === "copy-cwd" ? t.cwd : t.claudeSessionId;
       if (text) await navigator.clipboard.writeText(text);
     }
   } catch (err) {
-    alert(err.message);
+    say(err.message);
   }
 }
 
 // ask asks for one value: a name, with options to pick from (one line), or
 // a message (several lines, when options is null). null when cancelled.
+// sure and say stand in for confirm and alert, which the app's own window
+// (a bare web view) answers without showing anything.
+function sure(title, text, ok = "OK") {
+  $("mTitle").textContent = title;
+  $("mText").textContent = text;
+  $("mOk").textContent = ok;
+  $("mCancel").hidden = false;
+  return new Promise((resolve) => {
+    const done = (v) => { $("msgDlg").close(); resolve(v); };
+    $("msgForm").onsubmit = (e) => { e.preventDefault(); done(true); };
+    $("mCancel").onclick = () => done(false);
+    $("msgDlg").oncancel = () => resolve(false);
+    $("msgDlg").showModal();
+    $("mOk").focus();
+  });
+}
+function say(text) {
+  const shown = sure("", text);
+  $("mCancel").hidden = true;
+  return shown;
+}
+
 function ask(title, hint, value, options) {
   const oneLine = !!options;
   $("groups").innerHTML = (options || []).map((g) => `<option value="${esc(g)}">`).join("");
