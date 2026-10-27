@@ -429,6 +429,7 @@ function ensureTerm(key) {
   el.className = "term";
   $("stage").appendChild(el);
   const term = new Terminal({
+    linkHandler: { activate: (e, uri) => openLink(uri) }, // links claude marks (OSC 8)
     fontFamily: TERM_FONT,
     fontSize: page.termSize,
     lineHeight: 1.15,
@@ -440,11 +441,7 @@ function ensureTerm(key) {
   el.style.background = termTheme().background;
   const fit = new FitAddon.FitAddon();
   term.loadAddon(fit);
-  // A link opens in the browser; in claude-mux's own window the hub opens it.
-  term.loadAddon(new WebLinksAddon.WebLinksAddon((e, uri) => {
-    if (window.cmuxOpen) window.cmuxOpen(uri).catch((err) => say(err.message));
-    else window.open(uri, "_blank", "noopener");
-  }));
+  term.loadAddon(new WebLinksAddon.WebLinksAddon((e, uri) => openLink(uri))); // links in plain text
   term.open(el);
   const t = { term, fit, el, ws: null, closed: false, retry: 0 };
 
@@ -469,6 +466,13 @@ function ensureTerm(key) {
   connect(key, t);
   terms.set(key, t);
   return t;
+}
+
+// openLink opens a link clicked in a terminal in the browser; in
+// claude-mux's own window the hub opens it.
+function openLink(uri) {
+  if (window.cmuxOpen) window.cmuxOpen(uri).catch((err) => say(err.message));
+  else window.open(uri, "_blank", "noopener");
 }
 
 function send(t, msg) {
