@@ -24,16 +24,16 @@ var (
 // Manager owns the sessions, keeps them on disk, and tells subscribers when
 // anything changed.
 type Manager struct {
-	stateFile    string
-	favFile      string
+	stateFile string
+	favFile   string
 	hooksFile string
 	hookURL   string // the hook port's base, ".../hook/<token>"; a session adds its id
 
 	mu           sync.Mutex
 	shuttingDown bool // claudes exiting now were hung up by Shutdown; they run again on the next start
 	sessions     []*Session
-	favourites []Favourite
-	subs       map[chan struct{}]struct{}
+	favourites   []Favourite
+	subs         map[chan struct{}]struct{}
 }
 
 // NewManager loads the favourites and brings back the tabs that were running
@@ -43,11 +43,11 @@ func NewManager(stateDir, hookURL, exe string) (*Manager, error) {
 		return nil, err
 	}
 	m := &Manager{
-		stateFile:    filepath.Join(stateDir, "sessions.json"),
-		favFile:      filepath.Join(stateDir, "favourites.json"),
-		hooksFile:  filepath.Join(stateDir, "hooks.json"),
-		hookURL:    hookURL,
-		subs:       map[chan struct{}]struct{}{},
+		stateFile: filepath.Join(stateDir, "sessions.json"),
+		favFile:   filepath.Join(stateDir, "favourites.json"),
+		hooksFile: filepath.Join(stateDir, "hooks.json"),
+		hookURL:   hookURL,
+		subs:      map[chan struct{}]struct{}{},
 	}
 	if err := writeHookSettings(m.hooksFile, exe); err != nil {
 		return nil, err
