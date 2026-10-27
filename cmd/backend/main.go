@@ -4,8 +4,6 @@
 package main
 
 import (
-	"encoding/base64"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -27,11 +25,8 @@ func main() {
 
 	var d backend.ResumeDefault
 	if *resume != "" {
-		data, err := base64.RawURLEncoding.DecodeString(*resume)
-		if err == nil {
-			err = json.Unmarshal(data, &d)
-		}
-		if err != nil {
+		var err error
+		if d, err = backend.ParseResumeFlag(*resume); err != nil {
 			fmt.Fprintln(os.Stderr, "claude-mux-backend: -resume:", err)
 			os.Exit(2)
 		}

@@ -1,45 +1,23 @@
 package hub
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 )
 
-func TestStoreMigrates(t *testing.T) {
-	dir := t.TempDir()
-	for name, data := range map[string]string{
-		"environments.json": `[{"name":"devbox","kind":"ssh","target":"devbox"}]`,
-		"hub.json":          `{"checkUpdates":false,"everyDays":3,"skip":"v0.3.1"}`,
-	} {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(data), 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	st, err := openStore(dir)
+func TestStoreAddsLocal(t *testing.T) {
+	st, err := openStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	check := func(s hubState) {
-		t.Helper()
-		if s.Settings.CheckUpdates || s.Settings.EveryDays != 3 || s.Update.Skip != "v0.3.1" {
-			t.Errorf("settings %+v, update %+v", s.Settings, s.Update)
-		}
-		if len(s.Environments) != 2 || s.Environments[0].Kind != "local" || s.Environments[1].Name != "devbox" {
-			t.Errorf("environments %+v", s.Environments)
-		}
+	s := st.get()
+	if envs := s.Environments; len(envs) != 1 || envs[0].Kind != KindLocal {
+		t.Errorf("environments %+v", envs)
 	}
-	check(st.get())
-	if _, err := os.Stat(filepath.Join(dir, "environments.json")); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("environments.json still there: %v", err)
+	if !s.Settings.CheckUpdates || s.Settings.EveryDays != 1 || s.Settings.Resume.Enabled || s.Settings.Resume.Message == "" {
+		t.Errorf("settings %+v", s.Settings)
 	}
-	// And it reads back the same from the new file.
-	again, err := openStore(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	check(again.get())
 }
 
 func TestStoreKeepsLocalWhereMoved(t *testing.T) {
@@ -52,7 +30,23 @@ func TestStoreKeepsLocalWhereMoved(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if envs := st.get().Environments; len(envs) != 2 || envs[1].Kind != "local" {
+	if envs := st.get().Environments; len(envs) != 2 || envs[1].Kind != KindLocal {
 		t.Errorf("environments %+v", envs)
+	}
+}
+
+func TestStoreWritesBack(t *testing.T) {
+	dir := t.TempDir()
+	st, err := openStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.change(func(s *hubState) { s.Update.Skip = "v9.9.9" })
+	again, err := openStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.get().Update.Skip != "v9.9.9" {
+		t.Errorf("got %+v", again.get().Update)
 	}
 }

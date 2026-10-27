@@ -88,7 +88,7 @@ func main() {
 	}
 	stop, err := h.Start(*addr)
 	if err != nil {
-		// Already running: a second launch shows the running hub's page.
+		// The port is taken. If by a hub of another state directory, show its page.
 		if !*headless && answers(url) {
 			window(ctx, url)
 			return

@@ -1,7 +1,6 @@
 package hub
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +9,8 @@ import (
 	"slices"
 	"sync"
 	"time"
+
+	"github.com/askolesov/claude-mux/internal/backend"
 )
 
 // hubState is hub.json, everything the hub keeps: its settings, the
@@ -20,6 +21,25 @@ type hubState struct {
 	Environments []EnvConfig `json:"environments"`
 	Update       updateState `json:"update"`
 }
+
+// Settings are the hub's settings, set in the page.
+type Settings struct {
+	CheckUpdates bool                  `json:"checkUpdates"`
+	EveryDays    int                   `json:"everyDays"`
+	Resume       backend.ResumeDefault `json:"resume"`         // what every tab gets when it starts again, unless it says otherwise
+	Page         json.RawMessage       `json:"page,omitempty"` // the page's own settings, which the hub keeps without reading
+}
+
+func (s Settings) validate() error {
+	if s.EveryDays < 1 || s.EveryDays > 365 {
+		return errors.New("check every 1 to 365 days")
+	}
+	return nil
+}
+
+const defaultResumeMessage = "claude-mux restarted this session: its claude process started again, so " +
+	"anything that was running in it (background tasks, watchers, servers) has stopped. " +
+	"If you were in the middle of something, carry on; restart any background work that should be running."
 
 type updateState struct {
 	LastCheck time.Time `json:"lastCheck,omitzero"`
@@ -36,48 +56,18 @@ type store struct {
 
 func openStore(dir string) (*store, error) {
 	st := &store{path: filepath.Join(dir, "hub.json")}
-	st.s.Settings = Settings{CheckUpdates: true, EveryDays: 1, Resume: ResumeDefault{Message: defaultResumeMessage}}
-	migrated := false
+	st.s.Settings = Settings{CheckUpdates: true, EveryDays: 1, Resume: backend.ResumeDefault{Message: defaultResumeMessage}}
 	data, err := os.ReadFile(st.path)
 	switch {
 	case err == nil:
 		if err := json.Unmarshal(data, &st.s); err != nil {
 			return nil, fmt.Errorf("%s: %w", st.path, err)
 		}
-		if !bytes.Contains(data, []byte(`"settings"`)) { // v0.3's: the update check's fields alone
-			var old struct {
-				Settings
-				updateState
-			}
-			if json.Unmarshal(data, &old) == nil && old.EveryDays > 0 {
-				st.s.Settings, st.s.Update = old.Settings, old.updateState
-			}
-			migrated = true
-		}
 	case !errors.Is(err, os.ErrNotExist):
 		return nil, err
 	}
-	// Before v0.4 the environments were in environments.json.
-	oldEnvs := filepath.Join(dir, "environments.json")
-	if data, err := os.ReadFile(oldEnvs); err == nil {
-		var envs []EnvConfig
-		if err := json.Unmarshal(data, &envs); err != nil {
-			return nil, fmt.Errorf("%s: %w", oldEnvs, err)
-		}
-		st.s.Environments = append(st.s.Environments, envs...)
-		migrated = true
-	}
-	if !slices.ContainsFunc(st.s.Environments, func(e EnvConfig) bool { return e.Kind == "local" }) {
-		st.s.Environments = append([]EnvConfig{{Name: "local", Kind: "local"}}, st.s.Environments...)
-	}
-	if migrated {
-		st.mu.Lock()
-		err := st.write()
-		st.mu.Unlock()
-		if err != nil {
-			return nil, err
-		}
-		_ = os.Remove(oldEnvs)
+	if !slices.ContainsFunc(st.s.Environments, func(e EnvConfig) bool { return e.Kind == KindLocal }) {
+		st.s.Environments = append([]EnvConfig{{Name: "local", Kind: KindLocal}}, st.s.Environments...)
 	}
 	return st, nil
 }
@@ -96,16 +86,11 @@ func (st *store) change(f func(*hubState)) {
 	st.mu.Lock()
 	defer st.mu.Unlock()
 	f(&st.s)
-	if err := st.write(); err != nil {
+	data, err := json.MarshalIndent(st.s, "", "  ")
+	if err == nil {
+		err = os.WriteFile(st.path, data, 0o600)
+	}
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "save hub.json:", err)
 	}
-}
-
-// write is called with mu held.
-func (st *store) write() error {
-	data, err := json.MarshalIndent(st.s, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(st.path, data, 0o600)
 }

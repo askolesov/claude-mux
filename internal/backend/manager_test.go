@@ -1,7 +1,6 @@
 package backend
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -45,39 +44,37 @@ func TestGroupTogether(t *testing.T) {
 	}
 }
 
-func TestLoadOldName(t *testing.T) {
+func TestLoadStartupMessage(t *testing.T) {
 	dir := t.TempDir()
-	for name, data := range map[string]string{
-		"state.json": `{"sessions":[{"id":"t1","name":"ops","cwd":"/w","startupMessage":"restart the watch"}]}`,
-		"hooks.json": `{}`,
-	} {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(data), 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	m := &Manager{stateFile: filepath.Join(dir, "backend.json")}
-	if err := m.load(dir); err != nil {
+	file := filepath.Join(dir, "backend.json")
+	data := `{"sessions":[{"id":"t1","name":"ops","cwd":"/w","startupMessage":"restart the watch"}]}`
+	if err := os.WriteFile(file, []byte(data), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if len(m.sessions) != 1 || m.sessions[0].Resume != ResumeCustom || m.sessions[0].ResumeMessage != "restart the watch" {
+	m := &Manager{stateFile: file}
+	if err := m.load(); err != nil {
+		t.Fatal(err)
+	}
+	if len(m.sessions) != 1 || m.sessions[0].Resume != ResumeCustom || m.sessions[0].ResumeMessage != "restart the watch" || m.sessions[0].StartupMessage != "" {
 		t.Fatalf("sessions %+v", m.sessions)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "backend.json")); err != nil {
-		t.Error(err)
-	}
-	for _, name := range []string{"state.json", "hooks.json"} {
-		if _, err := os.Stat(filepath.Join(dir, name)); !errors.Is(err, os.ErrNotExist) {
-			t.Errorf("%s still there: %v", name, err)
-		}
+}
+
+func TestResumeFlag(t *testing.T) {
+	want := ResumeDefault{Enabled: true, Message: "it's 'quoted' -- and $HOME"}
+	got, err := ParseResumeFlag(want.Flag())
+	if err != nil || got != want {
+		t.Errorf("got %+v, %v; want %+v", got, err, want)
 	}
 }
 
 func TestResumeMessage(t *testing.T) {
 	m := &Manager{}
 	for _, c := range []struct {
-		enabled   bool
-		mode, own string
-		want      string
+		enabled bool
+		mode    ResumeMode
+		own     string
+		want    string
 	}{
 		{false, "", "", ""},
 		{true, "", "", "global"},

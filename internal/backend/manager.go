@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/askolesov/claude-mux/internal/stream"
 	"github.com/askolesov/claude-mux/internal/sysproc"
 )
 
@@ -31,14 +32,15 @@ type Manager struct {
 	hooksFile string
 	hookURL   string // the hook port's base, ".../hook/<token>"; a session adds its id
 
+	changes stream.Notifier // wakes the page's event streams
+
 	mu       sync.Mutex
 	claude   Claude
 	sessions []*Session
 	resume   ResumeDefault
-	subs     map[chan struct{}]struct{}
 }
 
-// State is the state file.
+// State is backend.json.
 type State struct {
 	Sessions []*Session `json:"sessions"`
 }
@@ -54,12 +56,11 @@ func NewManager(stateDir, hookURL, exe string, resume ResumeDefault) (*Manager, 
 		hooksFile: filepath.Join(stateDir, "backend-hooks.json"),
 		hookURL:   hookURL,
 		resume:    resume,
-		subs:      map[chan struct{}]struct{}{},
 	}
 	if err := writeHookSettings(m.hooksFile, exe); err != nil {
 		return nil, err
 	}
-	if err := m.load(stateDir); err != nil {
+	if err := m.load(); err != nil {
 		return nil, err
 	}
 	m.claude = findClaude()
@@ -71,19 +72,8 @@ func NewManager(stateDir, hookURL, exe string, resume ResumeDefault) (*Manager, 
 	return m, nil
 }
 
-func (m *Manager) load(stateDir string) error {
+func (m *Manager) load() error {
 	data, err := os.ReadFile(m.stateFile)
-	if errors.Is(err, os.ErrNotExist) {
-		// Before v0.4 the state was state.json and the hooks hooks.json.
-		old := filepath.Join(stateDir, "state.json")
-		if data, err = os.ReadFile(old); err == nil {
-			defer func() {
-				m.save()
-				_ = os.Remove(old)
-				_ = os.Remove(filepath.Join(stateDir, "hooks.json"))
-			}()
-		}
-	}
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
@@ -116,32 +106,6 @@ func (m *Manager) save() {
 	}
 }
 
-func (m *Manager) Subscribe() chan struct{} {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	c := make(chan struct{}, 1)
-	m.subs[c] = struct{}{}
-	return c
-}
-
-func (m *Manager) Unsubscribe(c chan struct{}) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	delete(m.subs, c)
-}
-
-// notify wakes every subscriber; a wake-up already pending covers this one.
-func (m *Manager) notify() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	for c := range m.subs {
-		select {
-		case c <- struct{}{}:
-		default:
-		}
-	}
-}
-
 func (m *Manager) List() []SessionView {
 	m.mu.Lock()
 	sessions := append([]*Session(nil), m.sessions...)
@@ -165,8 +129,8 @@ func (m *Manager) Get(id string) (*Session, error) {
 }
 
 // Create opens a tab with a new claude in cwd.
-func (m *Manager) Create(name, group, cwd, resume, resumeMessage string, args []string) (*Session, error) {
-	if err := validResume(resume); err != nil {
+func (m *Manager) Create(name, group, cwd string, resume ResumeMode, resumeMessage string, args []string) (*Session, error) {
+	if err := resume.valid(); err != nil {
 		return nil, err
 	}
 	if st, err := os.Stat(cwd); err != nil || !st.IsDir() {
@@ -189,7 +153,7 @@ func (m *Manager) Create(name, group, cwd, resume, resumeMessage string, args []
 }
 
 // Start runs the tab's claude: it continues the tab's conversation, if it
-// has one yet, and sends the startup message as the first prompt.
+// has one yet, and sends its resume message as the first prompt then.
 func (m *Manager) Start(id string) error {
 	s, err := m.Get(id)
 	if err != nil {
@@ -198,7 +162,7 @@ func (m *Manager) Start(id string) error {
 	if s.running() {
 		return errRunning
 	}
-	claude := m.claudePath()
+	claude := m.Claude().Path
 	if claude == "" {
 		return errNoClaude
 	}
@@ -225,11 +189,11 @@ func (m *Manager) Start(id string) error {
 			return
 		}
 		s.setStatus(StatusExited)
-		m.notify()
+		m.changes.Notify()
 	}); err != nil {
 		return err
 	}
-	m.notify()
+	m.changes.Notify()
 	return nil
 }
 
@@ -284,7 +248,7 @@ func (m *Manager) WatchStartup(ctx context.Context) {
 			stuck := s.status == StatusStarting && s.proc != nil && time.Since(s.lastOutput) > 2*time.Second
 			s.mu.Unlock()
 			if stuck && s.setStatus(StatusNeedsYou) {
-				m.notify()
+				m.changes.Notify()
 			}
 		}
 	}
@@ -305,7 +269,7 @@ func (m *Manager) PollNames(ctx context.Context, every time.Duration) {
 }
 
 func (m *Manager) followNames(ctx context.Context) {
-	claude := m.claudePath()
+	claude := m.Claude().Path
 	if claude == "" {
 		return
 	}
@@ -338,59 +302,17 @@ func (m *Manager) followName(pid int, name string) {
 		s.mu.Unlock()
 		if changed {
 			m.save()
-			m.notify()
+			m.changes.Notify()
 			return
 		}
 	}
 }
 
-// Resume modes of a tab: the empty mode follows the environment's default.
-const (
-	ResumeCustom = "custom" // the tab's own message
-	ResumeOff    = "off"    // no message
-)
-
-func validResume(mode string) error {
-	if mode != "" && mode != ResumeCustom && mode != ResumeOff {
-		return fmt.Errorf("unknown resume mode %q", mode)
-	}
-	return nil
-}
-
-// ResumeDefault is the message every tab gets when its claude starts again,
-// unless the tab says otherwise; the hub sets it for all environments.
-type ResumeDefault struct {
-	Enabled bool   `json:"enabled"`
-	Message string `json:"message"`
-}
-
-func (m *Manager) SetResumeDefault(d ResumeDefault) {
-	m.mu.Lock()
-	m.resume = d
-	m.mu.Unlock()
-}
-
-// resumeMessage is what a tab in the given mode gets when it starts again.
-func (m *Manager) resumeMessage(mode, own string) string {
-	switch mode {
-	case ResumeCustom:
-		return strings.TrimSpace(own)
-	case ResumeOff:
-		return ""
-	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if !m.resume.Enabled {
-		return ""
-	}
-	return strings.TrimSpace(m.resume.Message)
-}
-
 // Configure sets what a tab starts with: its group, directory, resume
 // message and extra arguments. Everything but the group applies from the
 // next start.
-func (m *Manager) Configure(id, group, cwd, resume, resumeMessage string, args []string) error {
-	if err := validResume(resume); err != nil {
+func (m *Manager) Configure(id, group, cwd string, resume ResumeMode, resumeMessage string, args []string) error {
+	if err := resume.valid(); err != nil {
 		return err
 	}
 	if st, err := os.Stat(cwd); err != nil || !st.IsDir() {
@@ -407,7 +329,7 @@ func (m *Manager) Configure(id, group, cwd, resume, resumeMessage string, args [
 	m.groupTogether()
 	m.mu.Unlock()
 	m.save()
-	m.notify()
+	m.changes.Notify()
 	m.refreshBranch(s)
 	return nil
 }
@@ -459,7 +381,7 @@ func (m *Manager) refreshBranch(s *Session) {
 	s.branch = branch
 	s.mu.Unlock()
 	if changed {
-		m.notify()
+		m.changes.Notify()
 	}
 }
 
@@ -473,7 +395,7 @@ func (m *Manager) MarkSeen(id string) error {
 	s.unseen = false
 	s.mu.Unlock()
 	if changed {
-		m.notify()
+		m.changes.Notify()
 	}
 	return nil
 }
@@ -502,7 +424,7 @@ func (m *Manager) Reorder(ids []string) {
 	m.groupTogether()
 	m.mu.Unlock()
 	m.save()
-	m.notify()
+	m.changes.Notify()
 }
 
 // groupTogether keeps each group's tabs in one run, where its first tab is;
@@ -530,11 +452,13 @@ func (m *Manager) SetGroup(id, group string) error {
 		return err
 	}
 	m.mu.Lock()
+	s.mu.Lock()
 	s.Group = strings.TrimSpace(group)
+	s.mu.Unlock()
 	m.groupTogether()
 	m.mu.Unlock()
 	m.save()
-	m.notify()
+	m.changes.Notify()
 	return nil
 }
 
@@ -547,14 +471,16 @@ func (m *Manager) RenameGroup(from, to string) error {
 	to = strings.TrimSpace(to)
 	m.mu.Lock()
 	for _, s := range m.sessions {
+		s.mu.Lock()
 		if s.Group == from {
 			s.Group = to
 		}
+		s.mu.Unlock()
 	}
 	m.groupTogether()
 	m.mu.Unlock()
 	m.save()
-	m.notify()
+	m.changes.Notify()
 	return nil
 }
 
@@ -569,8 +495,14 @@ func (m *Manager) Close(id string) error {
 	m.sessions = slices.DeleteFunc(m.sessions, func(x *Session) bool { return x == s })
 	m.mu.Unlock()
 	m.save()
-	m.notify()
+	m.changes.Notify()
 	return nil
+}
+
+func (m *Manager) Claude() Claude {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.claude
 }
 
 // Shutdown hangs up every session and waits for them to exit: the next

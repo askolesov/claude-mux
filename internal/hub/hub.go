@@ -5,7 +5,6 @@ package hub
 import (
 	"context"
 	"embed"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -20,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/askolesov/claude-mux/internal/stream"
 	"github.com/gin-gonic/gin"
 )
 
@@ -39,9 +39,10 @@ type Hub struct {
 	defaultCwd string
 	updates    *updater
 
+	changes stream.Notifier // wakes the page's event stream
+
 	mu   sync.Mutex
 	envs []*Env
-	subs map[chan struct{}]struct{}
 }
 
 func New(stateDir string, backends Backends, connectors Connectors, defaultCwd string) (*Hub, error) {
@@ -50,8 +51,8 @@ func New(stateDir string, backends Backends, connectors Connectors, defaultCwd s
 		return nil, err
 	}
 	h := &Hub{stateDir: stateDir, st: st, version: backends.Version,
-		backends: backends, connectors: connectors, defaultCwd: defaultCwd, subs: map[chan struct{}]struct{}{}}
-	h.updates = newUpdater(st, stateDir, backends.Version, h.notify)
+		backends: backends, connectors: connectors, defaultCwd: defaultCwd}
+	h.updates = newUpdater(st, stateDir, backends.Version, h.changes.Notify)
 	for _, cfg := range st.get().Environments {
 		h.envs = append(h.envs, h.newEnv(cfg))
 	}
@@ -60,8 +61,8 @@ func New(stateDir string, backends Backends, connectors Connectors, defaultCwd s
 
 func (h *Hub) newEnv(cfg EnvConfig) *Env {
 	prepare := func(step func(string)) ([]string, string, error) {
-		args := []string{"-resume", h.st.get().Settings.Resume.flag()}
-		if cfg.Kind != "local" {
+		args := []string{"-resume", h.st.get().Settings.Resume.Flag()}
+		if cfg.Kind != KindLocal {
 			return h.connectors.Prepare(cfg, h.backends, args, step)
 		}
 		// Installed like any other environment's; the local backend shares
@@ -74,7 +75,7 @@ func (h *Hub) newEnv(cfg EnvConfig) *Env {
 		bin, err := installLocal(src, filepath.Join(h.stateDir, "bin"), ver)
 		return append([]string{bin, "-state", h.stateDir, "-cwd", h.defaultCwd}, args...), plat, err
 	}
-	e := NewEnv(cfg, prepare, h.notify)
+	e := newEnv(cfg, prepare, h.changes.Notify)
 	e.onConnect = h.pushResume
 	return e
 }
@@ -133,10 +134,20 @@ func (h *Hub) pushResume(e *Env) {
 func (h *Hub) Restart() <-chan struct{} { return h.updates.restart }
 
 // Relaunch is the command that starts the installed update, or nil.
-func (h *Hub) Relaunch() []string {
-	h.updates.mu.Lock()
-	defer h.updates.mu.Unlock()
-	return h.updates.relaunch
+func (h *Hub) Relaunch() []string { return h.updates.Relaunch() }
+
+// SetSettings saves the settings and gives every backend the resume
+// message, which may have changed.
+func (h *Hub) SetSettings(s Settings) error {
+	if err := s.validate(); err != nil {
+		return err
+	}
+	h.st.change(func(st *hubState) { st.Settings = s })
+	for _, e := range h.list() {
+		go h.pushResume(e)
+	}
+	h.changes.Notify()
+	return nil
 }
 
 func (h *Hub) list() []*Env {
@@ -156,7 +167,7 @@ func (h *Hub) env(name string) *Env {
 
 // Add adds an environment of a kind (ssh, docker, wsl) for a target (a
 // host, a container, a distro) and connects it.
-func (h *Hub) Add(name, kind, target string) error {
+func (h *Hub) Add(name string, kind Kind, target string) error {
 	target = strings.TrimSpace(target)
 	if name = strings.TrimSpace(name); name == "" {
 		name = target
@@ -179,7 +190,7 @@ func (h *Hub) Add(name, kind, target string) error {
 	h.mu.Unlock()
 	go e.Supervise()
 	h.save()
-	h.notify()
+	h.changes.Notify()
 	return nil
 }
 
@@ -190,7 +201,7 @@ func (h *Hub) Remove(name string) error {
 	if e == nil {
 		return errors.New("no such environment")
 	}
-	if e.Kind == "local" {
+	if e.Kind == KindLocal {
 		return errors.New("the local environment stays")
 	}
 	h.mu.Lock()
@@ -198,7 +209,7 @@ func (h *Hub) Remove(name string) error {
 	h.mu.Unlock()
 	go e.Close()
 	h.save()
-	h.notify()
+	h.changes.Notify()
 	return nil
 }
 
@@ -232,19 +243,8 @@ func (h *Hub) Reorder(names []string) error {
 	h.envs = envs
 	h.mu.Unlock()
 	h.save()
-	h.notify()
+	h.changes.Notify()
 	return nil
-}
-
-func (h *Hub) notify() {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	for c := range h.subs {
-		select {
-		case c <- struct{}{}:
-		default:
-		}
-	}
 }
 
 func (h *Hub) views() []EnvView {
@@ -264,17 +264,21 @@ func (h *Hub) Handler() http.Handler {
 	r.Use(gin.Recovery(), localOnly)
 
 	web, _ := fs.Sub(webFS, "web")
+	vendor, _ := fs.Sub(web, "vendor")
 	r.GET("/", func(c *gin.Context) { c.FileFromFS("/", http.FS(web)) })
+	r.StaticFileFS("/app.js", "app.js", http.FS(web))
+	r.StaticFileFS("/style.css", "style.css", http.FS(web))
+	r.StaticFS("/vendor", http.FS(vendor))
 
 	r.GET("/hub/events", h.events)
 	r.GET("/hub/info", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"version": h.version, "kinds": h.connectors.Kinds()})
 	})
-	r.GET("/hub/targets/:kind", func(c *gin.Context) { c.JSON(http.StatusOK, h.connectors.Targets(c.Param("kind"))) })
+	r.GET("/hub/targets/:kind", func(c *gin.Context) { c.JSON(http.StatusOK, h.connectors.Targets(Kind(c.Param("kind")))) })
 	r.POST("/hub/environments", func(c *gin.Context) {
 		var req struct {
 			Name   string `json:"name"`
-			Kind   string `json:"kind" binding:"required"`
+			Kind   Kind   `json:"kind" binding:"required"`
 			Target string `json:"target" binding:"required"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -309,13 +313,7 @@ func (h *Hub) Handler() http.Handler {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		err := h.updates.SetSettings(s)
-		if err == nil {
-			for _, e := range h.list() {
-				go h.pushResume(e)
-			}
-		}
-		respond(c, err)
+		respond(c, h.SetSettings(s))
 	})
 	r.POST("/hub/update/check", func(c *gin.Context) { respond(c, h.updates.Check(c.Request.Context())) })
 	r.POST("/hub/update/skip", func(c *gin.Context) { h.updates.Skip(); c.Status(http.StatusNoContent) })
@@ -342,57 +340,21 @@ func respond(c *gin.Context, err error) {
 	c.Status(http.StatusNoContent)
 }
 
-// applyUpdate installs the newest release, streaming its progress as JSON
-// lines ({"step": …}, then {"done": true} or {"error": …}), and then restarts
-// the hub into it. The update goes on if the page goes away.
+// applyUpdate installs the newest release, streaming its progress
+// ({"step": …}), and then restarts the hub into it. The update goes on if
+// the page goes away.
 func (h *Hub) applyUpdate(c *gin.Context) {
-	c.Header("Content-Type", "application/x-ndjson")
-	c.Status(http.StatusOK)
-	var mu sync.Mutex
-	enc := json.NewEncoder(c.Writer)
-	send := func(v any) {
-		mu.Lock()
-		defer mu.Unlock()
-		_ = enc.Encode(v)
-		c.Writer.Flush()
-	}
-	if err := h.updates.Apply(func(step string) { send(gin.H{"step": step}) }); err != nil {
-		send(gin.H{"error": err.Error()})
-		return
-	}
-	send(gin.H{"done": true})
+	out := stream.NewLines(c)
+	out.End(h.updates.Apply(func(step string) { out.Send(gin.H{"step": step}) }))
 }
 
-// events streams the environments and the update state on every change, as
-// server-sent events.
+// events streams the environments, the update state and the settings on
+// every change.
 func (h *Hub) events(c *gin.Context) {
-	sub := make(chan struct{}, 1)
-	h.mu.Lock()
-	h.subs[sub] = struct{}{}
-	h.mu.Unlock()
-	defer func() {
-		h.mu.Lock()
-		delete(h.subs, sub)
-		h.mu.Unlock()
-	}()
-	c.Header("Content-Type", "text/event-stream")
-	c.Header("Cache-Control", "no-cache")
-	ping := time.NewTicker(20 * time.Second)
-	defer ping.Stop()
-	for {
-		data, _ := json.Marshal(gin.H{"version": h.version, "platform": runtime.GOOS + "-" + runtime.GOARCH,
-			"envs": h.views(), "update": h.updates.View(), "settings": h.st.get().Settings})
-		if _, err := c.Writer.Write(append(append([]byte("data: "), data...), '\n', '\n')); err != nil {
-			return
-		}
-		c.Writer.Flush()
-		select {
-		case <-c.Request.Context().Done():
-			return
-		case <-sub:
-		case <-ping.C:
-		}
-	}
+	stream.Events(c, &h.changes, func() any {
+		return gin.H{"version": h.version, "platform": runtime.GOOS + "-" + runtime.GOARCH,
+			"envs": h.views(), "update": h.updates.View(), "settings": h.st.get().Settings}
+	})
 }
 
 // localOnly turns away requests that didn't come from this machine's own

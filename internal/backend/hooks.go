@@ -88,7 +88,7 @@ func (m *Manager) ApplyHook(id string, p HookPayload) error {
 		st = StatusExited
 	}
 	if st != "" && s.setStatus(st) {
-		m.notify()
+		m.changes.Notify()
 	}
 	return nil
 }

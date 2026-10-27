@@ -23,15 +23,15 @@ const scrollbackLimit = 1 << 20
 // Session is a tab: one claude process in a pty. The fields above mu are
 // persisted in the state file.
 type Session struct {
-	ID              string   `json:"id"`
-	Name            string   `json:"name"`
-	Group           string   `json:"group,omitempty"` // tabs with one group sit together under its header
-	Cwd             string   `json:"cwd"`
-	Args            []string `json:"args,omitempty"`
-	ClaudeSessionID string   `json:"claudeSessionId,omitempty"` // the conversation the tab continues
-	Resume          string   `json:"resume,omitempty"`          // the first prompt when its claude starts again: "" the default, "custom" ResumeMessage, "off" none
-	ResumeMessage   string   `json:"resumeMessage,omitempty"`
-	StartupMessage  string   `json:"startupMessage,omitempty"` // before v0.5: became Resume "custom"
+	ID              string     `json:"id"`
+	Name            string     `json:"name"`
+	Group           string     `json:"group,omitempty"` // tabs with one group sit together under its header
+	Cwd             string     `json:"cwd"`
+	Args            []string   `json:"args,omitempty"`
+	ClaudeSessionID string     `json:"claudeSessionId,omitempty"` // the conversation the tab continues
+	Resume          ResumeMode `json:"resume,omitempty"`          // the first prompt when its claude starts again
+	ResumeMessage   string     `json:"resumeMessage,omitempty"`
+	StartupMessage  string     `json:"startupMessage,omitempty"` // before v0.5: became Resume "custom"
 
 	mu          sync.Mutex
 	status      Status
@@ -48,18 +48,18 @@ type Session struct {
 
 // SessionView is what the browser sees of a session.
 type SessionView struct {
-	ID              string    `json:"id"`
-	Name            string    `json:"name"`
-	Group           string    `json:"group"`
-	Cwd             string    `json:"cwd"`
-	Args            []string  `json:"args"`
-	ClaudeSessionID string    `json:"claudeSessionId"`
-	Resume          string    `json:"resume"`
-	ResumeMessage   string    `json:"resumeMessage"`
-	Status          Status    `json:"status"`
-	StatusSince     time.Time `json:"statusSince"`
-	Unseen          bool      `json:"unseen"`
-	Branch          string    `json:"branch"`
+	ID              string     `json:"id"`
+	Name            string     `json:"name"`
+	Group           string     `json:"group"`
+	Cwd             string     `json:"cwd"`
+	Args            []string   `json:"args"`
+	ClaudeSessionID string     `json:"claudeSessionId"`
+	Resume          ResumeMode `json:"resume"`
+	ResumeMessage   string     `json:"resumeMessage"`
+	Status          Status     `json:"status"`
+	StatusSince     time.Time  `json:"statusSince"`
+	Unseen          bool       `json:"unseen"`
+	Branch          string     `json:"branch"`
 }
 
 func (s *Session) View() SessionView {
@@ -107,12 +107,12 @@ func (s *Session) running() bool {
 // until it exits, then calls onExit.
 func (s *Session) start(claude string, claudeArgs []string, env []string, onExit func()) error {
 	s.mu.Lock()
-	cols, rows := s.cols, s.rows
+	cwd, cols, rows := s.Cwd, s.cols, s.rows
 	s.mu.Unlock()
 	if cols == 0 {
 		cols, rows = 120, 40
 	}
-	proc, err := startPty(claude, claudeArgs, env, s.Cwd, cols, rows)
+	proc, err := startPty(claude, claudeArgs, env, cwd, cols, rows)
 	if err != nil {
 		return err
 	}

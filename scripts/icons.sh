@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Regenerate every icon file derived from docs/redesign/icon/*.svg:
+# Regenerate every icon file derived from assets/icon/svg/*.svg:
 #   scripts/icons.sh
 # Writes:
 #   assets/icon/png/icon-<size>.png   rendered sizes
@@ -10,7 +10,7 @@
 set -euo pipefail
 
 dir=$(cd "$(dirname "$0")/.." && pwd)
-svg=$dir/docs/redesign/icon
+svg=$dir/assets/icon/svg
 png=$dir/assets/icon/png
 tmp=$(mktemp -d)
 

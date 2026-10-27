@@ -63,24 +63,37 @@ Mockups: `V4Main.dc.html` (tabs on the left), `V4TopTabs.dc.html` (on top).
 
 **Sidebar (tabs on the left)**
 
-- Top row: logo mark, `claude-mux`, **+** (new tab, ⌥N), settings.
+- Top row: logo mark, `claude-mux`, settings.
+- The two main actions, always visible: **New tab** (primary, ⌥N) and
+  **Connect** (an SSH host, Docker container or WSL distro). Not hidden in
+  settings or menus.
 - **Jump to tab ⌘K**: the only search; opens the switcher.
-- One block per environment: its name and a health dot (green connected,
-  amber problem). Kind, latency and platform show on hover.
-  An environment without claude says *No claude here · Install*.
-- Groups are a plain label above their tabs; no counts.
-- A tab row is a status dot and its name, plus ↻ when it has a startup
-  message. Nothing else.
+- **Environment header**: a collapse chevron, the name (semibold, main
+  text colour), the kind in a small outlined tag (`this Mac`, `ssh`,
+  `docker`), then on the right the health dot (green connected, amber
+  problem) and a short state (`connected`, `42 ms`, `no claude`). An
+  environment without claude says *No claude here · Install*.
+- **Group**: a small semibold muted label, indented under its environment,
+  with the tab count on the right.
+- **Tab row** (indented under the environment): the status dot, then two
+  lines: the name (plus ↻ when it has a startup message) and the directory
+  in small mono. Nothing else.
 - At the bottom, only when a release is out: *0.9.3 is out · Update and
   restart*.
 
-**Tabs on top** (Settings → Tab position): the same tab button (dot + name)
-in a strip for the current environment, then **+**, *Update to …* when one
-is out, and settings.
+**Tabs on top** (Settings → Tab position): one strip for every environment,
+`[env] (tab) (tab) [env] (tab) …`. An environment is a small square-cornered
+chip (kind icon, name, health dot; click for a new tab there), separated
+from the one before by a divider; its tabs follow as rounded pills (dot +
+name). Groups don't show in the strip. On the right: *Update to …* when one
+is out, **New tab**, **Connect** and settings.
 
 **Above the terminal**: the tab's name, then
 `env / group · directory · branch` in mono, and **…**, which opens Tab
 settings. No status pill: the dot already says it.
+
+**Terminal**: fills the whole area under that line, edge to edge, on the
+`term` background. No inset, border or rounded frame.
 
 ## Status
 
@@ -146,6 +159,8 @@ esc closes.
 - **Split view** (two terminals side by side): designed in v1, later.
 - Details side panel, filter chips, per-row branch lines, ⌥ number hints and
   the bottom status bar were tried and dropped as noise.
+- Versions 2 (Photoshop-style) and 3 (VS Code-style) were tried and
+  dropped; v4 is v1 with the noise taken out.
 
 ## The mockup files
 

@@ -90,12 +90,6 @@ func (m *Manager) CheckClaude() Claude {
 			}
 		}
 	}
-	m.notify()
+	m.changes.Notify()
 	return c
-}
-
-func (m *Manager) claudePath() string {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.claude.Path
 }

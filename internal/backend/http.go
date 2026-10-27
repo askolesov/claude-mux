@@ -8,9 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
-	"time"
 
+	"github.com/askolesov/claude-mux/internal/stream"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 )
@@ -94,35 +93,14 @@ type StateView struct {
 }
 
 func (h *Handler) snapshot() StateView {
-	h.m.mu.Lock()
-	claude := h.m.claude
-	h.m.mu.Unlock()
-	return StateView{Claude: claude, Sessions: h.m.List(), DefaultCwd: h.defaultCwd}
+	return StateView{Claude: h.m.Claude(), Sessions: h.m.List(), DefaultCwd: h.defaultCwd}
 }
 
 func (h *Handler) state(c *gin.Context) { c.JSON(http.StatusOK, h.snapshot()) }
 
-// events streams the whole state on every change, as server-sent events.
+// events streams the whole state on every change.
 func (h *Handler) events(c *gin.Context) {
-	sub := h.m.Subscribe()
-	defer h.m.Unsubscribe(sub)
-	c.Header("Content-Type", "text/event-stream")
-	c.Header("Cache-Control", "no-cache")
-	ping := time.NewTicker(20 * time.Second)
-	defer ping.Stop()
-	for {
-		data, _ := json.Marshal(h.snapshot())
-		if _, err := c.Writer.Write(append(append([]byte("data: "), data...), '\n', '\n')); err != nil {
-			return
-		}
-		c.Writer.Flush()
-		select {
-		case <-c.Request.Context().Done():
-			return
-		case <-sub:
-		case <-ping.C:
-		}
-	}
+	stream.Events(c, &h.m.changes, func() any { return h.snapshot() })
 }
 
 func expandHome(p string) string {
@@ -136,12 +114,12 @@ func expandHome(p string) string {
 
 func (h *Handler) create(c *gin.Context) {
 	var req struct {
-		Name          string `json:"name"`
-		Group         string `json:"group"`
-		Cwd           string `json:"cwd"`
-		Args          string `json:"args"`
-		Resume        string `json:"resume"`
-		ResumeMessage string `json:"resumeMessage"`
+		Name          string     `json:"name"`
+		Group         string     `json:"group"`
+		Cwd           string     `json:"cwd"`
+		Args          string     `json:"args"`
+		Resume        ResumeMode `json:"resume"`
+		ResumeMessage string     `json:"resumeMessage"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		respond(c, nil, err)
@@ -174,11 +152,11 @@ func (h *Handler) reorder(c *gin.Context) {
 // configure takes the tab's settings as Tab settings saves them.
 func (h *Handler) configure(c *gin.Context) {
 	var req struct {
-		Group         string `json:"group"`
-		Cwd           string `json:"cwd" binding:"required"`
-		Args          string `json:"args"`
-		Resume        string `json:"resume"`
-		ResumeMessage string `json:"resumeMessage"`
+		Group         string     `json:"group"`
+		Cwd           string     `json:"cwd" binding:"required"`
+		Args          string     `json:"args"`
+		Resume        ResumeMode `json:"resume"`
+		ResumeMessage string     `json:"resumeMessage"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		respond(c, nil, err)
@@ -224,39 +202,11 @@ func (h *Handler) renameGroup(c *gin.Context) {
 
 func (h *Handler) checkClaude(c *gin.Context) { respond(c, h.m.CheckClaude(), nil) }
 
-// installClaude runs the official installer; it takes a while, and the page
-// shows its output.
-// installClaude streams the installer's output as it comes, a JSON line per
-// chunk ({"out": …}), and ends with {"done": true} or {"error": …}. The
-// install goes on if the page goes away.
+// installClaude runs the official installer, which takes a while, and
+// streams its output as it comes. The install goes on if the page goes away.
 func (h *Handler) installClaude(c *gin.Context) {
-	c.Header("Content-Type", "application/x-ndjson")
-	c.Status(http.StatusOK)
-	out := &lines{enc: json.NewEncoder(c.Writer), flush: c.Writer.Flush}
-	if err := h.m.InstallClaude(context.WithoutCancel(c.Request.Context()), out); err != nil {
-		out.send(gin.H{"error": err.Error()})
-		return
-	}
-	out.send(gin.H{"done": true})
-}
-
-// lines writes what it is given as JSON lines, flushing each.
-type lines struct {
-	mu    sync.Mutex
-	enc   *json.Encoder
-	flush func()
-}
-
-func (l *lines) send(v any) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	_ = l.enc.Encode(v)
-	l.flush()
-}
-
-func (l *lines) Write(p []byte) (int, error) {
-	l.send(gin.H{"out": string(p)})
-	return len(p), nil
+	out := stream.NewLines(c)
+	out.End(h.m.InstallClaude(context.WithoutCancel(c.Request.Context()), out))
 }
 
 func (h *Handler) close(c *gin.Context)   { respond(c, nil, h.m.Close(c.Param("id"))) }

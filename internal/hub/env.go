@@ -22,10 +22,20 @@ import (
 
 var errNotConnected = errors.New("the environment's backend isn't running")
 
+// Kind is how an environment is reached.
+type Kind string
+
+const (
+	KindLocal  Kind = "local"  // the backend runs as the hub's child, on this machine
+	KindSSH    Kind = "ssh"    // ssh <host>
+	KindDocker Kind = "docker" // docker exec <container>
+	KindWSL    Kind = "wsl"    // wsl.exe -d <distro>
+)
+
 // EnvConfig is an environment as hub.json keeps it.
 type EnvConfig struct {
 	Name   string `json:"name"`
-	Kind   string `json:"kind"`             // local, ssh, docker, wsl
+	Kind   Kind   `json:"kind"`
 	Target string `json:"target,omitempty"` // the host as ssh takes it, the container, the WSL distro
 }
 
@@ -71,7 +81,7 @@ type Env struct {
 	proxy *httputil.ReverseProxy
 }
 
-func NewEnv(cfg EnvConfig, prepare func(step func(string)) ([]string, string, error), onChange func()) *Env {
+func newEnv(cfg EnvConfig, prepare func(step func(string)) ([]string, string, error), onChange func()) *Env {
 	e := &Env{EnvConfig: cfg, prepare: prepare, onChange: onChange, state: StateConnecting,
 		quit: make(chan struct{}), done: make(chan struct{})}
 	e.proxy = &httputil.ReverseProxy{
@@ -219,10 +229,10 @@ func (e *Env) Supervise() {
 func (e *Env) run() error {
 	e.setState(StateConnecting, "")
 	argv, plat, err := e.prepare(e.setStep)
-	e.setStep("starting the backend")
 	if err != nil {
 		return err
 	}
+	e.setStep("starting the backend")
 	e.mu.Lock()
 	e.platform = plat
 	e.mu.Unlock()
