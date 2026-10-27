@@ -206,7 +206,10 @@ func (m *Manager) Start(id string) error {
 			args = append(args, "--", msg) // after "--", a message starting with "-" stays a prompt
 		}
 	}
-	env := append(childEnv(), "CLAUDE_MUX_ID="+s.ID, "CLAUDE_MUX_HOOK="+m.hookURL+"/"+s.ID, "TERM=xterm-256color", "COLORTERM=truecolor")
+	// FORCE_HYPERLINK: claude marks its links as terminal hyperlinks (OSC 8),
+	// which stay one link when claude breaks them over several lines.
+	env := append(childEnv(), "CLAUDE_MUX_ID="+s.ID, "CLAUDE_MUX_HOOK="+m.hookURL+"/"+s.ID,
+		"TERM=xterm-256color", "COLORTERM=truecolor", "FORCE_HYPERLINK=1")
 	if err := s.start(claude, args, env, func() {
 		s.mu.Lock()
 		again := s.restarting

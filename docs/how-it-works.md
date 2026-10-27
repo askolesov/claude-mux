@@ -241,11 +241,11 @@ in a pty (creack/pty; ConPTY through go-pty on Windows), 120×40 until the
 page says its size. `--resume` is added only when claude has a transcript
 for that session (`~/.claude/projects/*/<id>.jsonl`). A tab where nothing
 was said yet starts fresh. The child's environment gets `CLAUDE_MUX_ID`,
-`CLAUDE_MUX_HOOK`, `TERM=xterm-256color` and `COLORTERM=truecolor`. It
-loses the variables a running Claude Code sets for its own children
-(`CLAUDECODE`, `CLAUDE_CODE_SESSION_ID`, …), so a backend started from
-inside a claude session doesn't make its claudes take themselves for
-subagents.
+`CLAUDE_MUX_HOOK`, `TERM=xterm-256color`, `COLORTERM=truecolor` and
+`FORCE_HYPERLINK=1`. It loses the variables a running Claude Code sets for
+its own children (`CLAUDECODE`, `CLAUDE_CODE_SESSION_ID`, …), so a backend
+started from inside a claude session doesn't make its claudes take
+themselves for subagents.
 
 Three loops keep the tabs current:
 
@@ -387,7 +387,9 @@ Quit (⌘Q) closes the window, so the backends shut down the same way.
   `cmuxBadge`.
 - **Links** clicked in a terminal go to the hub through the `cmuxOpen`
   binding, which opens http and https links in the default browser: the
-  web view opens no windows of its own.
+  web view opens no windows of its own. Tabs start claude with
+  `FORCE_HYPERLINK=1`, so it marks its links as terminal hyperlinks (OSC
+  8): a link claude breaks over two lines is still one link.
 - **Started from Finder or Explorer** (no `TERM`), the hub logs to
   `~/.claude-mux/hub.log`. It takes the login shell's environment (`$SHELL
   -ilc env`), so local tabs see the PATH a terminal would, and it defaults
