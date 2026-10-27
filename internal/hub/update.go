@@ -70,17 +70,8 @@ func (u *updater) View() UpdateView {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	return UpdateView{Current: u.current, Dev: u.dev(), LastCheck: kept.Update.LastCheck,
-		Latest: u.latest, Notes: u.notes, Available: u.latest != "" && u.latest != kept.Update.Skip,
+		Latest: u.latest, Notes: u.notes, Available: u.latest != "",
 		Error: u.err, Step: u.step, Updating: u.updating}
-}
-
-// Skip stops offering the newest release; a newer one is offered again.
-func (u *updater) Skip() {
-	u.mu.Lock()
-	latest := u.latest
-	u.mu.Unlock()
-	u.st.change(func(h *hubState) { h.Update.Skip = latest })
-	u.onChange()
 }
 
 // loop checks when a check is due: on start, then every hour.

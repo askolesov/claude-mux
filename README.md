@@ -70,9 +70,9 @@ When the hub quits, or an SSH connection drops, the backend hangs up its
 claudes, the way closing a terminal window does. It keeps the list of tabs.
 On the next start it opens each tab again with `claude --resume`, so the
 conversation continues. What was running inside the old process
-(background tasks, watchers, dev servers) is gone. claude-mux can send each
-tab a message saying so as its first prompt (Settings › When tabs start
-again).
+(background tasks, watchers, dev servers) is gone. A tab can have a
+startup message, sent as its first prompt each time its claude starts
+again, to say so or to restart a watcher (New tab and Tab settings).
 
 The details are in [docs/how-it-works.md](docs/how-it-works.md).
 
@@ -97,10 +97,11 @@ back.
 
 ## Using it
 
-- **New tab**: the **+** on an environment or a group, then New tab, or
-  ⌥N for one next to the current tab. Pick the directory; optionally extra
-  `claude` arguments. Frequent flags such as
-  `--dangerously-skip-permissions` are checkboxes.
+- **New tab**: the **+** at the top of the sidebar (⌥N) makes one next to
+  the selected tab; right-click an environment or a group for one inside
+  it. It asks for a name and a directory (Tab completes it, from that
+  environment). The startup message and the `claude` arguments repeat your
+  last tab; `--dangerously-skip-permissions` and `--chrome` are checkboxes.
 - **The dot**:
   - blue: working
   - green: ready for your next prompt
@@ -109,20 +110,28 @@ back.
 
   A tab that finished while you weren't looking stays bold until you open
   it. The window title and the Dock icon count the tabs that wait.
-- **Tab settings** (… above the terminal, or right-click a tab): its
-  group, directory, arguments and resume message, plus Restart and Close.
-  The name belongs to claude: type `/rename <name>` in the tab.
+- **Tab settings** (… above the terminal, ⌘I, or right-click a tab): its
+  name, directory, startup message and arguments. A new name applies at
+  once; the rest restarts its claude, and the conversation continues.
+  `/rename <name>` typed in the tab renames it too.
+- **Right-click** any row for what it can do. A tab: Tab settings, Rename,
+  Duplicate, Move to…, Restart, Close. A group: New tab, New group,
+  Rename, Collapse, Delete. An environment: New tab, New group,
+  Reconnect, Environment settings, Remove. The Menu key or ⇧F10 opens it
+  from the keyboard.
 - **Groups** hold tabs and other groups, as deep as you like. Make one
-  with **+** › New group. Fold groups and environments by their chevrons.
-  Rename a group (or an environment) by double-clicking it or with F2.
-  Deleting a group moves what it held up a level; no tab is closed.
+  with ⇧⌥N (next to the selected tab) or from a right-click; it starts
+  named "New group" for you to type over, and Esc takes it back. Fold
+  groups and environments by their chevrons. Rename with F2 or a
+  double-click. Deleting a group moves what it held up a level; no tab is
+  closed.
 - **Moving**: drag a tab or a group onto a group to put it inside, or
   between rows. The line shows where it lands, and its left edge the
   level: drag left or right to change it. ⌘⇧↑/↓ moves the selected row
-  within its group, and Tab settings › Group puts a tab in any group.
+  within its group, and Move to… puts a tab in any group.
 - **Tab rows** (Settings › Appearance): Detailed shows each tab's
   directory under its name, Compact only the name.
-- **Environments**: **Connect environment…**, under the last one, adds one.
+- **Environments**: **Connect environment**, under the last one, adds one.
   You can add:
   - an SSH host (it must accept your key without a password prompt)
   - a running Docker container
@@ -138,9 +147,12 @@ back.
   | ⌥↑ / ⌥↓ | previous / next tab |
   | ⌥J | next tab that waits for you |
   | ⌥N | new tab next to this one |
+  | ⇧⌥N | new group next to this one |
+  | ⌘I | Tab settings |
   | ⌘W | close the tab (asks first) |
   | ⌘⇧↑ / ⌘⇧↓ | move a row up / down in its group |
-  | ↑↓←→, Enter, F2 | in the sidebar: move, fold, open, rename |
+  | ↑↓←→, Enter, F2, ⌫ | in the sidebar: move, fold, open, rename, delete a group |
+  | Menu key, ⇧F10 | in the sidebar: the row's menu |
   | ⌘, | Settings |
   | ⇧↵ | newline in the prompt |
 

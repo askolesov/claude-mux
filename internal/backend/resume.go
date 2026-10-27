@@ -7,26 +7,27 @@ import (
 	"strings"
 )
 
-// ResumeMode says what a tab gets as its first prompt when its claude starts
-// again (claude-mux restarted, Restart, Resume).
+// ResumeMode says whether a tab has a startup message: a first prompt it
+// gets whenever its claude starts again (claude-mux restarted, Restart,
+// Resume). The text is kept while it is off, to turn it back on.
 type ResumeMode string
 
 const (
-	ResumeAsDefault ResumeMode = ""       // the hub's ResumeDefault
-	ResumeCustom    ResumeMode = "custom" // the tab's own message
-	ResumeOff       ResumeMode = "off"    // nothing
+	ResumeCustom ResumeMode = "custom" // the tab's own message
+	ResumeOff    ResumeMode = "off"    // nothing
 )
 
 func (r ResumeMode) valid() error {
-	if r != ResumeAsDefault && r != ResumeCustom && r != ResumeOff {
+	if r != ResumeCustom && r != ResumeOff {
 		return fmt.Errorf("unknown resume mode %q", r)
 	}
 	return nil
 }
 
-// ResumeDefault is the message every tab gets when its claude starts again,
-// unless the tab says otherwise. The hub keeps it, for all environments: it
-// gives it to a backend at launch (Flag) and again on every change.
+// ResumeDefault is the message tabs got by default before v0.7, when the
+// hub kept one for every tab. The hub still passes it to a backend at
+// launch (Flag), only so that a backend.json from before then upgrades with
+// each tab keeping the message it had (migrations.go).
 type ResumeDefault struct {
 	Enabled bool   `json:"enabled"`
 	Message string `json:"message"`
@@ -49,24 +50,10 @@ func ParseResumeFlag(s string) (ResumeDefault, error) {
 	return d, err
 }
 
-func (m *Manager) SetResumeDefault(d ResumeDefault) {
-	m.mu.Lock()
-	m.resume = d
-	m.mu.Unlock()
-}
-
-// resumeMessage is what a tab in the given mode gets when it starts again.
-func (m *Manager) resumeMessage(mode ResumeMode, own string) string {
-	switch mode {
-	case ResumeCustom:
-		return strings.TrimSpace(own)
-	case ResumeOff:
+// resumeMessage is what a tab gets when it starts again.
+func resumeMessage(mode ResumeMode, own string) string {
+	if mode != ResumeCustom {
 		return ""
 	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if !m.resume.Enabled {
-		return ""
-	}
-	return strings.TrimSpace(m.resume.Message)
+	return strings.TrimSpace(own)
 }

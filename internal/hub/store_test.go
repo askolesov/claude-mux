@@ -3,7 +3,9 @@ package hub
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestStoreMigratesV0(t *testing.T) {
@@ -23,7 +25,7 @@ func TestStoreMigratesV0(t *testing.T) {
 	}
 	check := func(s hubState) {
 		t.Helper()
-		if s.Settings.CheckUpdates || s.Settings.EveryDays != 3 || s.Update.Skip != "v0.3.1" || s.Version != 1 {
+		if s.Settings.CheckUpdates || s.Settings.EveryDays != 3 || s.Version != 2 {
 			t.Errorf("version %d, settings %+v, update %+v", s.Version, s.Settings, s.Update)
 		}
 		if len(s.Environments) != 2 || s.Environments[0].Kind != KindLocal || s.Environments[1].Name != "devbox" {
@@ -41,6 +43,35 @@ func TestStoreMigratesV0(t *testing.T) {
 		t.Fatal(err)
 	}
 	check(again.get())
+}
+
+// v0.6: the resume default among the settings.
+func TestStoreMigratesV1(t *testing.T) {
+	dir := t.TempDir()
+	data := `{"version":1,"settings":{"checkUpdates":true,"everyDays":1,"resume":{"enabled":true,"message":"restarted"}},"environments":[{"name":"local","kind":"local"}],"update":{}}`
+	if err := os.WriteFile(filepath.Join(dir, "hub.json"), []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	st, err := openStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := st.get().ResumeDefault; !r.Enabled || r.Message != "restarted" {
+		t.Errorf("resume default %+v", r)
+	}
+	saved := mustReadFile(t, filepath.Join(dir, "hub.json"))
+	if !strings.Contains(saved, `"resumeDefault"`) || strings.Contains(saved, `"resume":`) {
+		t.Errorf("hub.json %s", saved)
+	}
+}
+
+func mustReadFile(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
 }
 
 func TestStoreRefusesNewer(t *testing.T) {
@@ -62,7 +93,7 @@ func TestStoreAddsLocal(t *testing.T) {
 	if envs := s.Environments; len(envs) != 1 || envs[0].Kind != KindLocal {
 		t.Errorf("environments %+v", envs)
 	}
-	if !s.Settings.CheckUpdates || s.Settings.EveryDays != 1 || s.Settings.Resume.Enabled || s.Settings.Resume.Message == "" {
+	if !s.Settings.CheckUpdates || s.Settings.EveryDays != 1 || s.ResumeDefault.Enabled {
 		t.Errorf("settings %+v", s.Settings)
 	}
 }
@@ -88,12 +119,13 @@ func TestStoreWritesBack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	st.change(func(s *hubState) { s.Update.Skip = "v9.9.9" })
+	when := time.Date(2026, 10, 27, 14, 20, 0, 0, time.UTC)
+	st.change(func(s *hubState) { s.Update.LastCheck = when })
 	again, err := openStore(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if again.get().Update.Skip != "v9.9.9" {
+	if !again.get().Update.LastCheck.Equal(when) {
 		t.Errorf("got %+v", again.get().Update)
 	}
 }

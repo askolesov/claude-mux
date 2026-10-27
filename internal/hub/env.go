@@ -3,7 +3,6 @@ package hub
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -61,8 +60,6 @@ type EnvView struct {
 type Env struct {
 	prepare  func(step func(string)) ([]string, string, error) // installs the backend if needed; the command that runs it and the platform
 	onChange func()
-	// onConnect runs once the backend answers, each time.
-	onConnect func(*Env)
 
 	mu        sync.Mutex
 	cfg       EnvConfig // its name can change; see Config
@@ -125,30 +122,6 @@ func (e *Env) setState(state, err string) {
 	if changed {
 		e.onChange()
 	}
-}
-
-// call sends one request to the backend, with body as JSON.
-func (e *Env) call(method, path string, body any) error {
-	data, err := json.Marshal(body)
-	if err != nil {
-		return err
-	}
-	req, err := http.NewRequest(method, "http://backend"+path, bytes.NewReader(data))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	res, err := e.proxy.Transport.RoundTrip(req.WithContext(ctx))
-	if err != nil {
-		return err
-	}
-	_ = res.Body.Close()
-	if res.StatusCode >= 300 {
-		return fmt.Errorf("%s %s: %s", method, path, res.Status)
-	}
-	return nil
 }
 
 // Reconnect starts the backend again: the running one hangs up its tabs,
@@ -280,9 +253,6 @@ func (e *Env) run() error {
 		}
 		e.setLatency(rtt)
 		e.setState(StateConnected, "")
-		if e.onConnect != nil {
-			e.onConnect(e)
-		}
 		for {
 			select {
 			case <-session.CloseChan():

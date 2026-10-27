@@ -61,7 +61,7 @@ func New(stateDir string, backends Backends, connectors Connectors, defaultCwd s
 
 func (h *Hub) newEnv(cfg EnvConfig) *Env {
 	prepare := func(step func(string)) ([]string, string, error) {
-		args := []string{"-resume", h.st.get().Settings.Resume.Flag()}
+		args := []string{"-resume", h.st.get().ResumeDefault.Flag()}
 		if cfg.Kind != KindLocal {
 			return h.connectors.Prepare(cfg, h.backends, args, step)
 		}
@@ -75,9 +75,7 @@ func (h *Hub) newEnv(cfg EnvConfig) *Env {
 		bin, err := installLocal(src, filepath.Join(h.stateDir, "bin"), ver)
 		return append([]string{bin, "-state", h.stateDir, "-cwd", h.defaultCwd}, args...), plat, err
 	}
-	e := newEnv(cfg, prepare, h.changes.Notify)
-	e.onConnect = h.pushResume
-	return e
+	return newEnv(cfg, prepare, h.changes.Notify)
 }
 
 // Start serves the page on addr and starts the environments' backends. The
@@ -121,14 +119,6 @@ func (h *Hub) Start(addr string) (stop func(), err error) {
 	}, nil
 }
 
-// pushResume tells an environment's backend the current resume default: it
-// got one at launch, which a change since may have outdated.
-func (h *Hub) pushResume(e *Env) {
-	if err := e.call(http.MethodPut, "/api/resume-default", h.st.get().Settings.Resume); err != nil && !errors.Is(err, errNotConnected) {
-		fmt.Fprintf(os.Stderr, "env %s: resume message: %v\n", e.Config().Name, err)
-	}
-}
-
 // Restart is closed once an update is installed: the hub should stop, and
 // Relaunch start the new one.
 func (h *Hub) Restart() <-chan struct{} { return h.updates.restart }
@@ -143,9 +133,6 @@ func (h *Hub) SetSettings(s Settings) error {
 		return err
 	}
 	h.st.change(func(st *hubState) { st.Settings = s })
-	for _, e := range h.list() {
-		go h.pushResume(e)
-	}
 	h.changes.Notify()
 	return nil
 }
@@ -300,7 +287,23 @@ func (h *Hub) Handler() http.Handler {
 
 	r.GET("/hub/events", h.events)
 	r.GET("/hub/info", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"version": h.version, "kinds": h.connectors.Kinds()})
+		c.JSON(http.StatusOK, gin.H{"version": h.version, "kinds": h.connectors.Kinds(), "stateDir": h.stateDir})
+	})
+	r.POST("/hub/open-log", func(c *gin.Context) { respond(c, h.OpenLog()) })
+	r.POST("/hub/pick-folder", func(c *gin.Context) {
+		var req struct {
+			Start string `json:"start"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		path, err := pickFolder(c.Request.Context(), req.Start)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"path": path})
 	})
 	r.GET("/hub/targets/:kind", func(c *gin.Context) { c.JSON(http.StatusOK, h.connectors.Targets(Kind(c.Param("kind")))) })
 	r.POST("/hub/environments", func(c *gin.Context) {
@@ -354,7 +357,6 @@ func (h *Hub) Handler() http.Handler {
 		respond(c, h.SetSettings(s))
 	})
 	r.POST("/hub/update/check", func(c *gin.Context) { respond(c, h.updates.Check(c.Request.Context())) })
-	r.POST("/hub/update/skip", func(c *gin.Context) { h.updates.Skip(); c.Status(http.StatusNoContent) })
 	r.POST("/hub/update/apply", h.applyUpdate)
 
 	r.Any("/env/:name/*path", func(c *gin.Context) {

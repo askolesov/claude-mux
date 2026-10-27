@@ -116,13 +116,15 @@ The hub's own API is `/hub/...`:
 | Route | Does |
 |---|---|
 | `GET /hub/events` | SSE: version, platform, environments, update state, settings, on every change |
-| `GET /hub/info` | version and the kinds of environment this machine can add |
+| `GET /hub/info` | version, the kinds of environment this machine can add, the state directory |
 | `GET /hub/targets/:kind` | what can be added: hosts from `~/.ssh/config`, running containers, WSL distros |
 | `POST /hub/environments`, `PUT /hub/environments/:name`, `DELETE /hub/environments/:name` | add, rename (not local), remove |
 | `PUT /hub/environments/order` | reorder (local included) |
 | `POST /hub/environments/:name/reconnect` | start that backend again |
 | `PUT /hub/settings` | every hub setting at once (the page's own, too) |
-| `POST /hub/update/check`, `/skip`, `/apply` | updates; apply streams its progress as JSON lines |
+| `POST /hub/update/check`, `/apply` | updates; apply streams its progress as JSON lines |
+| `POST /hub/pick-folder` | the system's folder picker on this machine, for the local New tab |
+| `POST /hub/open-log` | opens `hub.log` |
 
 And a backend's, under `/env/<name>`:
 
@@ -130,12 +132,13 @@ And a backend's, under `/env/<name>`:
 |---|---|
 | `GET /api/state`, `GET /api/events` | the tabs, claude's path and version, the default directory; SSE on every change |
 | `POST /api/sessions` | new tab |
-| `PUT /api/sessions/:id` | Tab settings: group (parent), directory, args, resume message |
+| `PUT /api/sessions/:id` | Tab settings: directory, args, startup message |
+| `PUT /api/sessions/:id/name` | rename a tab |
 | `POST /api/groups`, `PUT /api/groups/:id`, `DELETE /api/groups/:id` | new group, rename, delete (its contents move up) |
 | `PUT /api/nodes/:id/place` | move a tab or a group: `{parent, before \| after}` |
 | `POST /api/sessions/:id/start`, `/restart`, `/seen`; `DELETE /api/sessions/:id` | lifecycle |
 | `GET /api/sessions/:id/term` | the terminal, a WebSocket |
-| `PUT /api/resume-default` | the hub's resume message, on change and on connect |
+| `GET /api/dirs?prefix=` | the directories a typed path could go on to, for New tab |
 | `POST /api/claude/check`, `/api/claude/install` | look for claude again; run the official installer, streaming its output |
 
 ## Connecting an environment
@@ -180,17 +183,16 @@ backend:
    there, the hub pipes the file through the same connection, `cat > ….tmp
    && chmod +x && mv`, then removes every other version under `bin/`. The
    environment needs no internet for this.
-4. The start command: `exec <bin> -resume <base64url>`.
+4. The start command: `exec <bin> -resume <base64url>` (the resume default
+   from before v0.7, for upgrading an old `backend.json`; see Files).
 
 The local backend is installed the same way, into this machine's
 `~/.claude-mux/bin/<version>/`. It is always a fresh file renamed into
 place, never one rewritten: macOS kills a binary whose code signature went
 stale.
 
-Once the backend answers its first ping, the environment is connected. The
-hub then pushes the current resume message (`PUT /api/resume-default`),
-since it may have changed since the backend's launch. The page opens that
-backend's event stream.
+Once the backend answers its first ping, the environment is connected, and
+the page opens that backend's event stream.
 
 ## Tabs: the backend
 
@@ -222,7 +224,7 @@ A group is `{id, name, parent, order}`. A tab is a `Session`
 | `parent`, `order` | where it sits in the tree |
 | `cwd`, `args` | where claude starts, and its extra arguments |
 | `claudeSessionId` | the conversation the tab continues, from its hooks |
-| `resume`, `resumeMessage` | what it is told when it starts again (below) |
+| `resume`, `resumeMessage` | its startup message: `custom` sends it, `off` doesn't (the text stays) |
 
 And what lives only in memory: the status and since when, unseen, the git
 branch of `cwd`, the pty process, and the last 1 MB of output. The output
@@ -232,7 +234,7 @@ page loses nothing on screen.
 Starting a tab runs:
 
 ```
-claude [--resume <claudeSessionId>] --settings ~/.claude-mux/backend-hooks.json --name <name> <args…> [-- "<resume message>"]
+claude [--resume <claudeSessionId>] --settings ~/.claude-mux/backend-hooks.json --name <name> <args…> [-- "<startup message>"]
 ```
 
 in a pty (creack/pty; ConPTY through go-pty on Windows), 120×40 until the
@@ -318,26 +320,23 @@ The next backend starts every tab again, with `--resume`. Restart in Tab
 settings does the same for one tab: it hangs up its claude and starts it
 again once it has exited.
 
-**The resume message.** A resumed claude continues the conversation, but
+**The startup message.** A resumed claude continues the conversation, but
 whatever ran in its old process (background shells, watchers, dev servers)
-is gone, and it doesn't know. The resume message tells it, as the first
-prompt after `--`.
+is gone, and it doesn't know. A tab's startup message tells it, or restarts
+the watcher, as the first prompt after `--`.
 
-- The hub keeps one default for all environments: Settings › When tabs
-  start again. It is off by default, with a suggested text.
-- The hub hands the default to each backend at launch (`-resume`,
-  base64url JSON, which passes any shell unquoted) and again whenever it
-  changes.
-- Each tab chooses in Tab settings:
-
-  | Mode | Sends |
-  |---|---|
-  | Default (`""`) | the hub's message, if it is on |
-  | Custom (`custom`) | the tab's own message, say "restart the log watcher" |
-  | None (`off`) | nothing |
-
+- Each tab has its own, set in New tab and Tab settings. New tab repeats
+  the last tab's.
 - It is never sent on a tab's first start, only when a conversation is
   resumed.
+- Before v0.7 the hub kept one default for every tab. A tab that followed
+  it got it as its own on upgrade.
+
+**Names.** A tab is named in New tab, Tab settings or with F2, and
+claude gets the name with `--name`. `/rename` in the tab renames it too:
+the backend polls `claude agents --json` and takes a name that changed
+since it last looked, so a name given in the page stays while the running
+claude still reports the old one.
 
 ## The page
 
@@ -351,15 +350,22 @@ JetBrains Mono are in `vendor/`, so the page needs no internet.
 - A terminal is created the first time its tab is opened and kept, hidden,
   after that. Each has its own WebSocket, which reconnects with a growing
   pause.
-- Settings that are the page's own (layout, themes, font, notifications,
-  New tab defaults) are kept by the hub in `hub.json` as `settings.page`, so
-  the app's window and a browser share them. A copy in `localStorage`
-  paints the first frame. Folded groups, the sidebar width and the last tab
-  per directory stay per browser.
+- Settings that are the page's own (themes, font size, tab rows,
+  notifications, the last tab's options for New tab) are kept by the hub in
+  `hub.json` as `settings.page`, so the app's window and a browser share
+  them. They have a `version` and upgrade steps of their own
+  (`PAGE_STEPS` in `app.js`). A copy in `localStorage` paints the first
+  frame. Folded groups, the sidebar width and the last directory per
+  environment stay per browser.
 - The sidebar is an ARIA tree. Rows are `treeitem`s with `aria-level`, and
   containers have `aria-expanded`. The keys are ↑↓←→, Enter, Home/End, F2 to
-  rename and type-ahead. Drag-and-drop works out the target depth from the
-  pointer's x.
+  rename, ⌫ to delete a group, the Menu key or ⇧F10 for the row's menu, and
+  type-ahead. Drag-and-drop works out the target depth from the pointer's x.
+- New tab, Tab settings, Settings and Environment settings are one family
+  of 440 px modals. New tab's directory completes from the environment's
+  backend (`/api/dirs`); its folder button, local only, asks the hub for
+  the system picker (`osascript`, a PowerShell FolderBrowserDialog, or
+  zenity / kdialog).
 - When `/hub/events` reports a different hub version (after an update),
   the page reloads.
 - The app's window is a bare web view, which answers `confirm()` and
@@ -395,9 +401,8 @@ release:
   and the last one was more than "every N days" ago
 - on Check now
 
-A newer one shows in the sidebar, with one notification per version. Skip
-this version hides it until a newer one comes out. Development builds
-never check.
+A newer one shows in the sidebar and in Settings › Updates, with one
+notification per version. Development builds never check.
 
 **Update and restart**:
 
@@ -438,11 +443,18 @@ Version 1 is everything up to v0.6:
 - **hub.json:** v0.3's flat fields moved under `settings` and `update`;
   `environments.json` merged in.
 
+Version 2 is v0.7, where each tab has its own startup message:
+- **hub.json:** `settings.resume`, the default for every tab, moved to the
+  top level as `resumeDefault`. The hub keeps it only to pass to backends
+  (`-resume`) that haven't upgraded yet.
+- **backend.json:** a tab that followed the default (`resume: ""`) got the
+  default's text as its own (`custom`), or none (`off`) if it was off.
+
 Everything is in `~/.claude-mux/` (`-state` moves it). On this machine:
 
 | File | Written by | Holds |
 |---|---|---|
-| `hub.json` | hub | `version`, `settings` (update check, resume default, `page`), `environments` in sidebar order with `local` among them, `update` (last check, skipped version) |
+| `hub.json` | hub | `version`, `settings` (update check, `page`), `environments` in sidebar order with `local` among them, `update` (last check), `resumeDefault` (see above) |
 | `hub.lock` | hub | its pid and address, locked while it runs |
 | `hub.log` | hub | its output and its backends', when started from Finder or Explorer |
 | `cache/<version>/` | hub | downloaded backend builds |

@@ -36,7 +36,7 @@ func NewHandler(m *Manager, defaultCwd string) http.Handler {
 	api.GET("/events", h.events)
 	api.POST("/sessions", h.create)
 	api.PUT("/sessions/:id", h.configure)
-	api.PUT("/resume-default", h.setResumeDefault)
+	api.PUT("/sessions/:id/name", h.rename)
 	api.DELETE("/sessions/:id", h.close)
 	api.POST("/sessions/:id/start", h.start)
 	api.POST("/sessions/:id/restart", h.restart)
@@ -46,6 +46,7 @@ func NewHandler(m *Manager, defaultCwd string) http.Handler {
 	api.PUT("/groups/:id", h.renameGroup)
 	api.DELETE("/groups/:id", h.deleteGroup)
 	api.PUT("/nodes/:id/place", h.move)
+	api.GET("/dirs", h.dirs)
 	api.POST("/claude/check", h.checkClaude)
 	api.POST("/claude/install", h.installClaude)
 	return r
@@ -143,7 +144,6 @@ func (h *Handler) create(c *gin.Context) {
 // configure takes the tab's settings as Tab settings saves them.
 func (h *Handler) configure(c *gin.Context) {
 	var req struct {
-		Parent        string     `json:"parent"`
 		Cwd           string     `json:"cwd" binding:"required"`
 		Args          string     `json:"args"`
 		Resume        ResumeMode `json:"resume"`
@@ -153,19 +153,24 @@ func (h *Handler) configure(c *gin.Context) {
 		respond(c, nil, err)
 		return
 	}
-	respond(c, nil, h.m.Configure(c.Param("id"), req.Parent, expandHome(strings.TrimSpace(req.Cwd)), req.Resume, req.ResumeMessage, strings.Fields(req.Args)))
+	respond(c, nil, h.m.Configure(c.Param("id"), expandHome(strings.TrimSpace(req.Cwd)), req.Resume, req.ResumeMessage, strings.Fields(req.Args)))
 }
 
-// setResumeDefault takes the message tabs get when they start again, which
-// the hub sends when it changes.
-func (h *Handler) setResumeDefault(c *gin.Context) {
-	var d ResumeDefault
-	if err := c.ShouldBindJSON(&d); err != nil {
+func (h *Handler) rename(c *gin.Context) {
+	var req struct {
+		Name string `json:"name" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
 		respond(c, nil, err)
 		return
 	}
-	h.m.SetResumeDefault(d)
-	respond(c, nil, nil)
+	respond(c, nil, h.m.Rename(c.Param("id"), req.Name))
+}
+
+// dirs completes a directory path as it is typed in New tab: the
+// directories that the last part of prefix starts, here.
+func (h *Handler) dirs(c *gin.Context) {
+	c.JSON(http.StatusOK, completeDir(c.Query("prefix")))
 }
 
 func (h *Handler) createGroup(c *gin.Context) {

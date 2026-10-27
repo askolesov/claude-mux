@@ -22,14 +22,17 @@ type hubState struct {
 	Settings     Settings    `json:"settings"`
 	Environments []EnvConfig `json:"environments"`
 	Update       updateState `json:"update"`
+	// ResumeDefault is the message every tab got when it started again,
+	// before v0.7 gave each tab its own. Kept for backends that haven't
+	// upgraded their backend.json yet (backend/migrations.go).
+	ResumeDefault backend.ResumeDefault `json:"resumeDefault,omitzero"`
 }
 
 // Settings are the hub's settings, set in the page.
 type Settings struct {
-	CheckUpdates bool                  `json:"checkUpdates"`
-	EveryDays    int                   `json:"everyDays"`
-	Resume       backend.ResumeDefault `json:"resume"`         // what every tab gets when it starts again, unless it says otherwise
-	Page         json.RawMessage       `json:"page,omitempty"` // the page's own settings, which the hub keeps without reading
+	CheckUpdates bool            `json:"checkUpdates"`
+	EveryDays    int             `json:"everyDays"`
+	Page         json.RawMessage `json:"page,omitempty"` // the page's own settings, which the hub keeps without reading
 }
 
 func (s Settings) validate() error {
@@ -39,13 +42,8 @@ func (s Settings) validate() error {
 	return nil
 }
 
-const defaultResumeMessage = "claude-mux restarted this session: its claude process started again, so " +
-	"anything that was running in it (background tasks, watchers, servers) has stopped. " +
-	"If you were in the middle of something, carry on; restart any background work that should be running."
-
 type updateState struct {
 	LastCheck time.Time `json:"lastCheck,omitzero"`
-	Skip      string    `json:"skip,omitempty"` // a version not to offer again
 }
 
 // store keeps hub.json, written whole on every change.
@@ -58,7 +56,7 @@ type store struct {
 
 func openStore(dir string) (*store, error) {
 	st := &store{path: filepath.Join(dir, "hub.json")}
-	st.s.Settings = Settings{CheckUpdates: true, EveryDays: 1, Resume: backend.ResumeDefault{Message: defaultResumeMessage}}
+	st.s.Settings = Settings{CheckUpdates: true, EveryDays: 1}
 	steps := hubSteps(dir)
 	data, upgraded, err := migrate.Load(st.path, steps)
 	if err == nil && data == nil {

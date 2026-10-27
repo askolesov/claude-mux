@@ -47,5 +47,15 @@ func hubSteps(dir string) []migrate.Step {
 			migrate.SetList(doc, "environments", append(migrate.List(doc, "environments"), envs...))
 			return nil
 		},
+		// 1 → 2: v0.7 gives each tab its own startup message. The resume
+		// default leaves the settings, kept only to upgrade backends.
+		func(doc map[string]any) error {
+			settings, _ := doc["settings"].(map[string]any)
+			if r, ok := settings["resume"]; ok {
+				doc["resumeDefault"] = r
+				delete(settings, "resume")
+			}
+			return nil
+		},
 	}
 }

@@ -100,7 +100,7 @@ func main() {
 	case !*headless:
 		window(ctx, url) // until the window closes
 	case *open:
-		openBrowser(url)
+		_ = sysproc.Open(url)
 		fallthrough
 	default:
 		<-ctx.Done()
@@ -169,20 +169,5 @@ func loginShellEnv() {
 		if ok && k != "" && k != "PWD" && k != "OLDPWD" && k != "SHLVL" && k != "_" {
 			_ = os.Setenv(k, v)
 		}
-	}
-}
-
-func openBrowser(url string) {
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "darwin":
-		cmd = exec.Command("open", url)
-	case "windows":
-		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
-	default:
-		cmd = exec.Command("xdg-open", url)
-	}
-	if err := cmd.Start(); err == nil {
-		go func() { _ = cmd.Wait() }()
 	}
 }

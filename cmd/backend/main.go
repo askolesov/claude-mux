@@ -20,7 +20,7 @@ func main() {
 	home, _ := os.UserHomeDir()
 	stateDir := flag.String("state", filepath.Join(home, ".claude-mux"), "where sessions, saved conversations and the hooks file are kept")
 	defaultCwd := flag.String("cwd", home, "default directory for new sessions")
-	resume := flag.String("resume", "", "the message tabs get when they start again, as the hub sets it: base64url of {\"enabled\", \"message\"}")
+	resume := flag.String("resume", "", "the resume default from before v0.7, to upgrade backend.json with: base64url of {\"enabled\", \"message\"}")
 	flag.Parse()
 
 	var d backend.ResumeDefault

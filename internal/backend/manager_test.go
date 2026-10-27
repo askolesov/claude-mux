@@ -8,22 +8,16 @@ import (
 )
 
 func TestResumeMessage(t *testing.T) {
-	m := &Manager{}
 	for _, c := range []struct {
-		enabled bool
-		mode    ResumeMode
-		own     string
-		want    string
+		mode ResumeMode
+		own  string
+		want string
 	}{
-		{false, "", "", ""},
-		{true, "", "", "global"},
-		{true, ResumeOff, "", ""},
-		{false, ResumeCustom, " mine ", "mine"},
-		{true, ResumeCustom, "mine", "mine"},
+		{ResumeOff, "kept", ""},
+		{ResumeCustom, " mine ", "mine"},
 	} {
-		m.SetResumeDefault(ResumeDefault{Enabled: c.enabled, Message: "global"})
-		if got := m.resumeMessage(c.mode, c.own); got != c.want {
-			t.Errorf("enabled %v, mode %q, own %q: got %q, want %q", c.enabled, c.mode, c.own, got, c.want)
+		if got := resumeMessage(c.mode, c.own); got != c.want {
+			t.Errorf("mode %q, own %q: got %q, want %q", c.mode, c.own, got, c.want)
 		}
 	}
 }
@@ -36,8 +30,9 @@ func TestResumeFlag(t *testing.T) {
 	}
 }
 
-// loadState writes files into a fresh state directory and loads it.
-func loadState(t *testing.T, files map[string]string) (*Manager, string) {
+// loadState writes files into a fresh state directory and loads it, with
+// old as the hub's resume default from before v0.7.
+func loadState(t *testing.T, files map[string]string, old ...ResumeDefault) (*Manager, string) {
 	t.Helper()
 	dir := t.TempDir()
 	for name, data := range files {
@@ -45,8 +40,12 @@ func loadState(t *testing.T, files map[string]string) (*Manager, string) {
 			t.Fatal(err)
 		}
 	}
+	var def ResumeDefault
+	if len(old) > 0 {
+		def = old[0]
+	}
 	m := &Manager{stateFile: filepath.Join(dir, "backend.json")}
-	if err := m.load(dir); err != nil {
+	if err := m.load(dir, stateSteps(def)); err != nil {
 		t.Fatal(err)
 	}
 	return m, dir
@@ -73,8 +72,8 @@ func TestMigrateV0(t *testing.T) {
 	if m.groups[0].Order >= b.Order || a.Order >= c.Order {
 		t.Errorf("orders: group %q, notes %q; ops %q, slack %q", m.groups[0].Order, b.Order, a.Order, c.Order)
 	}
-	if a.Resume != ResumeCustom || a.ResumeMessage != "restart the watch" || c.Resume != ResumeOff {
-		t.Errorf("resume %+v %+v", a, c)
+	if a.Resume != ResumeCustom || a.ResumeMessage != "restart the watch" || b.Resume != ResumeOff || c.Resume != ResumeOff {
+		t.Errorf("resume %+v %+v %+v", a, b, c)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "backend.json.v0.bak")); err != nil {
 		t.Errorf("no backup: %v", err)
@@ -83,6 +82,30 @@ func TestMigrateV0(t *testing.T) {
 	again, _ := loadState(t, map[string]string{"backend.json": mustRead(t, filepath.Join(dir, "backend.json"))})
 	if len(again.groups) != 1 || again.sessions[0].Parent != again.groups[0].ID {
 		t.Errorf("reloaded %+v", again.groups)
+	}
+}
+
+// v0.6: tabs that followed the hub's resume default have resume "".
+const stateV1 = `{"version":1,"sessions":[
+	{"id":"a","name":"ops","cwd":"/w","order":"V"},
+	{"id":"b","name":"slack","cwd":"/w","order":"k","resume":"custom","resumeMessage":"watch slack"},
+	{"id":"c","name":"quiet","cwd":"/w","order":"s","resume":"off","resumeMessage":"kept"}],"groups":[]}`
+
+func TestMigrateV1(t *testing.T) {
+	m, dir := loadState(t, map[string]string{"backend.json": stateV1}, ResumeDefault{Enabled: true, Message: "restarted"})
+	a, b, c := m.sessions[0], m.sessions[1], m.sessions[2]
+	if a.Resume != ResumeCustom || a.ResumeMessage != "restarted" {
+		t.Errorf("a tab on the default gets it as its own: %+v", a)
+	}
+	if b.ResumeMessage != "watch slack" || c.Resume != ResumeOff || c.ResumeMessage != "kept" {
+		t.Errorf("a tab's own choice stays: %+v %+v", b, c)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "backend.json.v1.bak")); err != nil {
+		t.Errorf("no backup: %v", err)
+	}
+	off, _ := loadState(t, map[string]string{"backend.json": stateV1}, ResumeDefault{Message: "restarted"})
+	if off.sessions[0].Resume != ResumeOff {
+		t.Errorf("with the default off, none: %+v", off.sessions[0])
 	}
 }
 
@@ -107,7 +130,7 @@ func TestRefuseNewer(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := &Manager{stateFile: filepath.Join(dir, "backend.json")}
-	if err := m.load(dir); err == nil {
+	if err := m.load(dir, stateSteps(ResumeDefault{})); err == nil {
 		t.Error("loaded a file from a newer version")
 	}
 }

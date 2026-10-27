@@ -39,10 +39,10 @@ type Manager struct {
 	claude   Claude
 	sessions []*Session
 	groups   []*Group
-	resume   ResumeDefault
+	version  int // backend.json's
 }
 
-// State is backend.json, at version len(stateSteps) (migrations.go).
+// State is backend.json, at version len(stateSteps(…)) (migrations.go).
 type State struct {
 	Version  int        `json:"version"`
 	Sessions []*Session `json:"sessions"`
@@ -50,8 +50,9 @@ type State struct {
 }
 
 // NewManager loads the tabs and starts every one of them, continuing each
-// tab's conversation.
-func NewManager(stateDir, hookURL, exe string, resume ResumeDefault) (*Manager, error) {
+// tab's conversation. old is the resume default from before v0.7, for
+// upgrading backend.json.
+func NewManager(stateDir, hookURL, exe string, old ResumeDefault) (*Manager, error) {
 	if err := os.MkdirAll(stateDir, 0o700); err != nil {
 		return nil, err
 	}
@@ -59,12 +60,11 @@ func NewManager(stateDir, hookURL, exe string, resume ResumeDefault) (*Manager, 
 		stateFile: filepath.Join(stateDir, "backend.json"),
 		hooksFile: filepath.Join(stateDir, "backend-hooks.json"),
 		hookURL:   hookURL,
-		resume:    resume,
 	}
 	if err := writeHookSettings(m.hooksFile, exe); err != nil {
 		return nil, err
 	}
-	if err := m.load(stateDir); err != nil {
+	if err := m.load(stateDir, stateSteps(old)); err != nil {
 		return nil, err
 	}
 	m.claude = findClaude()
@@ -77,11 +77,12 @@ func NewManager(stateDir, hookURL, exe string, resume ResumeDefault) (*Manager, 
 }
 
 // load reads backend.json, upgrading it from an older version.
-func (m *Manager) load(stateDir string) error {
-	data, upgraded, err := migrate.Load(m.stateFile, stateSteps)
+func (m *Manager) load(stateDir string, steps []migrate.Step) error {
+	m.version = len(steps)
+	data, upgraded, err := migrate.Load(m.stateFile, steps)
 	if err == nil && data == nil {
 		// Before v0.4 the file was state.json, and the hooks hooks.json.
-		data, upgraded, err = migrate.Load(filepath.Join(stateDir, "state.json"), stateSteps)
+		data, upgraded, err = migrate.Load(filepath.Join(stateDir, "state.json"), steps)
 		if data != nil {
 			defer func() {
 				_ = os.Rename(filepath.Join(stateDir, "state.json"), filepath.Join(stateDir, "state.json.bak"))
@@ -108,7 +109,7 @@ func (m *Manager) load(stateDir string) error {
 
 func (m *Manager) save() {
 	m.mu.Lock()
-	data, err := json.MarshalIndent(State{Version: len(stateSteps), Sessions: m.sessions, Groups: m.groups}, "", "  ")
+	data, err := json.MarshalIndent(State{Version: m.version, Sessions: m.sessions, Groups: m.groups}, "", "  ")
 	m.mu.Unlock()
 	if err == nil {
 		err = os.WriteFile(m.stateFile, data, 0o600)
@@ -196,7 +197,7 @@ func (m *Manager) Start(id string) error {
 	// background tasks and watchers, is gone.
 	if hasConversation(sid) {
 		args = append([]string{"--resume", sid}, args...)
-		if msg := m.resumeMessage(resume, own); msg != "" {
+		if msg := resumeMessage(resume, own); msg != "" {
 			args = append(args, "--", msg) // after "--", a message starting with "-" stays a prompt
 		}
 	}
@@ -276,8 +277,8 @@ func (m *Manager) WatchStartup(ctx context.Context) {
 }
 
 // PollNames follows the names claude reports for the tabs' processes in
-// `claude agents --json`: claude owns the name, and /rename typed in a tab
-// renames the tab. The name is passed back as --name on the next start.
+// `claude agents --json`, so /rename typed in a tab renames the tab. The
+// name is passed back as --name on the next start.
 func (m *Manager) PollNames(ctx context.Context, every time.Duration) {
 	for {
 		m.followNames(ctx)
@@ -310,13 +311,20 @@ func (m *Manager) followNames(ctx context.Context) {
 	}
 }
 
+// followName takes a name claude reports when it is a new one: a tab
+// renamed in the page keeps its name while its claude, until it starts
+// again, still reports the old one.
 func (m *Manager) followName(pid int, name string) {
 	m.mu.Lock()
 	sessions := append([]*Session(nil), m.sessions...)
 	m.mu.Unlock()
 	for _, s := range sessions {
 		s.mu.Lock()
-		changed := s.proc != nil && s.proc.Pid() == pid && name != "" && name != s.Name
+		mine := s.proc != nil && s.proc.Pid() == pid && name != ""
+		changed := mine && name != s.claudeName && name != s.Name
+		if mine {
+			s.claudeName = name
+		}
 		if changed {
 			s.Name = name
 		}
@@ -329,10 +337,27 @@ func (m *Manager) followName(pid int, name string) {
 	}
 }
 
-// Configure sets what a tab starts with: its group, directory, resume
-// message and extra arguments. Everything but the group applies from the
-// next start. A new group puts the tab at that group's end.
-func (m *Manager) Configure(id, parent, cwd string, resume ResumeMode, resumeMessage string, args []string) error {
+// Rename names a tab. Its claude gets the name with --name when it starts
+// again.
+func (m *Manager) Rename(id, name string) error {
+	if name = strings.TrimSpace(name); name == "" {
+		return errors.New("a tab needs a name")
+	}
+	s, err := m.Get(id)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.Name = name
+	s.mu.Unlock()
+	m.save()
+	m.changes.Notify()
+	return nil
+}
+
+// Configure sets what a tab starts with: its directory, startup message and
+// extra arguments, from its next start.
+func (m *Manager) Configure(id, cwd string, resume ResumeMode, resumeMessage string, args []string) error {
 	if err := resume.valid(); err != nil {
 		return err
 	}
@@ -343,25 +368,9 @@ func (m *Manager) Configure(id, parent, cwd string, resume ResumeMode, resumeMes
 	if err != nil {
 		return err
 	}
-	m.mu.Lock()
 	s.mu.Lock()
-	moved := s.Parent != parent
 	s.Cwd, s.Resume, s.ResumeMessage, s.Args = cwd, resume, strings.TrimSpace(resumeMessage), args
 	s.mu.Unlock()
-	if moved {
-		err = m.validParent(parent, "")
-		var key string
-		if err == nil {
-			key, err = m.place(id, parent, "", "")
-		}
-		if err == nil {
-			err = m.setPlace(id, parent, key)
-		}
-	}
-	m.mu.Unlock()
-	if err != nil {
-		return err
-	}
 	m.save()
 	m.changes.Notify()
 	m.refreshBranch(s)
