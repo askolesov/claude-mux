@@ -1,19 +1,22 @@
-package main
+package backend
 
 import (
+	"bytes"
 	"encoding/json"
-	"fmt"
+	"io"
+	"net/http"
 	"os"
+	"time"
 )
 
 // hookEvents are the Claude Code hook events that move a session's status.
 var hookEvents = []string{"SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Notification", "Stop", "SessionEnd"}
 
 // writeHookSettings writes the settings file passed to every claude the
-// manager starts: each hook event posts its payload back to the server.
-// A server that is down just drops the event.
-func writeHookSettings(path, endpoint string) error {
-	cmd := fmt.Sprintf(`curl -s -m 2 -X POST -H 'Content-Type: application/json' --data-binary @- "%s/$CLAUDE_MUX_ID" >/dev/null 2>&1 || true`, endpoint)
+// manager starts: each hook event runs this backend's binary as `hook`,
+// which posts the payload back to the backend (see Hook).
+func writeHookSettings(path, exe string) error {
+	cmd := shellQuote(exe) + " hook"
 	hooks := map[string]any{}
 	for _, e := range hookEvents {
 		hooks[e] = []any{map[string]any{"hooks": []any{map[string]any{"type": "command", "command": cmd}}}}
@@ -23,6 +26,21 @@ func writeHookSettings(path, endpoint string) error {
 		return err
 	}
 	return os.WriteFile(path, data, 0o600)
+}
+
+// Hook is the hook command: it posts the hook's payload, read on stdin, to
+// the address its backend gave the session in CLAUDE_MUX_HOOK. It never
+// fails the hook: a backend that is gone just misses the event.
+func Hook() {
+	url := os.Getenv("CLAUDE_MUX_HOOK")
+	payload, err := io.ReadAll(os.Stdin)
+	if url == "" || err != nil {
+		return
+	}
+	client := &http.Client{Timeout: 2 * time.Second}
+	if res, err := client.Post(url, "application/json", bytes.NewReader(payload)); err == nil {
+		_ = res.Body.Close()
+	}
 }
 
 // HookPayload is the part of a hook's stdin the server reads.

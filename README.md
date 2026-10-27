@@ -4,14 +4,21 @@ One web page for many Claude Code sessions: tabs on the left, the live
 terminal on the right, and a dot per session that says whether it is
 working, ready for input, or waiting on you.
 
+Two programs: the **hub** (`cmd/hub`, the page) and the **backend**
+(`cmd/backend`, the sessions), which the hub runs as its child and talks to
+over the backend's stdin and stdout. See [docs/design.md](docs/design.md)
+for where this is going: backends over SSH, in Docker, in WSL and on
+Windows.
+
 ```sh
-go run . -cwd ~/Documents/@Ankr/codespace
+go build -o /tmp/claude-mux-backend ./cmd/backend
+go run ./cmd/hub -backend /tmp/claude-mux-backend -cwd ~/Documents/@Ankr/codespace
 # → http://127.0.0.1:7777
 ```
 
-`./restart.sh` rebuilds it, restarts it and resumes the
-sessions that were running. Run it from a regular terminal, because a
-session inside claude-mux is hung up by the restart.
+`./restart.sh` rebuilds both, restarts them and resumes the sessions that
+were running. Run it from a regular terminal, because a session inside
+claude-mux is hung up by the restart.
 
 Start it from a normal terminal. Starting it from inside a claude session also
 works, because the server strips the session markers from its children's env.
@@ -70,22 +77,28 @@ Also:
 - **Themes**: page theme (Auto follows macOS, Light, Dark) and terminal theme
   (Auto matches the page, or Tokyo Night, Dracula, Solarized) in the footer,
   kept per browser.
-- **Restarts**: a plain start brings back only the saved conversations.
-  `restart.sh` passes `-resume-running`, which also resumes the tabs that
-  were running, so a redeploy keeps them.
+- **Restarts**: every start resumes the tabs whose claude was running when
+  the backend stopped, whether the hub quit, the backend was killed or the
+  machine rebooted. Tabs whose claude had exited, and tabs where nothing was
+  said yet, are dropped. Saved conversations always stay.
 - Keys: ⌥1–9 tab, ⌥↑/↓ prev/next, ⌥J next session that waits for you,
   ⌥N new, ⇧↵ newline in the prompt.
 
 ## How it works
 
+- The page talks to the hub, which forwards `/env/local/…` to the backend
+  over one pipe (the backend's stdin and stdout, split into streams by
+  yamux). The backend's API listens on no port.
 - Status comes from Claude Code hooks. Each session gets
-  `--settings ~/.claude-mux/hooks.json`, whose hooks `curl` their payload to
-  `/hook/$CLAUDE_MUX_ID`: SessionStart/Stop → ready,
+  `--settings ~/.claude-mux/hooks.json`, whose hooks run
+  `claude-mux-backend hook`; it posts the payload to the backend's hook-only
+  loopback port, given to the session in `CLAUDE_MUX_HOOK` with a token
+  that changes every start: SessionStart/Stop → ready,
   UserPromptSubmit/Pre/PostToolUse → working, a permission Notification →
   needs you, SessionEnd → exited. The hook also reports the claude session
   id that Resume uses.
 - State (names, dirs, claude session ids) is in `~/.claude-mux/sessions.json`.
-- The server only listens on loopback. It rejects foreign Host/Origin headers
+- The hub only listens on loopback. It rejects foreign Host/Origin headers
   and non-JSON writes, because anything that reaches the API can start
   processes.
 

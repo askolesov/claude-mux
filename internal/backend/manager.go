@@ -1,4 +1,4 @@
-package main
+package backend
 
 import (
 	"context"
@@ -26,36 +26,36 @@ var (
 type Manager struct {
 	stateFile    string
 	favFile      string
-	hooksFile    string
-	hookEndpoint string
+	hooksFile string
+	hookURL   string // the hook port's base, ".../hook/<token>"; a session adds its id
 
-	mu         sync.Mutex
-	sessions   []*Session
+	mu           sync.Mutex
+	shuttingDown bool // claudes exiting now were hung up by Shutdown; they run again on the next start
+	sessions     []*Session
 	favourites []Favourite
 	subs       map[chan struct{}]struct{}
 }
 
-// NewManager loads the favourites. With resumeRunning it also brings back the
-// tabs that were running when the server last stopped (a redeploy); without
-// it the last run's tabs are dropped and the favourites are what remains.
-func NewManager(stateDir, hookEndpoint string, resumeRunning bool) (*Manager, error) {
+// NewManager loads the favourites and brings back the tabs that were running
+// when the backend last stopped: the hub quitting is a restart.
+func NewManager(stateDir, hookURL, exe string) (*Manager, error) {
 	if err := os.MkdirAll(stateDir, 0o700); err != nil {
 		return nil, err
 	}
 	m := &Manager{
 		stateFile:    filepath.Join(stateDir, "sessions.json"),
 		favFile:      filepath.Join(stateDir, "favourites.json"),
-		hooksFile:    filepath.Join(stateDir, "hooks.json"),
-		hookEndpoint: hookEndpoint,
-		subs:         map[chan struct{}]struct{}{},
+		hooksFile:  filepath.Join(stateDir, "hooks.json"),
+		hookURL:    hookURL,
+		subs:       map[chan struct{}]struct{}{},
 	}
-	if err := writeHookSettings(m.hooksFile, hookEndpoint); err != nil {
+	if err := writeHookSettings(m.hooksFile, exe); err != nil {
 		return nil, err
 	}
 	if err := m.loadFavourites(); err != nil {
 		return nil, err
 	}
-	if err := m.load(resumeRunning); err != nil {
+	if err := m.load(); err != nil {
 		return nil, err
 	}
 	for _, s := range m.List() {
@@ -67,8 +67,8 @@ func NewManager(stateDir, hookEndpoint string, resumeRunning bool) (*Manager, er
 }
 
 // load reads the tabs of the previous run and keeps the ones that were
-// running when it stopped, if resumeRunning; NewManager resumes them.
-func (m *Manager) load(resumeRunning bool) error {
+// running when it stopped; NewManager resumes them.
+func (m *Manager) load() error {
 	data, err := os.ReadFile(m.stateFile)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
@@ -81,7 +81,7 @@ func (m *Manager) load(resumeRunning bool) error {
 	}
 	m.sessions = slices.DeleteFunc(m.sessions, func(s *Session) bool {
 		_, noTranscript := transcriptPath(s.ClaudeSessionID)
-		return !resumeRunning || !s.WasRunning || noTranscript != nil // nothing said yet: nothing to resume
+		return !s.WasRunning || noTranscript != nil // nothing said yet: nothing to resume
 	})
 	for _, s := range m.sessions {
 		s.WasRunning = false
@@ -208,11 +208,29 @@ func (m *Manager) Resume(id string) error {
 
 func (m *Manager) run(s *Session, args []string) error {
 	claudeArgs := append([]string{"--settings", m.hooksFile, "--name", s.Name}, args...)
-	env := append(childEnv(), "CLAUDE_MUX_ID="+s.ID, "TERM=xterm-256color", "COLORTERM=truecolor")
-	return s.start(claudeArgs, env, func() {
+	env := append(childEnv(), "CLAUDE_MUX_ID="+s.ID, "CLAUDE_MUX_HOOK="+m.hookURL+"/"+s.ID, "TERM=xterm-256color", "COLORTERM=truecolor")
+	err := s.start(claudeArgs, env, func() {
+		m.mu.Lock()
+		shuttingDown := m.shuttingDown
+		m.mu.Unlock()
+		if !shuttingDown {
+			s.mu.Lock()
+			s.WasRunning = false
+			s.mu.Unlock()
+			m.save()
+		}
 		s.setStatus(StatusExited)
 		m.notify()
 	})
+	if err != nil {
+		return err
+	}
+	// Saved now, not at shutdown, so a backend that dies resumes it too.
+	s.mu.Lock()
+	s.WasRunning = true
+	s.mu.Unlock()
+	m.save()
+	return nil
 }
 
 // sessionMarkers are set by a running Claude Code for its own children. A
@@ -470,17 +488,14 @@ func (m *Manager) Close(id string) error {
 	return nil
 }
 
-// Shutdown notes which sessions run, for a restart that brings them back,
-// hangs them all up and waits for them to exit: a restart resuming a
-// conversation whose old process still runs would fork its transcript.
+// Shutdown hangs up every session, keeping WasRunning for the next start,
+// and waits for them to exit: a restart resuming a conversation whose old
+// process still runs would fork its transcript.
 func (m *Manager) Shutdown() {
 	m.mu.Lock()
+	m.shuttingDown = true
 	sessions := append([]*Session(nil), m.sessions...)
 	m.mu.Unlock()
-	for _, s := range sessions {
-		s.WasRunning = s.running()
-	}
-	m.save()
 	for _, s := range sessions {
 		s.kill()
 	}

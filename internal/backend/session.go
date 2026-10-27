@@ -1,4 +1,4 @@
-package main
+package backend
 
 import (
 	"os"
@@ -34,7 +34,7 @@ type Session struct {
 	Args            []string  `json:"args"`
 	ClaudeSessionID string    `json:"claudeSessionId"`
 	CreatedAt       time.Time `json:"createdAt"`
-	WasRunning      bool      `json:"wasRunning,omitempty"` // set at shutdown, read by the next start
+	WasRunning      bool      `json:"wasRunning,omitempty"` // claude runs, or ran when the backend stopped or died: the next start resumes it
 
 	mu          sync.Mutex
 	status      Status

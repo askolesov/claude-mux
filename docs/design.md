@@ -1,6 +1,6 @@
 # claude-mux: hub and backends
 
-Status: design, 2026-10-27. Today claude-mux is one Mac program that runs
+Status: step 1 done (2026-10-27); the rest is design. Today claude-mux is one Mac program that runs
 claude sessions on this machine. This design splits it into a **hub** (the
 window and the page) and **backends** (the sessions), so one window can
 show sessions running here, over SSH, in Docker, in WSL and on Windows.
@@ -125,10 +125,11 @@ so unreleased versions can be tried in every environment.
 - **End of input ends the backend.** When the hub quits or the pipe breaks
   (SSH drops, container stops), the backend reads EOF and runs today's
   shutdown: note which tabs run, hang up their claudes, wait, exit.
-- **Every backend start resumes what was running.** Today only
-  `restart.sh` passes `-resume-running`; with backends as children, quitting
-  the hub is the same as a restart, so resuming becomes the default.
-  Restore messages are sent as today.
+- **Every backend start resumes what was running.** With backends as
+  children, quitting the hub is the same as a restart, so resuming is the
+  default. A tab is marked running when its claude starts and unmarked only
+  when claude exits by itself, so a backend that is killed resumes its tabs
+  too. Restore messages are sent as today.
 - A broken connection is retried with backoff; the page shows the
   environment as connecting, with the last error.
 

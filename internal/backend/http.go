@@ -1,11 +1,8 @@
-package main
+package backend
 
 import (
-	"embed"
 	"encoding/json"
 	"errors"
-	"io/fs"
-	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -15,9 +12,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 )
-
-//go:embed web
-var webFS embed.FS
 
 // The default CheckOrigin rejects cross-origin upgrades, so another site
 // open in the browser can't reach a terminal.
@@ -29,14 +23,13 @@ type Handler struct {
 	defaultCwd string
 }
 
+// NewHandler serves the backend's API. Only the hub reaches it, over the
+// backend's stdio, so it trusts every request; the hub checks them.
 func NewHandler(m *Manager, ext *Externals, defaultCwd string) http.Handler {
 	h := &Handler{m: m, ext: ext, defaultCwd: defaultCwd}
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
-	r.Use(gin.Recovery(), localOnly)
-
-	web, _ := fs.Sub(webFS, "web")
-	r.GET("/", func(c *gin.Context) { c.FileFromFS("/", http.FS(web)) })
+	r.Use(gin.Recovery())
 
 	api := r.Group("/api")
 	api.GET("/state", h.state)
@@ -60,31 +53,29 @@ func NewHandler(m *Manager, ext *Externals, defaultCwd string) http.Handler {
 	api.POST("/favourites/:sid/start", h.startFavourite)
 	api.POST("/favourites/:sid/terminal", h.favouriteInTerminal)
 	api.POST("/groups/rename", h.renameGroup)
-
-	r.POST("/hook/:id", h.hook)
 	return r
 }
 
-// localOnly turns away requests that didn't come from this machine's own
-// page: a foreign Host (DNS rebinding), a foreign Origin, or a cross-site
-// write sent as a form instead of JSON. Anything that reaches the API can
-// start processes.
-func localOnly(c *gin.Context) {
-	host, _, err := net.SplitHostPort(c.Request.Host)
-	if err != nil || (host != "127.0.0.1" && host != "localhost") {
-		c.AbortWithStatus(http.StatusForbidden)
-		return
-	}
-	if o := c.GetHeader("Origin"); o != "" && o != "http://"+c.Request.Host {
-		c.AbortWithStatus(http.StatusForbidden)
-		return
-	}
-	if c.Request.Method != http.MethodGet && c.Request.ContentLength > 0 &&
-		!strings.HasPrefix(c.ContentType(), "application/json") {
-		c.AbortWithStatus(http.StatusUnsupportedMediaType)
-		return
-	}
-	c.Next()
+// NewHookHandler serves the hook port: claude's hooks post here, through
+// `claude-mux-backend hook`. The token, new on every start, keeps other users
+// of a shared host from posting statuses.
+func NewHookHandler(m *Manager, token string) http.Handler {
+	gin.SetMode(gin.ReleaseMode)
+	r := gin.New()
+	r.Use(gin.Recovery())
+	r.POST("/hook/:token/:id", func(c *gin.Context) {
+		if c.Param("token") != token {
+			c.AbortWithStatus(http.StatusForbidden)
+			return
+		}
+		var p HookPayload
+		if err := c.ShouldBindJSON(&p); err != nil {
+			respond(c, nil, err)
+			return
+		}
+		respond(c, nil, m.ApplyHook(c.Param("id"), p))
+	})
+	return r
 }
 
 // respond writes v, or maps err to its status.
@@ -332,15 +323,6 @@ func (h *Handler) closeExternal(c *gin.Context) { respond(c, nil, h.ext.Stop(c.P
 func (h *Handler) transcript(c *gin.Context) {
 	entries, err := Transcript(c.Param("sid"), 40)
 	respond(c, entries, err)
-}
-
-func (h *Handler) hook(c *gin.Context) {
-	var p HookPayload
-	if err := c.ShouldBindJSON(&p); err != nil {
-		respond(c, nil, err)
-		return
-	}
-	respond(c, nil, h.m.ApplyHook(c.Param("id"), p))
 }
 
 // term bridges a browser terminal to a session's pty. The browser sends
