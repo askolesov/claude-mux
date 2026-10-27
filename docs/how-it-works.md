@@ -385,6 +385,9 @@ Quit (⌘Q) closes the window, so the backends shut down the same way.
   Notifications go through `osascript`, because a bare WKWebView has no
   Notification API. The page calls both through bindings, `cmuxNotify` and
   `cmuxBadge`.
+- **Links** clicked in a terminal go to the hub through the `cmuxOpen`
+  binding, which opens http and https links in the default browser: the
+  web view opens no windows of its own.
 - **Started from Finder or Explorer** (no `TERM`), the hub logs to
   `~/.claude-mux/hub.log`. It takes the login shell's environment (`$SHELL
   -ilc env`), so local tabs see the PATH a terminal would, and it defaults
