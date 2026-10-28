@@ -150,7 +150,7 @@ back.
 
 - **Windows**: ⌘N (or New window in Jump) opens another window, each with
   its own tab; they all show the same tabs live. With more than one open,
-  each shows its number beside the name. The app quits with the last.
+  each shows which it is beside the name: 1/2, 2/2. The app quits with the last.
 - **No window**: `claude-mux -headless -open` serves the page in your
   browser instead, until you stop it.
 

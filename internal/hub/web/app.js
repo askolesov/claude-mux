@@ -116,46 +116,48 @@ function applyPage() {
 }
 
 // ---------- windows ----------
-// Several windows can show this hub (New window). Each takes the lowest
-// number no other open window has, keeps it across reloads, and shows it
-// while more than one is open: beside the name, and "Window 2" in the title. They find each other on a
-// BroadcastChannel: hello on start, here every 2 s, bye on closing.
+// Several windows can show this hub (New window). They find each other on a
+// BroadcastChannel (hello on start, here every 2 s, bye on closing) and are
+// numbered in the order they were opened, 1 to N with no gaps, so a later
+// one moves down when an earlier one closes. A reload keeps its place. While
+// more than one is open each shows "2/3" beside the name and "Window 2 of
+// 3" in its title.
 const winId = Math.random().toString(36).slice(2);
-const peers = new Map(); // window id -> {n, seen}
-let winNo = 0; // 0 until it has picked
+const winBorn = (() => {
+  try {
+    const kept = Number(sessionStorage.getItem("mux.windowBorn"));
+    if (kept) return kept;
+    sessionStorage.setItem("mux.windowBorn", String(Date.now()));
+    return Number(sessionStorage.getItem("mux.windowBorn"));
+  } catch { return Date.now(); }
+})();
+const peers = new Map(); // window id -> {born, seen}
 const winChan = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel("mux.windows") : null;
-const announce = (type) => winChan?.postMessage({ type, id: winId, n: winNo });
-const winLabel = () => (winNo && peers.size ? `Window ${winNo}` : "");
-function pickWindowNo() {
-  const taken = new Set([...peers.values()].map((p) => p.n));
-  let saved = 0;
-  try { saved = Number(sessionStorage.getItem("mux.window")) || 0; } catch {}
-  winNo = saved && !taken.has(saved) ? saved : 1;
-  while (taken.has(winNo)) winNo++;
-  try { sessionStorage.setItem("mux.window", String(winNo)); } catch {}
+const announce = (type) => winChan?.postMessage({ type, id: winId, born: winBorn });
+function winPlace() {
+  let n = 1;
+  for (const [id, p] of peers) if (p.born < winBorn || (p.born === winBorn && id < winId)) n++;
+  return [n, peers.size + 1];
 }
+const winLabel = () => { const [n, of] = winPlace(); return of > 1 ? `Window ${n} of ${of}` : ""; };
 function showWindowNo() {
   for (const [id, p] of peers) if (Date.now() - p.seen > 6000) peers.delete(id);
-  $("winNo").textContent = winLabel() ? String(winNo) : "";
+  const [n, of] = winPlace();
+  $("winNo").textContent = of > 1 ? `${n}/${of}` : "";
   $("winNo").title = winLabel();
-  $("winNo").hidden = !winLabel();
+  $("winNo").hidden = of < 2;
   render();
 }
 if (winChan) {
   winChan.onmessage = ({ data }) => {
     if (data.type === "bye") peers.delete(data.id);
-    else peers.set(data.id, { n: data.n, seen: Date.now() });
+    else peers.set(data.id, { born: data.born, seen: Date.now() });
     if (data.type === "hello") announce("here");
-    // Two windows that started together took the same number: the greater id moves.
-    if (data.type !== "bye" && winNo && data.n === winNo && data.id < winId) { pickWindowNo(); announce("here"); }
     showWindowNo();
   };
   announce("hello");
-  setTimeout(() => { pickWindowNo(); announce("here"); showWindowNo(); }, 300);
   setInterval(() => { announce("here"); showWindowNo(); }, 2000);
   window.addEventListener("pagehide", () => announce("bye"));
-} else {
-  winNo = 1;
 }
 
 // ---------- api ----------
