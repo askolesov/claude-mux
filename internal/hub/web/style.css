@@ -87,7 +87,9 @@ aside {
 .grip:hover, .grip.dragging { background: linear-gradient(to right, transparent 3px, var(--accent) 3px, var(--accent) 5px, transparent 5px); }
 body.resizing { cursor: col-resize; user-select: none; }
 .brand { display: flex; align-items: center; gap: 8px; padding: 12px 10px 12px 14px; }
-.brand .title { font-weight: 700; font-size: 14px; letter-spacing: -.01em; flex: 1; }
+.brand .title { font-weight: 700; font-size: 14px; letter-spacing: -.01em; white-space: nowrap; }
+.brand .winno { min-width: 18px; padding: 1px 5px; border-radius: 4px; background: var(--accent-soft); color: var(--accent-text); font: 600 11px var(--mono); text-align: center; }
+#newTab { margin-left: auto; }
 .jump {
   display: flex; align-items: center; gap: 8px; height: 30px; margin: 0 10px 6px; padding: 0 10px;
   border: 0; border-radius: 6px; background: var(--field); color: var(--muted); font-size: 12px; text-align: left;

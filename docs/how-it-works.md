@@ -388,8 +388,18 @@ JetBrains Mono are in `vendor/`, so the page needs no internet.
 
 `cmd/hub/window.go` shows the page with
 [webview_go](https://github.com/webview/webview_go): WKWebView on a Mac,
-WebView2 on Windows, WebKitGTK on Linux. Closing the window quits the hub;
-Quit (⌘Q) closes the window, so the backends shut down the same way.
+WebView2 on Windows, WebKitGTK on Linux.
+
+- **More windows**: New window (⌘N) asks the hub (`cmuxNewWindow`) for
+  another web view on the same page. Every window is a page of its own,
+  with its own selected tab (`sessionStorage`); they all show the same
+  backends live. They find each other on a `BroadcastChannel` and are
+  numbered in the order they were opened, 1 to N with no gaps, shown as
+  "2/3" while more than one is open; the first to see a status change
+  sends its notification. In a browser, New
+  window opens a browser window.
+- Closing the last window quits the hub; Quit (⌘Q) stops them all. The
+  backends shut down the same way either way.
 
 - **Mac**: `menu_darwin.go` adds the menus a Mac app needs (without an Edit
   menu a web view takes no ⌘C or ⌘V), and `badge` sets the Dock count.

@@ -144,9 +144,13 @@ back.
   | ⌘⇧↑ / ⌘⇧↓ | move a row up / down in its group |
   | ↑↓←→, Enter, F2, ⌫ | in the sidebar: move, fold, open, rename or delete a group |
   | Menu key, ⇧F10 | in the sidebar: the row's menu |
+  | ⌘N | a new window: another tab on another screen |
   | ⌘, | Settings |
   | ⇧↵ | newline in the prompt |
 
+- **Windows**: ⌘N (or New window in Jump) opens another window, each with
+  its own tab; they all show the same tabs live. With more than one open,
+  each shows which it is beside the name: 1/2, 2/2. The app quits with the last.
 - **No window**: `claude-mux -headless -open` serves the page in your
   browser instead, until you stop it.
 
