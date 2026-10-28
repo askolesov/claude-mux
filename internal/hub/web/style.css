@@ -10,7 +10,7 @@
   --term: #0B0D10; --pop: #1B1F26; --dlg: #171A20; --dlg-line: #2E3440; --in-line: #2B313C; --in-focus: #3A4A6B;
   --text: #E6E8EC; --text2: #C4C9D3; --muted: #8A92A2;
   --accent: #7AA2F7; --accent-soft: #1B2233; --accent-text: #AFC6FA; --on-accent: #0F1115; --seg-on: #2B3242;
-  --working: #7AA2F7; --ready: #4FD18B; --needs: #F5B14C; --halo: rgba(245, 177, 76, .25);
+  --working: #7AA2F7; --ready: #4FD18B; --needs: #F5B14C; --halo: rgba(245, 177, 76, .25); --ready-halo: rgba(79, 209, 139, .25);
   --needs-bg: rgba(245, 177, 76, .10); --needs-line: rgba(245, 177, 76, .35); --needs-text: #E9D4AE;
   --exited: #6B7383; --exited-text: #8A92A2; --danger: #F38B8B; --switch-off: #3A4150; --knob-off: #C4C9D3;
   --shade: rgba(6, 7, 9, .55); --shadow: 0 24px 60px rgba(0, 0, 0, .5);
@@ -23,7 +23,7 @@
   --term: #FBFBFC; --pop: #FFFFFF; --dlg: #FFFFFF; --dlg-line: #E3E6EB; --in-line: #D3D8E0; --in-focus: #9DB3E6;
   --text: #1D2129; --text2: #3D4452; --muted: #626A7A;
   --accent: #2F5FD0; --accent-soft: #E8EEFB; --accent-text: #2A55BD; --on-accent: #FFFFFF; --seg-on: #FFFFFF;
-  --working: #2F5FD0; --ready: #1F9D5C; --needs: #B86F0A; --halo: rgba(184, 111, 10, .2);
+  --working: #2F5FD0; --ready: #1F9D5C; --needs: #B86F0A; --halo: rgba(184, 111, 10, .2); --ready-halo: rgba(31, 157, 92, .2);
   --needs-bg: rgba(184, 111, 10, .08); --needs-line: rgba(184, 111, 10, .3); --needs-text: #6E4306;
   --exited: #9AA1AD; --exited-text: #7A8291; --danger: #C93C3C; --switch-off: #C9CED8; --knob-off: #FFFFFF;
   --shade: rgba(20, 24, 32, .28); --shadow: 0 24px 60px rgba(20, 24, 32, .18);
@@ -65,11 +65,12 @@ svg { flex: none; }
 .btn:disabled { opacity: .5; cursor: default; }
 .mono { font-family: var(--mono); }
 
-/* status dots: one signal per fact */
+/* status dots: one signal per fact; a ring means "look at me" */
 .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--exited); }
 .dot.working, .dot.starting { background: var(--working); }
 .dot.starting { opacity: .55; }
 .dot.ready { background: var(--ready); }
+.dot.ready.unseen { box-shadow: 0 0 0 3px var(--ready-halo); }
 .dot.needs-you { background: var(--needs); box-shadow: 0 0 0 3px var(--halo); }
 .dot.exited, .dot.stopped { background: transparent; border: 1.5px solid var(--exited); }
 .hdot { width: 6px; height: 6px; border-radius: 50%; flex: none; background: var(--muted); }
@@ -131,7 +132,7 @@ body.compact .tab { padding-top: 5px; padding-bottom: 5px; }
 .trow:hover:not(.active) { background: color-mix(in srgb, var(--sel) 60%, transparent); }
 .tab.active { background: var(--sel); }
 .tab .name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tab.bold .name { font-weight: 600; }
+.tab.active .name { font-weight: 600; }
 .tab.dead .name { color: var(--exited-text); }
 .tab .mark { font-size: 11px; color: var(--muted); }
 .trow.dragging { opacity: .4; }

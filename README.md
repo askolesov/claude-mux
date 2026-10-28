@@ -91,11 +91,12 @@ back.
 - **The dot**:
   - blue: working
   - green: ready for your next prompt
+  - green with a ring: finished while you weren't looking, until you open it
   - amber with a ring: needs you (a permission prompt or a question)
   - hollow: exited, and Enter in its terminal resumes it
 
-  A tab that finished while you weren't looking stays bold until you open
-  it. The window title and the Dock icon count the tabs that wait.
+  A ring means "look at me". A folded group shows its most urgent tab's
+  dot. The window title and the Dock icon count the tabs that wait.
 - **Tab settings** (… above the terminal, ⌘I, or right-click a tab): its
   directory, startup message and arguments. Saving restarts its claude,
   and the conversation continues. A tab's name is claude's: type
