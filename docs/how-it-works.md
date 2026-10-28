@@ -365,12 +365,12 @@ JetBrains Mono are in `vendor/`, so the page needs no internet.
     the clipboard, a browser, Windows, Linux) is sent to the tab's backend
     (`POST /api/sessions/:id/files`) and kept in `files/<tab id>/` until
     the tab is closed; the path typed in is that copy's.
-- Settings that are the page's own (themes, font size, tab rows,
-  notifications, the last tab's options for New tab) are kept by the hub in
-  `hub.json` as `settings.page`, so the app's window and a browser share
-  them. They have a `version` and upgrade steps of their own
-  (`PAGE_STEPS` in `app.js`). A copy in `localStorage` paints the first
-  frame. Folded groups, the sidebar width and the last directory per
+- Settings that are the page's own (themes, font size, the terminal's
+  scroll bar, tab rows, notifications, the last tab's options for New tab)
+  are kept by the hub in `hub.json` as `settings.page`, so the app's
+  window and a browser share them. They have a `version` and upgrade steps
+  of their own (`PAGE_STEPS` in `app.js`). A copy in `localStorage` paints
+  the first frame. Folded groups, the sidebar width and the last directory per
   environment stay per browser.
 - The sidebar is an ARIA tree. Rows are `treeitem`s with `aria-level`, and
   containers have `aria-expanded`. The keys are ↑↓←→, Enter, Home/End, F2

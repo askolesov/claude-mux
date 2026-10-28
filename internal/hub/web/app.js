@@ -39,7 +39,7 @@ const KIND_TEXT = { local: "This machine", ssh: "SSH host", docker: "Docker cont
 // browser see the same; a copy in this browser paints the first frame.
 const PAGE_DEFAULTS = {
   confirmClose: true,
-  theme: "auto", termTheme: "auto", termSize: 13, tabRows: "two",
+  theme: "auto", termTheme: "auto", termSize: 13, termScrollbar: false, tabRows: "two",
   notifyNeeds: true, notifyReady: true, notifyAway: true,
   // What New tab starts from: the options of the last tab started.
   lastTab: { startup: false, message: "", args: "", flags: [...FLAGS] },
@@ -105,6 +105,7 @@ function applyPage() {
   if (page.theme === "auto") document.documentElement.dataset.theme = systemDark.matches ? "dark" : "light";
   else document.documentElement.dataset.theme = page.theme;
   document.body.classList.toggle("compact", page.tabRows === "one");
+  document.body.classList.toggle("term-scrollbar", page.termScrollbar);
   const th = termTheme();
   for (const t of terms.values()) {
     t.term.options.theme = th;
@@ -1195,6 +1196,7 @@ function renderSettings() {
     <div class="ssec">Appearance</div>
     ${sRow("Theme", segOf("theme", [["auto", "Auto"], ["light", "Light"], ["dark", "Dark"]]))}
     ${sRow(`<label for="sTerm">Terminal colours</label>`, `<select id="sTerm">${TERM_THEME_NAMES.map(([k, l]) => `<option value="${k}" ${page.termTheme === k ? "selected" : ""}>${l}</option>`).join("")}</select>`)}
+    ${pageSw("termScrollbar", "Terminal scroll bar")}
     ${sRow("Terminal font size", `<div class="stepper"><button type="button" data-font="-1" aria-label="Smaller">−</button><span>${page.termSize}</span><button type="button" data-font="1" aria-label="Larger">+</button></div>`)}
     ${sRow("Tab rows", segOf("tabRows", [["two", "Detailed"], ["one", "Compact"]]))}
     <div class="ssec">Tabs</div>
