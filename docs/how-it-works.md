@@ -351,12 +351,16 @@ JetBrains Mono are in `vendor/`, so the page needs no internet.
 - A terminal is created the first time its tab is opened and kept, hidden,
   after that. Each has its own WebSocket, which reconnects with a growing
   pause.
-- A page never learns a dropped file's path, and the tab's claude may be
-  on another machine. So a file dropped or pasted onto a terminal (a
-  screenshot) is sent to the tab's backend (`POST
-  /api/sessions/:id/files`), kept in `files/<tab id>/` until the tab is
-  closed, and its path there is typed in, as a terminal does for a dropped
-  file. claude attaches it from the path.
+- A file dropped or pasted onto a terminal gets its path typed in, as a
+  terminal does for a dropped file, and claude attaches it from the path.
+  A page never learns where a file is, so:
+  - a local tab in the Mac app gets the file where it is: the page asks
+    the hub (`cmuxPaths`), which reads the paths from the drag pasteboard,
+    or for a file copied in Finder from the clipboard.
+  - anything else (a tab on another machine, a screenshot that is only on
+    the clipboard, a browser, Windows, Linux) is sent to the tab's backend
+    (`POST /api/sessions/:id/files`) and kept in `files/<tab id>/` until
+    the tab is closed; the path typed in is that copy's.
 - Settings that are the page's own (themes, font size, tab rows,
   notifications, the last tab's options for New tab) are kept by the hub in
   `hub.json` as `settings.page`, so the app's window and a browser share
