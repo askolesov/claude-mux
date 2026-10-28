@@ -420,8 +420,11 @@ WebView2 on Windows, WebKitGTK on Linux.
   opened, 1 to N with no gaps, shown as "2/3" while more than one is open;
   the first to see a status change sends its notification. In a browser,
   New window opens a browser window.
-- Closing the last window quits the hub; Quit (⌘Q) stops them all. The
-  backends shut down the same way either way.
+- Closing a window unloads its page: on a Mac, where closing only hides a
+  window until the app quits, the hub empties its web view first
+  (`close_darwin.go`), so a closed window stops counting, streaming and
+  notifying. Closing the last window quits the hub; Quit (⌘Q) stops them
+  all. The backends shut down the same way either way.
 - **Notifications**: the app's web view has no Notification API, so the
   page hands them to the hub (`cmuxNotify`), which posts them with
   [beeep](https://github.com/gen2brain/beeep): AppleScript on a Mac, a
