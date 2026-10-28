@@ -147,6 +147,8 @@ back.
   | ⌘N | a new window: another tab on another screen |
   | ⌘, | Settings |
   | ⇧↵ | newline in the prompt |
+  | Ctrl+C with a selection, Ctrl+Shift+C | Windows, Linux: copy (⌘C on a Mac) |
+  | Ctrl+V, Ctrl+Shift+V | Windows, Linux: paste (⌘V on a Mac) |
 
 - **Windows**: ⌘N (or New window in Jump) opens another window, each with
   its own tab; they all show the same tabs live. With more than one open,

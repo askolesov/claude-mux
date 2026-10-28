@@ -47,7 +47,7 @@ func window(ctx context.Context, url string) {
 		_ = w.Bind("cmuxOpen", openLink)
 		_ = w.Bind("cmuxPaths", filePaths)
 		_ = w.Bind("cmuxBadge", func(label string) { w.Dispatch(func() { badge(label) }) })
-		_ = w.Bind("cmuxNewWindow", func() { w.Dispatch(open) })
+		_ = w.Bind("cmuxNewWindow", func() { newWindow(w, open, url) })
 		w.Navigate(url)
 	}
 	open()

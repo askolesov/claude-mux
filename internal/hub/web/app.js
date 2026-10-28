@@ -504,6 +504,19 @@ function ensureTerm(key) {
       return false;
     }
     if (e.key === "F4" && e.altKey) return false;
+    // Ctrl+V pastes on Windows and Linux, as in their terminals, so a
+    // screenshot goes through too; left to the terminal it is a bare ^V.
+    if (!isMac && e.ctrlKey && !e.altKey && !e.metaKey && e.code === "KeyV") return false;
+    // Copying as in Windows Terminal: Ctrl+Shift+C copies the selection, and
+    // so does Ctrl+C while there is one; without one Ctrl+C interrupts.
+    if (!isMac && e.ctrlKey && !e.altKey && !e.metaKey && e.code === "KeyC" && (e.shiftKey || term.hasSelection())) {
+      if (e.type === "keydown") {
+        e.preventDefault();
+        if (term.hasSelection()) copyText(term.getSelection());
+        if (!e.shiftKey) term.clearSelection();
+      }
+      return false;
+    }
     return true;
   });
   // In a tab whose claude exited, Enter resumes it.
@@ -516,6 +529,17 @@ function ensureTerm(key) {
     send(t, { t: "in", d });
   });
   term.onResize(({ cols, rows }) => send(t, { t: "resize", c: cols, r: rows }));
+  // OSC 52: claude copies a selection by asking the terminal to, which is the
+  // only way that reaches this machine's clipboard from an SSH host or a
+  // container. Writes only; a request to read the clipboard ("?") is ignored.
+  term.parser.registerOscHandler(52, (data) => {
+    const b64 = data.slice(data.indexOf(";") + 1);
+    if (!b64 || b64 === "?") return true;
+    try {
+      copyText(new TextDecoder().decode(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))));
+    } catch { /* not base64: nothing to copy */ }
+    return true;
+  });
   // Files dropped or pasted here (a screenshot) go to the tab's environment,
   // and their paths are typed in, as a terminal does for a dropped file.
   el.addEventListener("dragover", (e) => {
@@ -586,6 +610,19 @@ async function copyFile(t, f) {
   });
   const { path } = await api(t.env, "POST", `/api/sessions/${t.id}/files`, { name: f.name || "pasted.png", data });
   return path;
+}
+
+// copyText puts text on the clipboard: the Clipboard API where the page
+// may use it, else the older copy command.
+function copyText(text) {
+  navigator.clipboard?.writeText(text).catch(() => {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    ta.remove();
+  });
 }
 
 function send(t, msg) {

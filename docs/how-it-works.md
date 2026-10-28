@@ -351,6 +351,10 @@ JetBrains Mono are in `vendor/`, so the page needs no internet.
 - A terminal is created the first time its tab is opened and kept, hidden,
   after that. Each has its own WebSocket, which reconnects with a growing
   pause.
+- Copying: claude copies a selection with the machine's own clipboard tool
+  and with OSC 52, an escape that asks the terminal to. The page handles
+  OSC 52 (writes only, never a read), so copying in a tab on an SSH host
+  or in a container reaches this machine's clipboard too.
 - A file dropped or pasted onto a terminal gets its path typed in, as a
   terminal does for a dropped file, and claude attaches it from the path.
   A page never learns where a file is, so:
@@ -390,8 +394,12 @@ JetBrains Mono are in `vendor/`, so the page needs no internet.
 [webview_go](https://github.com/webview/webview_go): WKWebView on a Mac,
 WebView2 on Windows, WebKitGTK on Linux.
 
-- **More windows**: New window (⌘N) asks the hub (`cmuxNewWindow`) for
-  another web view on the same page. Every window is a page of its own,
+- **More windows**: New window (⌘N) opens another window on the same
+  page (`cmuxNewWindow`). On a Mac it is another web view in the app. On
+  Windows and Linux, where a third web view in one process stayed blank,
+  the hub starts its own program again (`POST /hub/windows`), which finds
+  the hub running and shows its page; the hub goes on until the last of
+  these windows closes. Every window is a page of its own,
   with its own selected tab (`sessionStorage`); they all show the same
   backends live. They find each other on a `BroadcastChannel` and are
   numbered in the order they were opened, 1 to N with no gaps, shown as
@@ -554,6 +562,7 @@ and `scripts/check.sh` runs the same checks locally:
 | go (ubuntu) | gofmt; vet for linux, windows and darwin; the tests, and the internals again with `-race` |
 | lint (ubuntu) | golangci-lint (`.golangci.yml`) for linux and windows; ESLint on the page (`eslint.config.js`) |
 | mac | the hub with its window (cgo): vet, build, tests with `-race` |
+| windows | the hub with its window (cgo, WebView2): vet, build, tests |
 
 Dependabot (`.github/dependabot.yml`) proposes updates to the Go modules,
 the actions and ESLint weekly, one PR each. ESLint is the only Node in the
