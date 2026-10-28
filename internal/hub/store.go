@@ -39,9 +39,16 @@ type Settings struct {
 	Page           json.RawMessage        `json:"page,omitempty"` // the page's own settings, which the hub keeps without reading
 }
 
+// maxStartupMessage caps the global message: it travels in the backend's
+// and claude's command lines.
+const maxStartupMessage = 4000
+
 func (s Settings) validate() error {
 	if s.EveryDays < 1 || s.EveryDays > 365 {
 		return errors.New("check every 1 to 365 days")
+	}
+	if len(s.StartupMessage.Message) > maxStartupMessage {
+		return fmt.Errorf("the startup message is over %d characters", maxStartupMessage)
 	}
 	return nil
 }

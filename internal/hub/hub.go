@@ -134,11 +134,14 @@ func (h *Hub) SetSettings(s Settings) error {
 	if err := s.validate(); err != nil {
 		return err
 	}
-	was := h.st.get().Settings.StartupMessage
-	h.st.change(func(st *hubState) { st.Settings = s })
-	if s.StartupMessage != was {
+	var changed bool
+	h.st.change(func(st *hubState) {
+		changed = st.Settings.StartupMessage != s.StartupMessage
+		st.Settings = s
+	})
+	if changed {
 		for _, e := range h.list() {
-			go e.setGlobalMessage(s.StartupMessage)
+			go e.pushGlobal()
 		}
 	}
 	h.changes.Notify()

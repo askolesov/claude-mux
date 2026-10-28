@@ -14,7 +14,7 @@ type ResumeMode string
 
 const (
 	ResumeCustom ResumeMode = "custom" // the tab's own message
-	ResumeOff    ResumeMode = "off"    // nothing
+	ResumeOff    ResumeMode = "off"    // no message of its own; the global one still comes
 )
 
 func (r ResumeMode) valid() error {

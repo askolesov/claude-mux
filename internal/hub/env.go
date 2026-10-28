@@ -82,6 +82,8 @@ type Env struct {
 	err       string
 	backend   json.RawMessage // see EnvView
 
+	pushing sync.Mutex // one pushGlobal at a time
+
 	quit chan struct{} // closed by Close
 	done chan struct{} // closed when Supervise returns
 
@@ -270,7 +272,7 @@ func (e *Env) run() error {
 		go e.follow(session)
 		// The launch gave it the message as it was then (-global); this one
 		// covers a change made while it was starting.
-		go e.setGlobalMessage(e.global())
+		go e.pushGlobal()
 		for {
 			select {
 			case <-session.CloseChan():
@@ -297,12 +299,17 @@ func (e *Env) run() error {
 	return err
 }
 
-// setGlobalMessage gives the running backend the global startup message
-// (PUT /api/global-message). A backend that isn't running gets it at its
-// next launch instead.
-func (e *Env) setGlobalMessage(m backend.StartupMessage) {
-	body, _ := json.Marshal(m) // a struct of a bool and a string: can't fail
-	req, err := http.NewRequest(http.MethodPut, "http://backend/api/global-message", bytes.NewReader(body))
+// pushGlobal gives the running backend the global startup message as it
+// is now (PUT /api/global-message); a backend that isn't running gets it at
+// its next launch instead. One push at a time, each reading the message when
+// it sends, so the last to finish carries the latest.
+func (e *Env) pushGlobal() {
+	e.pushing.Lock()
+	defer e.pushing.Unlock()
+	body, _ := json.Marshal(e.global()) // a bool and a string: can't fail
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, "http://backend/api/global-message", bytes.NewReader(body))
 	if err != nil {
 		return
 	}

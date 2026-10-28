@@ -840,6 +840,7 @@ function renderDlg() {
   $("tStartupSw").setAttribute("aria-checked", dlg.startup);
   $("tStartupBtn").setAttribute("aria-expanded", dlg.startup);
   $("tStartupSum").hidden = dlg.startup;
+  $("tStartupSum").textContent = hubSettings?.startupMessage?.enabled ? "global only" : "none";
   $("tStartup").hidden = !dlg.startup;
   $("tName").placeholder = base($("tCwd").value) || "named after the folder";
   $("tPick").hidden = env(dlg.env)?.kind !== "local";
