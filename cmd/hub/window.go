@@ -41,6 +41,7 @@ func window(ctx context.Context, url string) {
 	make1 = func() {
 		w := webview.New(false)
 		all = append(all, w)
+		unloadOnClose(w.Window())
 		w.SetTitle("claude-mux")
 		w.SetSize(1400, 900, webview.HintNone)
 		_ = w.Bind("cmuxNotify", notify)
