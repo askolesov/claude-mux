@@ -359,6 +359,10 @@ JetBrains Mono are in `vendor/`, so the page needs no internet.
 - A terminal is created the first time its tab is opened and kept, hidden,
   after that. Each has its own WebSocket, which reconnects with a growing
   pause.
+- A tab has one pty, and every window showing it has its own size. The
+  window being looked at wins: on getting the focus, coming into view or
+  selecting a tab, a window sends its size (`claimSize`), even when its
+  terminal didn't change.
 - Copying: claude copies a selection with the machine's own clipboard tool
   and with OSC 52, an escape that asks the terminal to. The page handles
   OSC 52 (writes only, never a read), so copying in a tab on an SSH host

@@ -673,6 +673,19 @@ function fitSelected() {
   terms.get(selected)?.fit.fit();
 }
 
+// claimSize gives the selected tab's claude this window's terminal size.
+// A tab has one pty, and every window showing it sends its own size; a
+// terminal only reports its size when it changes, so without this the tab
+// would keep the size of whichever window resized last. Called when the
+// window gets the focus or comes into view, and on selecting a tab: the
+// window being looked at wins.
+function claimSize() {
+  const t = terms.get(selected);
+  if (!t) return;
+  t.fit.fit();
+  send(t, { t: "resize", c: t.term.cols, r: t.term.rows });
+}
+
 // ---------- selection ----------
 function select(key) {
   const t = tab(key);
@@ -685,7 +698,7 @@ function select(key) {
   $("placeholder").style.display = "none";
   const term = ensureTerm(key);
   term.el.classList.add("shown");
-  requestAnimationFrame(() => { fitSelected(); term.term.focus(); });
+  requestAnimationFrame(() => { claimSize(); term.term.focus(); });
   markSeen(key);
   render();
 }
@@ -1830,8 +1843,11 @@ window.addEventListener("resize", fitSelected);
 // A file dropped anywhere else would make the window open it in place of the page.
 for (const type of ["dragover", "drop"]) window.addEventListener(type, (e) => { if (e.dataTransfer?.types.includes("Files")) e.preventDefault(); });
 new ResizeObserver(fitSelected).observe($("stage"));
-document.addEventListener("visibilitychange", () => { if (selected) markSeen(selected); });
-window.addEventListener("focus", () => { store.set("mux.focus", "1"); if (selected) markSeen(selected); });
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") claimSize();
+  if (selected) markSeen(selected);
+});
+window.addEventListener("focus", () => { store.set("mux.focus", "1"); claimSize(); if (selected) markSeen(selected); });
 window.addEventListener("blur", () => store.set("mux.focus", "0"));
 setInterval(render, 30000); // keep the "for 3m" titles moving
 // Measure again once the terminal font has loaded.
