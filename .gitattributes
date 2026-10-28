@@ -1,0 +1,7 @@
+# LF everywhere, on Windows checkouts too: gofmt wants it, and the scripts run
+# under sh.
+* text=auto eol=lf
+*.png binary
+*.icns binary
+*.syso binary
+*.woff2 binary
