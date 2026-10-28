@@ -26,14 +26,15 @@ var (
 )
 
 // Manager owns the tabs, one claude each, and the groups they sit in (see
-// tree.go). It keeps them in backend.json and tells the page's event
-// streams when anything changed. A tab lives until it is closed.
+// tree.go). It keeps them in backend.json and wakes its event stream, which
+// the hub follows, when anything changed. A tab lives until it is closed.
 type Manager struct {
-	stateFile string
-	hooksFile string
-	hookURL   string // the hook port's base, ".../hook/<token>"; a session adds its id
+	stateFile  string
+	hooksFile  string
+	hookURL    string // the hook port's base, ".../hook/<token>"; a session adds its id
+	defaultCwd string // where a new tab starts when New tab names no directory
 
-	changes stream.Notifier // wakes the page's event streams
+	changes stream.Notifier // wakes /api/events
 
 	mu       sync.Mutex
 	claude   Claude
@@ -52,14 +53,15 @@ type State struct {
 // NewManager loads the tabs and starts every one of them, continuing each
 // tab's conversation. old is the resume default from before v0.7, for
 // upgrading backend.json.
-func NewManager(stateDir, hookURL, exe string, old ResumeDefault) (*Manager, error) {
+func NewManager(stateDir, hookURL, exe, defaultCwd string, old ResumeDefault) (*Manager, error) {
 	if err := os.MkdirAll(stateDir, 0o700); err != nil {
 		return nil, err
 	}
 	m := &Manager{
-		stateFile: filepath.Join(stateDir, "backend.json"),
-		hooksFile: filepath.Join(stateDir, "backend-hooks.json"),
-		hookURL:   hookURL,
+		stateFile:  filepath.Join(stateDir, "backend.json"),
+		hooksFile:  filepath.Join(stateDir, "backend-hooks.json"),
+		hookURL:    hookURL,
+		defaultCwd: defaultCwd,
 	}
 	if err := writeHookSettings(m.hooksFile, exe); err != nil {
 		return nil, err
@@ -122,11 +124,17 @@ func (m *Manager) save() {
 	}
 }
 
+// all is every tab, copied under the lock so the caller can range over it
+// without holding it.
+func (m *Manager) all() []*Session {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return slices.Clone(m.sessions)
+}
+
 // List is every tab, as the page sees it.
 func (m *Manager) List() []SessionView {
-	m.mu.Lock()
-	sessions := append([]*Session(nil), m.sessions...)
-	m.mu.Unlock()
+	sessions := m.all()
 	views := make([]SessionView, 0, len(sessions))
 	for _, s := range sessions {
 		views = append(views, s.View())
@@ -146,16 +154,20 @@ func (m *Manager) Get(id string) (*Session, error) {
 	return nil, errNotFound
 }
 
-// Create opens a tab with a new claude in cwd, in parent: after a child of
-// it, or at its end.
+// Create opens a tab with a new claude in cwd ("~" for home, "" for the
+// default directory), in parent: after a child of it, or at its end. With no
+// name it is named after its directory.
 func (m *Manager) Create(name, parent, after, cwd string, resume ResumeMode, resumeMessage string, args []string) (*Session, error) {
 	if err := resume.valid(); err != nil {
 		return nil, err
 	}
+	if cwd = expandHome(strings.TrimSpace(cwd)); cwd == "" {
+		cwd = m.defaultCwd
+	}
 	if st, err := os.Stat(cwd); err != nil || !st.IsDir() {
 		return nil, fmt.Errorf("%q is not a directory", cwd)
 	}
-	if name == "" {
+	if name = strings.TrimSpace(name); name == "" {
 		name = filepath.Base(cwd)
 	}
 	s := &Session{ID: newID(), Name: name, Parent: parent, Cwd: cwd, Args: args, Resume: resume, ResumeMessage: strings.TrimSpace(resumeMessage)}
@@ -258,22 +270,27 @@ func childEnv() []string {
 	return env
 }
 
-// WatchStartup flags sessions that sit silent before their first hook: claude
-// is waiting on a prompt it shows before hooks run (trusting the folder, a
-// login), so the session needs you.
-func (m *Manager) WatchStartup(ctx context.Context) {
-	tick := time.NewTicker(time.Second)
+// every runs f now and then every d, until ctx ends: the shape of the
+// Watch loops.
+func every(ctx context.Context, d time.Duration, f func()) {
+	tick := time.NewTicker(d)
 	defer tick.Stop()
 	for {
+		f()
 		select {
 		case <-ctx.Done():
 			return
 		case <-tick.C:
 		}
-		m.mu.Lock()
-		sessions := append([]*Session(nil), m.sessions...)
-		m.mu.Unlock()
-		for _, s := range sessions {
+	}
+}
+
+// WatchStartup flags, every second, sessions that sit silent before their
+// first hook: claude is waiting on a prompt it shows before hooks run
+// (trusting the folder, a login), so the session needs you.
+func (m *Manager) WatchStartup(ctx context.Context) {
+	every(ctx, time.Second, func() {
+		for _, s := range m.all() {
 			s.mu.Lock()
 			stuck := s.status == StatusStarting && s.proc != nil && time.Since(s.lastOutput) > 2*time.Second
 			s.mu.Unlock()
@@ -281,22 +298,15 @@ func (m *Manager) WatchStartup(ctx context.Context) {
 				m.changes.Notify()
 			}
 		}
-	}
+	})
 }
 
-// PollNames follows the names claude reports for the tabs' processes in
-// `claude agents --json`: claude owns the name, and /rename typed in a tab
-// is the only way to rename it. The name is passed back as --name on the
-// next start.
-func (m *Manager) PollNames(ctx context.Context, every time.Duration) {
-	for {
-		m.followNames(ctx)
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(every):
-		}
-	}
+// WatchNames follows, every 5 s, the names claude reports for the tabs'
+// processes in `claude agents --json`: claude owns the name, and /rename
+// typed in a tab is the only way to rename it. The name is passed back as
+// --name on the next start.
+func (m *Manager) WatchNames(ctx context.Context) {
+	every(ctx, 5*time.Second, func() { m.followNames(ctx) })
 }
 
 func (m *Manager) followNames(ctx context.Context) {
@@ -321,9 +331,7 @@ func (m *Manager) followNames(ctx context.Context) {
 }
 
 func (m *Manager) followName(pid int, name string) {
-	m.mu.Lock()
-	sessions := append([]*Session(nil), m.sessions...)
-	m.mu.Unlock()
+	sessions := m.all()
 	for _, s := range sessions {
 		s.mu.Lock()
 		changed := s.proc != nil && s.proc.Pid() == pid && name != "" && name != s.Name
@@ -339,12 +347,13 @@ func (m *Manager) followName(pid int, name string) {
 	}
 }
 
-// Configure sets what a tab starts with: its directory, startup message and
-// extra arguments, from its next start.
+// Configure sets what a tab starts with: its directory ("~" for home),
+// startup message and extra arguments, from its next start.
 func (m *Manager) Configure(id, cwd string, resume ResumeMode, resumeMessage string, args []string) error {
 	if err := resume.valid(); err != nil {
 		return err
 	}
+	cwd = expandHome(strings.TrimSpace(cwd))
 	if st, err := os.Stat(cwd); err != nil || !st.IsDir() {
 		return fmt.Errorf("%q is not a directory", cwd)
 	}
@@ -378,21 +387,13 @@ func (m *Manager) Restart(id string) error {
 	return nil
 }
 
-// WatchBranches keeps each tab's git branch current.
-func (m *Manager) WatchBranches(ctx context.Context, every time.Duration) {
-	for {
-		m.mu.Lock()
-		sessions := append([]*Session(nil), m.sessions...)
-		m.mu.Unlock()
-		for _, s := range sessions {
+// WatchBranches keeps each tab's git branch current, every 10 s.
+func (m *Manager) WatchBranches(ctx context.Context) {
+	every(ctx, 10*time.Second, func() {
+		for _, s := range m.all() {
 			m.refreshBranch(s)
 		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(every):
-		}
-	}
+	})
 }
 
 func (m *Manager) refreshBranch(s *Session) {
@@ -458,9 +459,7 @@ func (m *Manager) Claude() Claude {
 // start resuming a conversation whose old process still runs would fork its
 // transcript. The tabs stay in the state file.
 func (m *Manager) Shutdown() {
-	m.mu.Lock()
-	sessions := append([]*Session(nil), m.sessions...)
-	m.mu.Unlock()
+	sessions := m.all()
 	for _, s := range sessions {
 		s.kill()
 	}

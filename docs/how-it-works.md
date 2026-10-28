@@ -39,8 +39,9 @@ cmd/backend/          main, and `claude-mux-backend hook`
 internal/hub/         environments, connectors, backend install, routing, updater, hub.json
 internal/hub/web/     the page: index.html, style.css, app.js, vendor/ (xterm.js, fonts)
 internal/backend/     tabs (Manager, Session), ptys, hooks, resume messages, the API
-internal/stream/      server-sent events and JSON-line progress, shared by both
-internal/migrate/     the state files: versioned upgrade steps, atomic writes
+internal/stream/      state streams (server-sent events, a WebSocket) and JSON-line progress
+internal/migrate/     the state files: versioned upgrade steps
+internal/fsutil/      writing a file whole or not at all: state files, backends, updates
 internal/lockfile/    one process per state directory (flock / LockFileEx)
 internal/sysproc/     starting helper processes: no console window on Windows, detached relaunch
 assets/icon/          the icon: SVG sources, rendered PNGs, AppIcon.icns, Windows resources
@@ -52,7 +53,7 @@ Every process involved, when one SSH environment is added:
 ```mermaid
 flowchart TB
     subgraph mac["This machine"]
-        win["window (system web view)"] -- "HTTP, SSE, WebSocket<br/>127.0.0.1:7777" --> hub["claude-mux (hub)"]
+        win["window (system web view)"] -- "HTTP, WebSocket<br/>127.0.0.1:7777" --> hub["claude-mux (hub)"]
         hub -- "stdin/stdout" --> lb["claude-mux-backend"]
         lb -- pty --> lc1["claude"]
         lb -- pty --> lc2["claude"]
@@ -116,8 +117,8 @@ The hub's own API is `/hub/...`:
 
 | Route | Does |
 |---|---|
-| `GET /hub/ws` | WebSocket: version, platform, environments with each backend's state, update state, settings, on every change |
-| `GET /hub/info` | version, the kinds of environment this machine can add, the state directory |
+| `GET /hub/ws` | WebSocket: version, platform, the kinds of environment this machine can add, the state directory, environments with each backend's state, update state, settings, on every change |
+| `GET /hub/info` | the version: a second start asks it whether a hub runs here |
 | `GET /hub/targets/:kind` | what can be added: hosts from `~/.ssh/config`, running containers, WSL distros |
 | `POST /hub/environments`, `PUT /hub/environments/:name`, `DELETE /hub/environments/:name` | add, rename (not local), remove |
 | `PUT /hub/environments/order` | reorder (local included) |
@@ -193,7 +194,8 @@ place, never one rewritten: macOS kills a binary whose code signature went
 stale.
 
 Once the backend answers its first ping, the environment is connected, and
-the page opens that backend's event stream.
+the hub follows that backend's event stream (`Env.follow`) and sends its
+state on to the page.
 
 ## Tabs: the backend
 
@@ -409,12 +411,14 @@ WebView2 on Windows, WebKitGTK on Linux.
   New window opens a browser window.
 - Closing the last window quits the hub; Quit (⌘Q) stops them all. The
   backends shut down the same way either way.
-
+- **Notifications**: the app's web view has no Notification API, so the
+  page hands them to the hub (`cmuxNotify`), which posts them with
+  [beeep](https://github.com/gen2brain/beeep): AppleScript on a Mac, a
+  toast on Windows, D-Bus (libnotify) on Linux. In a browser the page
+  uses the browser's own, after asking.
 - **Mac**: `menu_darwin.go` adds the menus a Mac app needs (without an Edit
-  menu a web view takes no ⌘C or ⌘V), and `badge` sets the Dock count.
-  Notifications go through `osascript`, because a bare WKWebView has no
-  Notification API. The page calls both through bindings, `cmuxNotify` and
-  `cmuxBadge`.
+  menu a web view takes no ⌘C or ⌘V), and `badge` sets the Dock count
+  through the `cmuxBadge` binding.
 - **Links** clicked in a terminal go to the hub through the `cmuxOpen`
   binding, which opens http and https links in the default browser: the
   web view opens no windows of its own. Tabs start claude with
@@ -528,7 +532,8 @@ Anything that reaches a backend can start processes as you, so:
   - a `Host` other than `127.0.0.1` or `localhost` (DNS rebinding)
   - an `Origin` other than the page's own
   - a write whose body isn't JSON (a cross-site form post)
-- terminal WebSockets keep gorilla's default origin check
+- the WebSockets (terminals and `/hub/ws`) keep gorilla's default origin
+  check
 - backends listen on no port for the API. The hook port is loopback, and
   needs a token that is new on every start, so another user of a shared
   host can't post statuses.
@@ -563,7 +568,7 @@ and `scripts/check.sh` runs the same checks locally:
 | go (ubuntu) | gofmt; vet for linux, windows and darwin; the tests, and the internals again with `-race` |
 | lint (ubuntu) | golangci-lint (`.golangci.yml`) for linux and windows; ESLint on the page (`eslint.config.js`) |
 | mac | the hub with its window (cgo): vet, build, tests with `-race` |
-| windows | the hub with its window (cgo, WebView2): vet, build, tests |
+| windows | the hub with its window (cgo, WebView2): vet, build, tests, golangci-lint |
 
 Dependabot (`.github/dependabot.yml`) proposes updates to the Go modules,
 the actions and ESLint weekly, one PR each. ESLint is the only Node in the

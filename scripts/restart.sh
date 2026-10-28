@@ -5,7 +5,8 @@
 # and over SSH); the old local backend hangs up its tabs on the way out, the
 # new one resumes them.
 # Run it from a regular terminal: a session inside claude-mux is hung up by
-# the restart along with the rest.
+# the restart along with the rest. New tabs start in $CLAUDE_MUX_CWD, or
+# your home.
 set -euo pipefail
 
 dir=$(cd "$(dirname "$0")/.." && pwd)
@@ -28,7 +29,7 @@ fi
 # in place on its stale code signature.
 mv -f "$state/claude-mux.new" "$state/claude-mux"
 for f in "$bin"/*.new; do mv -f "$f" "${f%.new}"; done
-nohup "$state/claude-mux" -headless -backend-dir "$bin" -cwd "${CLAUDE_MUX_CWD:-$HOME/Documents/@Ankr/codespace}" >"$state/hub.log" 2>&1 </dev/null &
+nohup "$state/claude-mux" -headless -backend-dir "$bin" -cwd "${CLAUDE_MUX_CWD:-$HOME}" >"$state/hub.log" 2>&1 </dev/null &
 until [ "$(curl -s "$url/env/local/api/state" | jq -r '.sessions | type' 2>/dev/null)" = array ]; do sleep 0.2; done
 curl -s "$url/env/local/api/state" | jq -r '.sessions[] | "resumed \(.name)"'
 echo "claude-mux on $url"

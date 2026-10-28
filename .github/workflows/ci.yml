@@ -15,8 +15,8 @@ jobs:
         with:
           go-version-file: go.mod
       - run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
-      # Without cgo the hub builds without its window (the mac job and the
-      # release build that); everything else is the same.
+      # Without cgo the hub builds without its window (the mac and windows
+      # jobs build it with one); everything else is the same.
       - run: CGO_ENABLED=0 go vet ./...
       - run: CGO_ENABLED=0 GOOS=windows go vet ./...
       - run: CGO_ENABLED=0 GOOS=darwin go vet ./...
@@ -78,3 +78,8 @@ jobs:
       - run: go vet ./cmd/...
       - run: go build -o /dev/null ./cmd/hub
       - run: go test ./cmd/...
+      # The window's files for Windows and Linux (cgo, !darwin) are linted
+      # only here.
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.14.0

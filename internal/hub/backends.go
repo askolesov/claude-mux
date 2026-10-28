@@ -12,6 +12,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/askolesov/claude-mux/internal/fsutil"
 )
 
 const releases = "https://github.com/askolesov/claude-mux/releases/download/"
@@ -97,26 +99,16 @@ func download(ver, name, dst string, onProgress func(done, total int64)) error {
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return err
 	}
-	f, err := os.CreateTemp(filepath.Dir(dst), name+".*.tmp")
-	if err != nil {
-		return err
-	}
-	defer func() { _ = os.Remove(f.Name()) }()
-	h := sha256.New()
-	_, err = io.Copy(io.MultiWriter(f, h), &counting{r: body, total: total, onProgress: onProgress})
-	if cerr := f.Close(); err == nil {
-		err = cerr
-	}
-	if err != nil {
-		return err
-	}
-	if got := hex.EncodeToString(h.Sum(nil)); got != want {
-		return fmt.Errorf("%s: checksum %s, the release says %s", name, got, want)
-	}
-	if err := os.Chmod(f.Name(), 0o755); err != nil {
-		return err
-	}
-	return os.Rename(f.Name(), dst)
+	return fsutil.WriteFile(dst, 0o755, func(w io.Writer) error {
+		h := sha256.New()
+		if _, err := io.Copy(io.MultiWriter(w, h), &counting{r: body, total: total, onProgress: onProgress}); err != nil {
+			return err
+		}
+		if got := hex.EncodeToString(h.Sum(nil)); got != want {
+			return fmt.Errorf("%s: checksum %s, the release says %s", name, got, want)
+		}
+		return nil
+	})
 }
 
 // counting reports how much of a transfer has been read, every megabyte.
@@ -165,32 +157,10 @@ func installLocal(src, dir, ver string) (string, error) {
 	if _, err := os.Stat(dst); err == nil {
 		return dst, nil
 	}
-	in, err := os.Open(src)
-	if err != nil {
-		return "", err
-	}
-	defer func() { _ = in.Close() }()
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return "", err
 	}
-	// A new file renamed into place, never one rewritten: macOS kills a
-	// binary whose code signature went stale.
-	out, err := os.CreateTemp(filepath.Dir(dst), "claude-mux-backend.*.tmp")
-	if err != nil {
-		return "", err
-	}
-	defer func() { _ = os.Remove(out.Name()) }()
-	_, err = io.Copy(out, in)
-	if cerr := out.Close(); err == nil {
-		err = cerr
-	}
-	if err == nil {
-		err = os.Chmod(out.Name(), 0o755)
-	}
-	if err == nil {
-		err = os.Rename(out.Name(), dst)
-	}
-	if err != nil {
+	if err := fsutil.CopyFile(src, dst, 0o755); err != nil {
 		return "", err
 	}
 	prune(dir, ver)

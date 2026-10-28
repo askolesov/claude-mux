@@ -18,14 +18,13 @@ var upgrader = websocket.Upgrader{}
 
 // Handler is the backend's API, over its Manager.
 type Handler struct {
-	m          *Manager
-	defaultCwd string
+	m *Manager
 }
 
 // NewHandler serves the backend's API. Only the hub reaches it, over the
 // backend's stdio, so it trusts every request; the hub checks them.
-func NewHandler(m *Manager, defaultCwd string) http.Handler {
-	h := &Handler{m: m, defaultCwd: defaultCwd}
+func NewHandler(m *Manager) http.Handler {
+	h := &Handler{m: m}
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(gin.Recovery())
@@ -64,13 +63,21 @@ func NewHookHandler(m *Manager, token string) http.Handler {
 			return
 		}
 		var p HookPayload
-		if err := c.ShouldBindJSON(&p); err != nil {
-			respond(c, nil, err)
+		if !bind(c, &p) {
 			return
 		}
 		respond(c, nil, m.ApplyHook(c.Param("id"), p))
 	})
 	return r
+}
+
+// bind reads the request's JSON body into v, or answers 400 and says so.
+func bind(c *gin.Context, v any) bool {
+	if err := c.ShouldBindJSON(v); err != nil {
+		respond(c, nil, err)
+		return false
+	}
+	return true
 }
 
 // respond writes v, or maps err to its status.
@@ -96,7 +103,7 @@ type StateView struct {
 }
 
 func (h *Handler) snapshot() StateView {
-	return StateView{Claude: h.m.Claude(), Sessions: h.m.List(), Groups: h.m.Groups(), DefaultCwd: h.defaultCwd}
+	return StateView{Claude: h.m.Claude(), Sessions: h.m.List(), Groups: h.m.Groups(), DefaultCwd: h.m.defaultCwd}
 }
 
 func (h *Handler) state(c *gin.Context) { c.JSON(http.StatusOK, h.snapshot()) }
@@ -116,15 +123,10 @@ func (h *Handler) create(c *gin.Context) {
 		Resume        ResumeMode `json:"resume"`
 		ResumeMessage string     `json:"resumeMessage"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		respond(c, nil, err)
+	if !bind(c, &req) {
 		return
 	}
-	cwd := expandHome(strings.TrimSpace(req.Cwd))
-	if cwd == "" {
-		cwd = h.defaultCwd
-	}
-	s, err := h.m.Create(strings.TrimSpace(req.Name), req.Parent, req.After, cwd, req.Resume, req.ResumeMessage, strings.Fields(req.Args))
+	s, err := h.m.Create(req.Name, req.Parent, req.After, req.Cwd, req.Resume, req.ResumeMessage, strings.Fields(req.Args))
 	if err != nil {
 		respond(c, nil, err)
 		return
@@ -140,11 +142,10 @@ func (h *Handler) configure(c *gin.Context) {
 		Resume        ResumeMode `json:"resume"`
 		ResumeMessage string     `json:"resumeMessage"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		respond(c, nil, err)
+	if !bind(c, &req) {
 		return
 	}
-	respond(c, nil, h.m.Configure(c.Param("id"), expandHome(strings.TrimSpace(req.Cwd)), req.Resume, req.ResumeMessage, strings.Fields(req.Args)))
+	respond(c, nil, h.m.Configure(c.Param("id"), req.Cwd, req.Resume, req.ResumeMessage, strings.Fields(req.Args)))
 }
 
 // saveFile keeps a file dropped or pasted into a tab, and answers its path
@@ -155,8 +156,7 @@ func (h *Handler) saveFile(c *gin.Context) {
 		Name string `json:"name" binding:"required"`
 		Data []byte `json:"data"` // base64
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		respond(c, nil, err)
+	if !bind(c, &req) {
 		return
 	}
 	path, err := h.m.SaveFile(c.Param("id"), req.Name, req.Data)
@@ -175,24 +175,18 @@ func (h *Handler) createGroup(c *gin.Context) {
 		Parent string `json:"parent"`
 		After  string `json:"after"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		respond(c, nil, err)
+	if !bind(c, &req) {
 		return
 	}
 	g, err := h.m.CreateGroup(req.Name, req.Parent, req.After)
-	if err != nil {
-		respond(c, nil, err)
-		return
-	}
-	respond(c, g, nil)
+	respond(c, g, err)
 }
 
 func (h *Handler) renameGroup(c *gin.Context) {
 	var req struct {
 		Name string `json:"name" binding:"required"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		respond(c, nil, err)
+	if !bind(c, &req) {
 		return
 	}
 	respond(c, nil, h.m.RenameGroup(c.Param("id"), req.Name))
@@ -208,8 +202,7 @@ func (h *Handler) move(c *gin.Context) {
 		Before string `json:"before"`
 		After  string `json:"after"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		respond(c, nil, err)
+	if !bind(c, &req) {
 		return
 	}
 	respond(c, nil, h.m.Move(c.Param("id"), req.Parent, req.Before, req.After))
@@ -229,9 +222,9 @@ func (h *Handler) start(c *gin.Context)   { respond(c, nil, h.m.Start(c.Param("i
 func (h *Handler) restart(c *gin.Context) { respond(c, nil, h.m.Restart(c.Param("id"))) }
 func (h *Handler) seen(c *gin.Context)    { respond(c, nil, h.m.MarkSeen(c.Param("id"))) }
 
-// term bridges a browser terminal to a session's pty. The browser sends
+// term bridges a terminal in the page to a session's pty. The page sends
 // JSON text frames ({"t":"in","d":…} or {"t":"resize","c":…,"r":…}); the
-// server sends the pty's raw output as binary frames.
+// backend sends the pty's raw output as binary frames.
 func (h *Handler) term(c *gin.Context) {
 	s, err := h.m.Get(c.Param("id"))
 	if err != nil {

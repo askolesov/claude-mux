@@ -18,7 +18,7 @@ import (
 
 // Run serves the backend to the hub over stdin and stdout until the hub
 // closes them: the hub quit or the connection to it broke. It then hangs up
-// its sessions, noting which ran, so the next start resumes them.
+// its sessions; they stay in backend.json, and the next start resumes them.
 func Run(stateDir, defaultCwd string, old ResumeDefault) error {
 	lock, err := lockState(stateDir)
 	if err != nil {
@@ -39,16 +39,16 @@ func Run(stateDir, defaultCwd string, old ResumeDefault) error {
 	_, _ = rand.Read(token)
 	hookURL := fmt.Sprintf("http://%s/hook/%s", hookLn.Addr(), hex.EncodeToString(token))
 
-	m, err := NewManager(stateDir, hookURL, exe, old)
+	m, err := NewManager(stateDir, hookURL, exe, defaultCwd, old)
 	if err != nil {
 		return err
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	defer stop()
 
-	go m.PollNames(ctx, 5*time.Second)
 	go m.WatchStartup(ctx)
-	go m.WatchBranches(ctx, 10*time.Second)
+	go m.WatchNames(ctx)
+	go m.WatchBranches(ctx)
 
 	hooks := &http.Server{Handler: NewHookHandler(m, hex.EncodeToString(token)), ReadHeaderTimeout: 10 * time.Second}
 	go func() { _ = hooks.Serve(hookLn) }()
@@ -61,7 +61,7 @@ func Run(stateDir, defaultCwd string, old ResumeDefault) error {
 	if err != nil {
 		return err
 	}
-	api := &http.Server{Handler: NewHandler(m, defaultCwd), ReadHeaderTimeout: 10 * time.Second}
+	api := &http.Server{Handler: NewHandler(m), ReadHeaderTimeout: 10 * time.Second}
 	go func() { _ = api.Serve(session) }()
 
 	select {

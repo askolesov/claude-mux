@@ -59,10 +59,10 @@ func pickFolder(ctx context.Context, start string) (string, error) {
 	return path, nil
 }
 
-// OpenLog opens hub.log in the system's viewer. The hub writes it when it
+// openLog opens hub.log in the system's viewer. The hub writes it when it
 // isn't started from a terminal.
-func (h *Hub) OpenLog() error {
-	path := filepath.Join(h.stateDir, "hub.log")
+func openLog(stateDir string) error {
+	path := filepath.Join(stateDir, "hub.log")
 	if _, err := os.Stat(path); err != nil {
 		return errors.New("no log: claude-mux started from a terminal writes there instead")
 	}
