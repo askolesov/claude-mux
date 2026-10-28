@@ -13,11 +13,11 @@ const (
 	StatusWorking  Status = "working"
 	StatusReady    Status = "ready"     // waiting for the next prompt
 	StatusNeedsYou Status = "needs-you" // a permission prompt or a question
-	StatusExited   Status = "exited"    // the process ended while the server ran
-	StatusStopped  Status = "stopped"   // the server restarted; resumable
+	StatusExited   Status = "exited"    // the process ended while the backend ran
+	StatusStopped  Status = "stopped"   // loaded from backend.json and not started yet (no claude here); resumable
 )
 
-// scrollbackLimit caps the output kept for replay when a browser reconnects.
+// scrollbackLimit caps the output kept for replay when a terminal connects.
 const scrollbackLimit = 1 << 20
 
 // Session is a tab: one claude process in a pty. The fields above mu are
@@ -42,11 +42,11 @@ type Session struct {
 	proc        *ptyProc // nil while claude isn't running
 	scrollback  []byte
 	lastOutput  time.Time
-	cols, rows  uint16 // the browser's last size; a resumed pty starts with it
+	cols, rows  uint16 // the page's last terminal size; a resumed pty starts with it
 	clients     map[chan []byte]struct{}
 }
 
-// SessionView is what the browser sees of a session.
+// SessionView is what the page sees of a session.
 type SessionView struct {
 	ID              string     `json:"id"`
 	Name            string     `json:"name"`
@@ -85,7 +85,7 @@ func (s *Session) View() SessionView {
 }
 
 // setStatus records a new status and reports whether it changed. Ending up
-// ready or needing you marks the session unseen until the browser opens it.
+// ready or needing you marks the session unseen until the page shows it.
 func (s *Session) setStatus(st Status) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()

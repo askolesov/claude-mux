@@ -40,17 +40,19 @@ type EnvConfig struct {
 	Target string `json:"target,omitempty"` // the host as ssh takes it, the container, the WSL distro
 }
 
-// Connection states, as the page shows them.
+// State is how an environment's connection is, as the page shows it.
+type State string
+
 const (
-	StateConnecting = "connecting"
-	StateConnected  = "connected"
-	StateFailed     = "failed" // Error says why; the hub tries again
+	StateConnecting State = "connecting"
+	StateConnected  State = "connected"
+	StateFailed     State = "failed" // Error says why; the hub tries again
 )
 
 // EnvView is what the page sees of an environment.
 type EnvView struct {
 	EnvConfig
-	State    string `json:"state"`
+	State    State  `json:"state"`
 	Platform string `json:"platform,omitempty"` // "linux-arm64", once connected
 	Latency  int    `json:"latency,omitempty"`  // ms, the last ping
 	Step     string `json:"step,omitempty"`     // while connecting: what it is doing
@@ -70,7 +72,7 @@ type Env struct {
 	cfg       EnvConfig // its name can change; see Config
 	session   *yamux.Session
 	cmd       *exec.Cmd
-	state     string
+	state     State
 	step      string
 	platform  string
 	latency   time.Duration
@@ -96,7 +98,7 @@ func newEnv(cfg EnvConfig, prepare func(step func(string)) ([]string, string, er
 		Transport: &http.Transport{
 			DialContext: func(context.Context, string, string) (net.Conn, error) { return e.open() },
 		},
-		FlushInterval: -1, // server-sent events go out as they come
+		FlushInterval: -1, // streamed answers (the installer's JSON lines) go out as they come
 	}
 	return e
 }
@@ -122,7 +124,7 @@ func (e *Env) View() EnvView {
 		Step: e.step, Error: e.err, Backend: e.backend}
 }
 
-func (e *Env) setState(state, err string) {
+func (e *Env) setState(state State, err string) {
 	e.mu.Lock()
 	changed := e.state != state || e.err != err || e.step != ""
 	e.state, e.err, e.step = state, err, ""
@@ -243,7 +245,9 @@ func (e *Env) run() error {
 	if err := cmd.Start(); err != nil {
 		return err
 	}
-	session, err := yamux.Client(pipe{stdout, stdin}, yamuxConfig())
+	cfg := yamux.DefaultConfig()
+	cfg.LogOutput = os.Stderr
+	session, err := yamux.Client(pipe{stdout, stdin}, cfg)
 	if err != nil {
 		_ = cmd.Process.Kill()
 		_ = cmd.Wait()
@@ -355,12 +359,6 @@ func (e *Env) Close() {
 		}
 		<-e.done
 	}
-}
-
-func yamuxConfig() *yamux.Config {
-	cfg := yamux.DefaultConfig()
-	cfg.LogOutput = os.Stderr
-	return cfg
 }
 
 // pipe is the child's stdout to read and its stdin to write; closing it

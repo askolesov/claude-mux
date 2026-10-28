@@ -15,17 +15,17 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/askolesov/claude-mux/internal/fsutil"
 )
 
 const latestRelease = "https://api.github.com/repos/askolesov/claude-mux/releases/latest"
 
 // UpdateView is what the page sees of updates.
 type UpdateView struct {
-	Current   string    `json:"current"`
 	Dev       bool      `json:"dev"` // a development build, which doesn't update
 	LastCheck time.Time `json:"lastCheck,omitzero"`
 	Latest    string    `json:"latest,omitempty"` // the newest release, when newer than this one
-	Notes     string    `json:"notes,omitempty"`  // its release page
 	Error     string    `json:"error,omitempty"`  // why the last check failed
 	Step      string    `json:"step,omitempty"`   // while updating
 	Updating  bool      `json:"updating,omitempty"`
@@ -41,7 +41,6 @@ type updater struct {
 
 	mu       sync.Mutex
 	latest   string
-	notes    string
 	err      string
 	step     string
 	updating bool
@@ -68,8 +67,7 @@ func (u *updater) View() UpdateView {
 	kept := u.st.get()
 	u.mu.Lock()
 	defer u.mu.Unlock()
-	return UpdateView{Current: u.current, Dev: u.dev(), LastCheck: kept.Update.LastCheck,
-		Latest: u.latest, Notes: u.notes,
+	return UpdateView{Dev: u.dev(), LastCheck: kept.Update.LastCheck, Latest: u.latest,
 		Error: u.err, Step: u.step, Updating: u.updating}
 }
 
@@ -91,15 +89,15 @@ func (u *updater) Check(ctx context.Context) error {
 	if u.dev() {
 		return errors.New("this is a development build, which doesn't update")
 	}
-	tag, notes, err := fetchLatest(ctx)
+	tag, err := fetchLatest(ctx)
 	u.mu.Lock()
 	u.err = ""
 	if err != nil {
 		u.err = err.Error()
 	} else {
-		u.latest, u.notes = "", ""
+		u.latest = ""
 		if newer(tag, u.current) {
-			u.latest, u.notes = tag, notes
+			u.latest = tag
 		}
 	}
 	u.mu.Unlock()
@@ -110,30 +108,30 @@ func (u *updater) Check(ctx context.Context) error {
 	return err
 }
 
-func fetchLatest(ctx context.Context) (tag, notes string, err error) {
+// fetchLatest is the newest release's tag.
+func fetchLatest(ctx context.Context) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, latestRelease, nil)
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
 	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode != http.StatusOK {
-		return "", "", fmt.Errorf("GitHub: %s", res.Status)
+		return "", fmt.Errorf("GitHub: %s", res.Status)
 	}
 	var rel struct {
 		Tag string `json:"tag_name"`
-		URL string `json:"html_url"`
 	}
 	if err := json.NewDecoder(io.LimitReader(res.Body, 1<<20)).Decode(&rel); err != nil {
-		return "", "", err
+		return "", err
 	}
-	return rel.Tag, rel.URL, nil
+	return rel.Tag, nil
 }
 
 // semver reads "v1.2.3".
@@ -264,20 +262,19 @@ func installRelease(ver, dir string, step func(string)) ([]string, error) {
 
 // replaceFile puts src at dst, the running program. Windows won't overwrite
 // a running program but lets it be renamed: it moves aside to dst.old,
-// which the next start removes.
+// which the next start removes, and back if the copy fails.
 func replaceFile(src, dst string) error {
-	tmp, err := copyTemp(src, filepath.Dir(dst))
-	if err != nil {
-		return writable(dst, err)
-	}
-	defer func() { _ = os.Remove(tmp) }()
 	if runtime.GOOS == "windows" {
 		_ = os.Remove(dst + ".old")
 		if err := os.Rename(dst, dst+".old"); err != nil {
 			return writable(dst, err)
 		}
 	}
-	return writable(dst, os.Rename(tmp, dst))
+	err := fsutil.CopyFile(src, dst, 0o755)
+	if err != nil && runtime.GOOS == "windows" {
+		_ = os.Rename(dst+".old", dst)
+	}
+	return writable(dst, err)
 }
 
 // replaceDir swaps the app bundle dst for src. The running hub keeps
@@ -306,29 +303,4 @@ func writable(path string, err error) error {
 		return nil
 	}
 	return fmt.Errorf("can't replace %s (%w): put claude-mux somewhere you can write, or update it by hand", path, err)
-}
-
-// copyTemp copies src to a new executable file in dir and returns its path.
-func copyTemp(src, dir string) (string, error) {
-	in, err := os.Open(src)
-	if err != nil {
-		return "", err
-	}
-	defer func() { _ = in.Close() }()
-	out, err := os.CreateTemp(dir, ".claude-mux-update-*")
-	if err != nil {
-		return "", err
-	}
-	_, err = io.Copy(out, in)
-	if cerr := out.Close(); err == nil {
-		err = cerr
-	}
-	if err == nil {
-		err = os.Chmod(out.Name(), 0o755)
-	}
-	if err != nil {
-		_ = os.Remove(out.Name())
-		return "", err
-	}
-	return out.Name(), nil
 }

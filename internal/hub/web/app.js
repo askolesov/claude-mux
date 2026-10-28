@@ -7,14 +7,14 @@ const store = {
 const isMac = /Mac/.test(navigator.platform);
 const MOD = isMac ? "⌘" : "Ctrl+";
 
-// The hub reports the environments; each environment's backend reports its
-// tabs. A tab's key is "<environment>/<id>".
-let envs = [];                   // [{name, kind, target, state, platform, latency, step, error}]
+// The hub sends everything over one WebSocket (streamHub): the environments,
+// each with its backend's state, which holds its tabs. A tab's key is
+// "<environment>/<id>".
+let envs = [];                   // [{name, kind, target, state, platform, latency, step, error, backend: {claude, sessions, groups, defaultCwd}}]
 let update = null;               // what the hub knows about updates
 let hubSettings = null;          // {checkUpdates, everyDays, page}
-let hubVersion = "", hubPlatform = "";
-let hubInfo = null;              // {version, kinds, stateDir}
-const envData = new Map();       // environment -> its backend's state: {claude, sessions, groups, defaultCwd}
+let hubVersion = "", hubPlatform = "", hubStateDir = "";
+let hubKinds = [];               // the kinds of environment this machine can add
 let tabs = [];                   // every environment's tabs in sidebar order: {...session, env, key}
 let selected = null;             // the selected tab's key
 // The selection is per window: this window's own, or else the last one made
@@ -24,7 +24,7 @@ const selection = {
   set(k) { try { sessionStorage.setItem("mux.selected", k); } catch { /* storage blocked */ } store.set("mux.selected", k); },
 };
 let pendingSelect = selection.get() || store.get("mux.selected"); // until its tab shows up
-const terms = new Map();         // tab key -> {term, fit, ws, el, closed}
+const terms = new Map();         // tab key -> {key, term, fit, ws, el, closed, retry}
 const lastStatus = new Map();    // tab key -> status, for notifications
 
 const STATUS_TEXT = { starting: "Starting", working: "Working", ready: "Ready", "needs-you": "Needs you", exited: "Exited", stopped: "Stopped" };
@@ -222,16 +222,18 @@ const waiting = (t) => t.status === "needs-you" || (t.status === "ready" && t.un
 const tab = (key) => tabs.find((t) => t.key === key);
 const env = (name) => envs.find((e) => e.name === name);
 const dead = (t) => t.status === "exited" || t.status === "stopped";
-const sessionsOf = (name) => envData.get(name)?.sessions || [];
-const groupsIn = (name) => envData.get(name)?.groups || [];
+// backendOf is an environment's backend state, once its backend has sent one.
+const backendOf = (name) => env(name)?.backend;
+const sessionsOf = (name) => backendOf(name)?.sessions || [];
+const groupsIn = (name) => backendOf(name)?.groups || [];
 const groupOf = (name, id) => groupsIn(name).find((g) => g.id === id);
 const bold = (t) => t.key === selected || t.unseen || t.status === "needs-you";
 const rank = (t) => (t.status === "needs-you" ? 0 : t.status === "ready" && t.unseen ? 1 : 2);
-const hasClaude = (name) => !!envData.get(name)?.claude?.path;
+const hasClaude = (name) => !!backendOf(name)?.claude?.path;
 const canStart = (name) => env(name)?.state === "connected" && hasClaude(name);
 // health: ok (connected, with claude), problem (failed, or no claude) or connecting.
 function health(e) {
-  if (e.state === "connected") return envData.get(e.name) && !hasClaude(e.name) ? "problem" : "ok";
+  if (e.state === "connected") return backendOf(e.name) && !hasClaude(e.name) ? "problem" : "ok";
   return e.state === "failed" ? "problem" : "connecting";
 }
 // envMeta is an environment's details, for its dot's hover.
@@ -250,7 +252,7 @@ function kindLabel(e) {
 // envWord is the state beside the dot, only when something is wrong.
 function envWord(e) {
   if (e.state === "failed") return "disconnected";
-  if (e.state === "connected" && envData.get(e.name) && !hasClaude(e.name)) return "no claude";
+  if (e.state === "connected" && backendOf(e.name) && !hasClaude(e.name)) return "no claude";
   return "";
 }
 const CHEVRON = `<svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>`;
@@ -393,7 +395,7 @@ function envNote(e) {
   const n = esc(e.name);
   if (e.state === "failed") return `<div class="envnote problem">${esc(e.error)} · <button class="link" data-env-act="reconnect" data-env="${n}">Reconnect</button></div>`;
   if (e.state === "connecting") return `<div class="envnote">${esc(e.step ? e.step + "…" : "Connecting…")}</div>`;
-  if (envData.get(e.name) && !hasClaude(e.name)) {
+  if (backendOf(e.name) && !hasClaude(e.name)) {
     return `<div class="envnote">No claude here · <button class="link" data-env-act="install" data-env="${n}">Install</button> · <button class="link" data-env-act="retry" data-env="${n}">Look again</button></div>`;
   }
   return "";
@@ -494,7 +496,8 @@ function ensureTerm(key) {
   term.loadAddon(fit);
   term.loadAddon(new WebLinksAddon.WebLinksAddon((e, uri) => openLink(uri))); // links in plain text
   term.open(el);
-  const t = { term, fit, el, ws: null, closed: false, retry: 0 };
+  // key moves with its environment's name (renameEnvKeys); handlers read it from here.
+  const t = { key, term, fit, el, ws: null, closed: false, retry: 0 };
 
   // Shift+Enter: ESC CR, which Claude Code reads as a newline in the prompt.
   // Alt+F4 isn't the terminal's: left alone, it closes the window on Windows.
@@ -521,7 +524,7 @@ function ensureTerm(key) {
   });
   // In a tab whose claude exited, Enter resumes it.
   term.onData((d) => {
-    const cur = tab(key);
+    const cur = tab(t.key);
     if (cur && dead(cur)) {
       if (d === "\r") api(cur.env, "POST", `/api/sessions/${cur.id}/start`).catch((err) => say(err.message));
       return;
@@ -552,16 +555,16 @@ function ensureTerm(key) {
     el.classList.remove("dropping");
     if (!e.dataTransfer.files.length) return;
     e.preventDefault();
-    attachFiles(key, [...e.dataTransfer.files], "drag");
+    attachFiles(t.key, [...e.dataTransfer.files], "drag");
   });
   el.addEventListener("paste", (e) => {
     const files = [...(e.clipboardData?.files || [])];
     if (!files.length) return;
     e.preventDefault();
     e.stopPropagation();
-    attachFiles(key, files, "clipboard");
+    attachFiles(t.key, files, "clipboard");
   }, true);
-  connect(key, t);
+  connect(t);
   terms.set(key, t);
   return t;
 }
@@ -629,8 +632,8 @@ function send(t, msg) {
   if (t.ws && t.ws.readyState === WebSocket.OPEN) t.ws.send(JSON.stringify(msg));
 }
 
-function connect(key, t) {
-  const { env: name, id } = tab(key);
+function connect(t) {
+  const { env: name, id } = tab(t.key);
   const ws = new WebSocket(`ws://${location.host}/env/${encodeURIComponent(name)}/api/sessions/${encodeURIComponent(id)}/term`);
   ws.binaryType = "arraybuffer";
   t.ws = ws;
@@ -638,14 +641,14 @@ function connect(key, t) {
     t.retry = 0;
     t.term.reset(); // the server replays its scrollback first
     send(t, { t: "resize", c: t.term.cols, r: t.term.rows });
-    const cur = tab(key);
+    const cur = tab(t.key);
     if (cur && dead(cur)) exitedLine(t);
   };
   ws.onmessage = (e) => t.term.write(new Uint8Array(e.data));
   ws.onclose = () => {
     if (t.closed) return;
     t.retry = Math.min(t.retry + 1, 6);
-    setTimeout(() => { if (!t.closed && tab(key)) connect(key, t); }, 500 * t.retry);
+    setTimeout(() => { if (!t.closed && tab(t.key)) connect(t); }, 500 * t.retry);
   };
 }
 
@@ -721,7 +724,7 @@ function notifyTransitions() {
     if (!prev || prev === t.status) continue;
     const term = terms.get(t.key);
     if (t.status === "starting" || prev === "exited" || prev === "stopped") {
-      if (term && term.ws?.readyState !== WebSocket.OPEN) { term.retry = 0; connect(t.key, term); }
+      if (term && term.ws?.readyState !== WebSocket.OPEN) { term.retry = 0; connect(term); }
     }
     if (t.status === "exited" && term) exitedLine(term);
     const wanted = { "needs-you": page.notifyNeeds, ready: page.notifyReady }[t.status];
@@ -738,7 +741,7 @@ function notifyTransitions() {
   }
 }
 
-// ---------- state streams ----------
+// ---------- the hub's state ----------
 // refresh rebuilds the flat tab list after any state arrived.
 function refresh() {
   tabs = envs.flatMap((e) => sessionsOf(e.name).map((s) => ({ ...s, env: e.name, key: e.name + "/" + s.id })));
@@ -774,6 +777,8 @@ function streamHub() {
     if (hubVersion && hub.version !== hubVersion) { location.reload(); return; }
     hubVersion = hub.version;
     hubPlatform = hub.platform;
+    hubKinds = hub.kinds || [];
+    hubStateDir = hub.stateDir || "";
     envs = hub.envs || [];
     update = hub.update;
     if (!saving) {
@@ -784,8 +789,6 @@ function streamHub() {
       if (!hub.settings?.page || saved.version !== page.version) saveSettings({});
       applyPage();
     }
-    envData.clear();
-    for (const e of envs) if (e.backend) envData.set(e.name, { ...e.backend, sessions: e.backend.sessions || [] });
     refresh();
     if ($("setDlg").open && !$("setDlg").contains(document.activeElement?.matches("input, select") ? document.activeElement : null)) renderSettings();
   };
@@ -913,7 +916,7 @@ function openNew(at = {}) {
   $("tName").value = "";
   $("tName").readOnly = false;
   $("tName").title = "";
-  $("tCwd").value = store.get("mux.lastCwd." + where.env) || home(envData.get(where.env)?.defaultCwd || "");
+  $("tCwd").value = store.get("mux.lastCwd." + where.env) || home(backendOf(where.env)?.defaultCwd || "");
   $("tStartup").value = last.message || "";
   $("tArgs").value = last.args || "";
   $("tClose").hidden = true;
@@ -977,7 +980,7 @@ $("tClose").onclick = async () => { const key = dlg.key; $("tabDlg").close(); aw
 
 // added shows a tab the backend just made, before its state comes round.
 function added(name, s) {
-  const data = envData.get(name);
+  const data = backendOf(name);
   if (data && !data.sessions.some((x) => x.id === s.id)) data.sessions.push(s);
   refresh();
   select(name + "/" + s.id);
@@ -1005,9 +1008,8 @@ async function fillTargets() {
   $("targets").innerHTML = (names || []).map((n) => `<option value="${esc(n)}">`).join("");
 }
 $("hKind").onchange = fillTargets;
-async function addEnv() {
-  hubInfo ||= await request("GET", "/hub/info").catch(() => ({ kinds: ["ssh"] }));
-  $("hKind").innerHTML = hubInfo.kinds.map((k) => `<option value="${k}">${KIND_TEXT[k] || k}</option>`).join("");
+function addEnv() {
+  $("hKind").innerHTML = hubKinds.map((k) => `<option value="${k}">${KIND_TEXT[k] || k}</option>`).join("");
   $("hHost").value = "";
   $("hName").value = "";
   $("hostErr").textContent = "";
@@ -1045,11 +1047,11 @@ function openEnvSettings(name) {
 function renderEnvFacts() {
   const e = env(envDlgName);
   if (!e) { $("envDlg").close(); return; }
-  const c = envData.get(e.name)?.claude;
+  const c = backendOf(e.name)?.claude;
   const n = tabs.filter((t) => t.env === e.name).length;
   const status = e.state === "connected" ? (e.kind === "local" ? "connected" : `connected · ${e.latency || "<1"} ms`)
     : e.state === "failed" ? `disconnected: ${e.error}` : e.step ? e.step + "…" : "connecting…";
-  const claude = !envData.get(e.name) ? "" : c?.path ? `${esc(c.version || "")} <span class="mono">${esc(home(c.path))}</span>`
+  const claude = !backendOf(e.name) ? "" : c?.path ? `${esc(c.version || "")} <span class="mono">${esc(home(c.path))}</span>`
     : `not installed · <button type="button" class="link" data-env-act="install" data-env="${esc(e.name)}">Install</button>`;
   const facts = [["Status", esc(status)], ["Platform", esc((e.platform || "").replace("-", "/"))], ["Claude", claude], ["Tabs", String(n)]];
   $("eFacts").innerHTML = facts.filter(([, v]) => v).map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join("");
@@ -1092,7 +1094,7 @@ async function envAct(what, name) {
   }
   if (what === "settings") { openEnvSettings(name); return; }
   $("iTitle").textContent = `Install claude on ${name}`;
-  $("iCmd").textContent = envData.get(name)?.claude?.installer || "";
+  $("iCmd").textContent = backendOf(name)?.claude?.installer || "";
   $("iOut").textContent = "";
   $("iOut").hidden = true;
   $("iRun").hidden = false;
@@ -1123,7 +1125,7 @@ async function envAct(what, name) {
     clearInterval(timer);
     const secs = Math.round((Date.now() - started) / 1000);
     if (result.done) {
-      const c = envData.get(name)?.claude;
+      const c = backendOf(name)?.claude;
       $("iState").textContent = `Done in ${secs} s${c?.version ? ": " + c.version : ""}. In a new tab there, claude asks you to log in the first time.`;
     } else {
       $("iState").textContent = `The installer failed after ${secs} s: ${result.error}`;
@@ -1200,8 +1202,8 @@ function renderSettings() {
       <input id="sDays" class="num" type="number" min="1" max="365" value="${days}" aria-label="Days between checks" ${s.checkUpdates ? "" : "disabled"}>
       <span>${days === 1 ? "day" : "days"}</span><span class="fill"></span>
       <button type="button" class="switchbtn" role="switch" aria-checked="${!!s.checkUpdates}" aria-label="Check automatically" id="sCheck"><span class="switch"></span></button></div>
-    <div class="srow ver"><span>${esc(u.current || hubVersion)}</span><span class="quiet">· ${checked}</span>${u.dev ? "" : checkNow}<span class="fill"></span>${latest}</div>`;
-  $("sState").textContent = hubInfo?.stateDir ? home(hubInfo.stateDir) : "~/.claude-mux";
+    <div class="srow ver"><span>${esc(hubVersion)}</span><span class="quiet">· ${checked}</span>${u.dev ? "" : checkNow}<span class="fill"></span>${latest}</div>`;
+  $("sState").textContent = home(hubStateDir);
 }
 
 $("sBody").addEventListener("click", async (e) => {
@@ -1219,7 +1221,7 @@ $("sBody").addEventListener("click", async (e) => {
     renderSettings();
     await request("POST", "/hub/update/check").catch(() => {}); // a failed check shows as update.error
     checking = false;
-    setTimeout(renderSettings, 150); // the event with the result comes first
+    setTimeout(renderSettings, 150); // the hub's message with the result comes first
     return;
   }
   if (t.closest("#sApply")) { $("setDlg").close(); applyUpdate(); }
@@ -1349,6 +1351,7 @@ $("pItems").addEventListener("mousemove", (e) => {
 $("palette").addEventListener("pointerdown", (e) => { if (e.target === $("palette")) closePalette(); });
 $("jump").onclick = () => openPalette();
 $("jumpKey").textContent = MOD + "K";
+$("settings").title = `Settings (${MOD},)`;
 
 // ---------- the sidebar ----------
 $("new2").onclick = $("newTab").onclick = () => openNew();
@@ -1380,7 +1383,7 @@ function toggle(fid) {
 async function newGroup(name, parent, after = "") {
   try {
     const g = await api(name, "POST", "/api/groups", { name: "New group", parent, after });
-    const data = envData.get(name);
+    const data = backendOf(name);
     if (data && !groupOf(name, g.id)) data.groups = [...(data.groups || []), g];
     setCollapsed("env:" + name, false);
     for (const p of pathOf(name, parent)) setCollapsed("g:" + name + "/" + p.id, false);
@@ -1397,7 +1400,7 @@ function newGroupNear() {
   if (row) { newGroup(row.dataset.env, row.dataset.parent || "", row.dataset.node); return; }
   const t = tab(selected);
   if (t) { newGroup(t.env, t.parent || "", t.id); return; }
-  const e = envs.find((x) => envData.get(x.name));
+  const e = envs.find((x) => backendOf(x.name));
   if (e) newGroup(e.name, "");
 }
 
@@ -1436,8 +1439,9 @@ $("list").addEventListener("keydown", (e) => {
   if (e.key === "Escape") { e.preventDefault(); finishRename(input, false); }
 });
 $("list").addEventListener("focusout", (e) => { if (e.target.matches?.(".rename") && editing) finishRename(e.target, true); });
-// renameEnvKeys carries what this browser keeps by environment name over
-// to the new one.
+// renameEnvKeys carries what this page keeps by environment name over to
+// the new one: folded rows, the last directory, the open terminals (tab keys
+// start with the name) and the selection.
 function renameEnvKeys(from, to) {
   for (const k of [...collapsed]) {
     if (k === "env:" + from) { setCollapsed(k, false); setCollapsed("env:" + to, true); }
@@ -1445,7 +1449,12 @@ function renameEnvKeys(from, to) {
   }
   const cwd = store.get("mux.lastCwd." + from);
   if (cwd) { store.set("mux.lastCwd." + to, cwd); store.remove("mux.lastCwd." + from); }
-  if (selected?.startsWith(from + "/")) selected = to + selected.slice(from.length);
+  const moved = (key) => (key.startsWith(from + "/") ? to + key.slice(from.length) : key);
+  for (const map of [terms, lastStatus]) {
+    for (const [k, v] of [...map]) if (moved(k) !== k) { map.delete(k); map.set(moved(k), v); }
+  }
+  for (const t of terms.values()) t.key = moved(t.key);
+  if (selected && moved(selected) !== selected) { selected = moved(selected); selection.set(selected); }
 }
 
 // ---------- moving ----------
@@ -1605,9 +1614,9 @@ function menuItems(target) {
   if (target.kind === "env") {
     const e = env(target.env);
     const can = canStart(target.env);
-    return [can && ["new-tab", "New tab", "⌥N"], envData.get(target.env) && ["new-group", "New group", "⇧⌥N"], null,
+    return [can && ["new-tab", "New tab", "⌥N"], backendOf(target.env) && ["new-group", "New group", "⇧⌥N"], null,
       ["env-reconnect", "Reconnect"], ["env-settings", "Environment settings…"],
-      e?.state === "connected" && envData.get(e.name) && !hasClaude(e.name) && ["env-install", "Install claude…"],
+      e?.state === "connected" && backendOf(e.name) && !hasClaude(e.name) && ["env-install", "Install claude…"],
       e?.kind !== "local" && null, e?.kind !== "local" && ["env-remove", "Remove environment", "", "danger"]].filter((x) => x !== false && x !== undefined);
   }
   if (target.kind === "group") {
@@ -1828,4 +1837,3 @@ document.fonts?.ready.then(() => { for (const t of terms.values()) t.term.option
 // ---------- boot ----------
 applyPage();
 streamHub();
-request("GET", "/hub/info").then((info) => { hubInfo = info; }).catch(() => {});

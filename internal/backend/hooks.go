@@ -52,7 +52,7 @@ func Hook() {
 	}
 }
 
-// HookPayload is the part of a hook's stdin the server reads.
+// HookPayload is the part of a hook's stdin the backend reads.
 type HookPayload struct {
 	Event            string `json:"hook_event_name"`
 	SessionID        string `json:"session_id"`
