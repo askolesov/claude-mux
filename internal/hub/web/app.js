@@ -18,7 +18,13 @@ const envData = new Map();       // environment -> its backend's state: {claude,
 const streams = new Map();       // environment -> EventSource of its backend's state
 let tabs = [];                   // every environment's tabs in sidebar order: {...session, env, key}
 let selected = null;             // the selected tab's key
-let pendingSelect = store.get("mux.selected"); // the last selection, until its tab shows up
+// The selection is per window: this window's own, or else the last one made
+// in any window (a new window starts on it).
+const selection = {
+  get() { try { return sessionStorage.getItem("mux.selected"); } catch { return null; } },
+  set(k) { try { sessionStorage.setItem("mux.selected", k); } catch {} store.set("mux.selected", k); },
+};
+let pendingSelect = selection.get() || store.get("mux.selected"); // until its tab shows up
 const terms = new Map();         // tab key -> {term, fit, ws, el, closed}
 const lastStatus = new Map();    // tab key -> status, for notifications
 
@@ -107,6 +113,49 @@ function applyPage() {
   }
   fitSelected();
   render();
+}
+
+// ---------- windows ----------
+// Several windows can show this hub (New window). Each takes the lowest
+// number no other open window has, keeps it across reloads, and shows it
+// while more than one is open: beside the name, and "Window 2" in the title. They find each other on a
+// BroadcastChannel: hello on start, here every 2 s, bye on closing.
+const winId = Math.random().toString(36).slice(2);
+const peers = new Map(); // window id -> {n, seen}
+let winNo = 0; // 0 until it has picked
+const winChan = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel("mux.windows") : null;
+const announce = (type) => winChan?.postMessage({ type, id: winId, n: winNo });
+const winLabel = () => (winNo && peers.size ? `Window ${winNo}` : "");
+function pickWindowNo() {
+  const taken = new Set([...peers.values()].map((p) => p.n));
+  let saved = 0;
+  try { saved = Number(sessionStorage.getItem("mux.window")) || 0; } catch {}
+  winNo = saved && !taken.has(saved) ? saved : 1;
+  while (taken.has(winNo)) winNo++;
+  try { sessionStorage.setItem("mux.window", String(winNo)); } catch {}
+}
+function showWindowNo() {
+  for (const [id, p] of peers) if (Date.now() - p.seen > 6000) peers.delete(id);
+  $("winNo").textContent = winLabel() ? String(winNo) : "";
+  $("winNo").title = winLabel();
+  $("winNo").hidden = !winLabel();
+  render();
+}
+if (winChan) {
+  winChan.onmessage = ({ data }) => {
+    if (data.type === "bye") peers.delete(data.id);
+    else peers.set(data.id, { n: data.n, seen: Date.now() });
+    if (data.type === "hello") announce("here");
+    // Two windows that started together took the same number: the greater id moves.
+    if (data.type !== "bye" && winNo && data.n === winNo && data.id < winId) { pickWindowNo(); announce("here"); }
+    showWindowNo();
+  };
+  announce("hello");
+  setTimeout(() => { pickWindowNo(); announce("here"); showWindowNo(); }, 300);
+  setInterval(() => { announce("here"); showWindowNo(); }, 2000);
+  window.addEventListener("pagehide", () => announce("bye"));
+} else {
+  winNo = 1;
 }
 
 // ---------- api ----------
@@ -271,7 +320,8 @@ function render() {
   if (drag || dragEnv) { renderPending = true; return; }
   const waitingCount = tabs.filter(waiting).length;
   const needs = tabs.some((t) => t.status === "needs-you");
-  document.title = waitingCount ? `(${waitingCount}) claude-mux` : "claude-mux";
+  const name = winLabel() ? `claude-mux · ${winLabel()}` : "claude-mux";
+  document.title = waitingCount ? `(${waitingCount}) ${name}` : name;
   favicon(needs ? "#F5B14C" : waitingCount ? "#4FD18B" : null);
   const badge = waitingCount ? String(waitingCount) : "";
   if (window.cmuxBadge && badge !== lastBadge) { lastBadge = badge; window.cmuxBadge(badge); }
@@ -582,7 +632,7 @@ function select(key) {
   const t = tab(key);
   if (!t) return;
   selected = key;
-  store.set("mux.selected", key);
+  selection.set(key);
   for (const g of pathOf(t.env, t.parent || "")) setCollapsed("g:" + t.env + "/" + g.id, false);
   setCollapsed("env:" + t.env, false);
   for (const [k, x] of terms) x.el.classList.toggle("shown", k === key);
@@ -636,7 +686,12 @@ function notifyTransitions() {
     if (t.status === "exited" && term) exitedLine(term);
     const wanted = { "needs-you": page.notifyNeeds, ready: page.notifyReady }[t.status];
     if (!wanted) continue;
-    const away = document.visibilityState !== "visible" || !document.hasFocus();
+    // Every window sees the change; the first to get here tells.
+    const event = `${t.key} ${t.status} ${t.statusSince}`;
+    if (store.get("mux.notified") === event) continue;
+    store.set("mux.notified", event);
+    // Away: no claude-mux window has the focus.
+    const away = document.visibilityState !== "visible" || (!document.hasFocus() && store.get("mux.focus") !== "1");
     if (page.notifyAway ? !away : away === false && selected === t.key) continue;
     const body = { "needs-you": "needs you", ready: "finished" }[t.status];
     notify(t.name, body, () => select(t.key));
@@ -1181,7 +1236,7 @@ function statusWord(t) {
   if (dead(t)) return ["Exited", "var(--muted)"];
   return [STATUS_TEXT[t.status] || t.status, "var(--working)"];
 }
-const ACTIONS = [["new", "New tab", "⌥N"], ["new-group", "New group", "⇧⌥N"], ["tab-settings", "Tab settings", MOD + "I"], ["settings", "Settings", MOD + ","]];
+const ACTIONS = [["new", "New tab", "⌥N"], ["new-group", "New group", "⇧⌥N"], ["new-window", "New window", MOD + "N"], ["tab-settings", "Tab settings", MOD + "I"], ["settings", "Settings", MOD + ","]];
 function renderPalette() {
   if (!$("palette").classList.contains("open")) return;
   const raw = $("pIn").value;
@@ -1235,6 +1290,7 @@ function runPalette(i) {
   if (it.tab) { select(it.tab.key); return; }
   if (it.action === "new") openNew();
   if (it.action === "new-group") newGroupNear();
+  if (it.action === "new-window") newWindow();
   if (it.action === "tab-settings") openTabSettings(selected);
   if (it.action === "settings") openSettings();
 }
@@ -1626,6 +1682,13 @@ async function act(what, target) {
   }
 }
 
+// newWindow opens another window on this hub, for another tab on another
+// screen: a window of the app's own, or a browser window.
+function newWindow() {
+  if (window.cmuxNewWindow) window.cmuxNewWindow();
+  else window.open(location.href, "_blank");
+}
+
 // sure and say stand in for confirm and alert, which the app's own window
 // (a bare web view) answers without showing anything.
 function sure(title, text, ok = "OK") {
@@ -1655,6 +1718,7 @@ window.addEventListener("keydown", (e) => {
   const mod = isMac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
   const dialog = document.querySelector("dialog[open]");
   if (mod && !e.altKey && e.code === "KeyK") { e.preventDefault(); e.stopPropagation(); $("palette").classList.contains("open") ? closePalette() : openPalette(); return; }
+  if (mod && !e.altKey && !e.shiftKey && e.code === "KeyN") { e.preventDefault(); e.stopPropagation(); newWindow(); return; }
   if (mod && !e.altKey && e.code === "Comma") { e.preventDefault(); e.stopPropagation(); if (!dialog) openSettings(); return; }
   // ⌘W closes the selected tab, asking first.
   if (mod && !e.altKey && !e.shiftKey && e.code === "KeyW") {
@@ -1724,7 +1788,8 @@ window.addEventListener("resize", fitSelected);
 for (const type of ["dragover", "drop"]) window.addEventListener(type, (e) => { if (e.dataTransfer?.types.includes("Files")) e.preventDefault(); });
 new ResizeObserver(fitSelected).observe($("stage"));
 document.addEventListener("visibilitychange", () => { if (selected) markSeen(selected); });
-window.addEventListener("focus", () => { if (selected) markSeen(selected); });
+window.addEventListener("focus", () => { store.set("mux.focus", "1"); if (selected) markSeen(selected); });
+window.addEventListener("blur", () => store.set("mux.focus", "0"));
 setInterval(render, 30000); // keep the "for 3m" titles moving
 // Measure again once the terminal font has loaded.
 document.fonts?.ready.then(() => { for (const t of terms.values()) t.term.options.fontFamily = TERM_FONT; fitSelected(); });

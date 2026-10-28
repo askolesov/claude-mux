@@ -22,8 +22,9 @@ static void nativeMenu(void) {
 	NSMenu *app = [[NSMenu alloc] initWithTitle:@"claude-mux"];
 	[app addItem:item(@"Hide claude-mux", @selector(hide:), @"h")];
 	[app addItem:[NSMenuItem separatorItem]];
-	// Quit closes the window, so the hub shuts its backends down on the way out.
-	[app addItem:item(@"Quit claude-mux", @selector(performClose:), @"q")];
+	// Quit stops the app's run loop, with every window, so the hub shuts its
+	// backends down on the way out.
+	[app addItem:item(@"Quit claude-mux", @selector(stop:), @"q")];
 
 	NSMenu *edit = [[NSMenu alloc] initWithTitle:@"Edit"];
 	[edit addItem:item(@"Undo", @selector(undo:), @"z")];
@@ -42,7 +43,8 @@ static void nativeMenu(void) {
 
 	NSMenu *win = [[NSMenu alloc] initWithTitle:@"Window"];
 	[win addItem:item(@"Minimize", @selector(performMiniaturize:), @"m")];
-	// No ⌘W here: the page takes it to close a tab.
+	// No ⌘W or ⌘N here: the page takes them, to close a tab and to open a
+	// window.
 	[win addItem:item(@"Close Window", @selector(performClose:), @"")];
 
 	NSMenu *bar = [NSMenu new];
