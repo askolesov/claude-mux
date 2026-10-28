@@ -17,8 +17,23 @@ func init() { runtime.LockOSThread() }
 // ctx ends.
 func window(ctx context.Context, url string) {
 	var all []webview.WebView // only touched on the main thread
-	var open func()
+	// Making a window waits for its web view inside a message loop of its
+	// own; on Windows, another window made in that wait leaves this one
+	// blank. So one at a time: a request while one is being made waits for it.
+	making, queued := false, 0
+	var open, make1 func()
 	open = func() {
+		if making {
+			queued++
+			return
+		}
+		making = true
+		for make1(); queued > 0; queued-- {
+			make1()
+		}
+		making = false
+	}
+	make1 = func() {
 		w := webview.New(false)
 		all = append(all, w)
 		w.SetTitle("claude-mux")

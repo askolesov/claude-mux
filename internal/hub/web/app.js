@@ -497,11 +497,13 @@ function ensureTerm(key) {
   const t = { term, fit, el, ws: null, closed: false, retry: 0 };
 
   // Shift+Enter: ESC CR, which Claude Code reads as a newline in the prompt.
+  // Alt+F4 isn't the terminal's: left alone, it closes the window on Windows.
   term.attachCustomKeyEventHandler((e) => {
     if (e.key === "Enter" && e.shiftKey) {
       if (e.type === "keydown") send(t, { t: "in", d: "\x1b\r" });
       return false;
     }
+    if (e.key === "F4" && e.altKey) return false;
     return true;
   });
   // In a tab whose claude exited, Enter resumes it.
