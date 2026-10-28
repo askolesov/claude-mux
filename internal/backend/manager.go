@@ -428,7 +428,8 @@ func (m *Manager) MarkSeen(id string) error {
 	return nil
 }
 
-// Close ends the tab's claude and removes the tab.
+// Close ends the tab's claude and removes the tab, with the files dropped
+// into it.
 func (m *Manager) Close(id string) error {
 	s, err := m.Get(id)
 	if err != nil {
@@ -438,6 +439,9 @@ func (m *Manager) Close(id string) error {
 	m.mu.Lock()
 	m.sessions = slices.DeleteFunc(m.sessions, func(x *Session) bool { return x == s })
 	m.mu.Unlock()
+	if err := os.RemoveAll(m.filesDir(id)); err != nil {
+		fmt.Fprintln(os.Stderr, "removing a closed tab's files:", err)
+	}
 	m.save()
 	m.changes.Notify()
 	return nil

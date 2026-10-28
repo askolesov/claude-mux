@@ -138,6 +138,7 @@ And a backend's, under `/env/<name>`:
 | `PUT /api/nodes/:id/place` | move a tab or a group: `{parent, before \| after}` |
 | `POST /api/sessions/:id/start`, `/restart`, `/seen`; `DELETE /api/sessions/:id` | lifecycle |
 | `GET /api/sessions/:id/term` | the terminal, a WebSocket |
+| `POST /api/sessions/:id/files` | a file dropped or pasted into the tab, as JSON with base64 data; answers its path |
 | `GET /api/dirs?prefix=` | the directories a typed path could go on to, for New tab |
 | `POST /api/claude/check`, `/api/claude/install` | look for claude again; run the official installer, streaming its output |
 
@@ -350,6 +351,12 @@ JetBrains Mono are in `vendor/`, so the page needs no internet.
 - A terminal is created the first time its tab is opened and kept, hidden,
   after that. Each has its own WebSocket, which reconnects with a growing
   pause.
+- A page never learns a dropped file's path, and the tab's claude may be
+  on another machine. So a file dropped or pasted onto a terminal (a
+  screenshot) is sent to the tab's backend (`POST
+  /api/sessions/:id/files`), kept in `files/<tab id>/` until the tab is
+  closed, and its path there is typed in, as a terminal does for a dropped
+  file. claude attaches it from the path.
 - Settings that are the page's own (themes, font size, tab rows,
   notifications, the last tab's options for New tab) are kept by the hub in
   `hub.json` as `settings.page`, so the app's window and a browser share
@@ -475,6 +482,7 @@ In every environment, this machine included:
 | `backend.json` | backend | the tabs and groups (`version`, `sessions`, `groups`) |
 | `backend-hooks.json` | backend | the hooks settings passed to every claude |
 | `backend.lock` | backend | its pid, locked while it runs |
+| `files/<tab id>/` | backend | files dropped or pasted into a tab, until it is closed |
 | `bin/<version>/claude-mux-backend` | hub | the installed backend; other versions are removed |
 
 The locks (`internal/lockfile`) are the operating system's (flock,

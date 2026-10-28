@@ -463,6 +463,27 @@ function ensureTerm(key) {
     send(t, { t: "in", d });
   });
   term.onResize(({ cols, rows }) => send(t, { t: "resize", c: cols, r: rows }));
+  // Files dropped or pasted here (a screenshot) go to the tab's environment,
+  // and their paths are typed in, as a terminal does for a dropped file.
+  el.addEventListener("dragover", (e) => {
+    if (!e.dataTransfer.types.includes("Files")) return;
+    e.preventDefault();
+    el.classList.add("dropping");
+  });
+  el.addEventListener("dragleave", () => el.classList.remove("dropping"));
+  el.addEventListener("drop", (e) => {
+    el.classList.remove("dropping");
+    if (!e.dataTransfer.files.length) return;
+    e.preventDefault();
+    attachFiles(key, [...e.dataTransfer.files]);
+  });
+  el.addEventListener("paste", (e) => {
+    const files = [...(e.clipboardData?.files || [])];
+    if (!files.length) return;
+    e.preventDefault();
+    e.stopPropagation();
+    attachFiles(key, files);
+  }, true);
   connect(key, t);
   terms.set(key, t);
   return t;
@@ -473,6 +494,32 @@ function ensureTerm(key) {
 function openLink(uri) {
   if (window.cmuxOpen) window.cmuxOpen(uri).catch((err) => say(err.message));
   else window.open(uri, "_blank", "noopener");
+}
+
+// attachFiles copies files into a tab's environment and types their paths
+// into its terminal.
+async function attachFiles(key, files) {
+  const t = tab(key);
+  if (!t) return;
+  const windows = env(t.env)?.platform?.startsWith("windows");
+  try {
+    const paths = [];
+    for (const f of files) {
+      const data = await new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result).split(",")[1] || "");
+        r.onerror = () => reject(r.error);
+        r.readAsDataURL(f);
+      });
+      const { path } = await api(t.env, "POST", `/api/sessions/${t.id}/files`, { name: f.name || "pasted.png", data });
+      paths.push(windows ? `"${path}"` : path.replace(/[^\w/.,:@%+=~-]/g, "\\$&"));
+    }
+    const term = terms.get(key);
+    term?.term.paste(paths.join(" ") + " ");
+    term?.term.focus();
+  } catch (err) {
+    say(`The file didn't go through: ${err.message}`);
+  }
 }
 
 function send(t, msg) {
@@ -1660,6 +1707,8 @@ function setSide(px) {
 }
 
 window.addEventListener("resize", fitSelected);
+// A file dropped anywhere else would make the window open it in place of the page.
+for (const type of ["dragover", "drop"]) window.addEventListener(type, (e) => { if (e.dataTransfer?.types.includes("Files")) e.preventDefault(); });
 new ResizeObserver(fitSelected).observe($("stage"));
 document.addEventListener("visibilitychange", () => { if (selected) markSeen(selected); });
 window.addEventListener("focus", () => { if (selected) markSeen(selected); });
