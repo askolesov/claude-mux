@@ -16,9 +16,29 @@ func init() { runtime.LockOSThread() }
 // in any more the page opens (New window, ⌘N), until the last is closed or
 // ctx ends.
 func window(ctx context.Context, url string) {
-	var all []webview.WebView // only touched on the main thread
-	var open func()
+	// Everything here runs on the main thread: the first open below, and
+	// every later one through Dispatch, which runs it on the main thread's
+	// message loop. So no locks; the hazard is re-entry, not threads.
+	var all []webview.WebView
+	// Making a window waits for its web view inside a message loop of its
+	// own, which runs dispatched calls too: a New window handled there would
+	// be made inside that wait, and on Windows leave this window blank. So a
+	// call while one is being made only counts itself (queued), and the
+	// outer call makes it once the window before is done.
+	making, queued := false, 0
+	var open, make1 func()
 	open = func() {
+		if making {
+			queued++
+			return
+		}
+		making = true
+		for make1(); queued > 0; queued-- {
+			make1()
+		}
+		making = false
+	}
+	make1 = func() {
 		w := webview.New(false)
 		all = append(all, w)
 		w.SetTitle("claude-mux")
