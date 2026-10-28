@@ -24,20 +24,31 @@ type hubState struct {
 	Update       updateState `json:"update"`
 	// ResumeDefault is the message every tab got when it started again,
 	// before v0.7 gave each tab its own. Kept for backends that haven't
-	// upgraded their backend.json yet (backend/migrations.go).
-	ResumeDefault backend.ResumeDefault `json:"resumeDefault,omitzero"`
+	// upgraded their backend.json yet (backend/migrations.go); the global
+	// message in Settings is a new setting, not this one.
+	ResumeDefault backend.StartupMessage `json:"resumeDefault,omitzero"`
 }
 
 // Settings are the hub's settings, set in the page.
 type Settings struct {
-	CheckUpdates bool            `json:"checkUpdates"`
-	EveryDays    int             `json:"everyDays"`
-	Page         json.RawMessage `json:"page,omitempty"` // the page's own settings, which the hub keeps without reading
+	CheckUpdates bool `json:"checkUpdates"`
+	EveryDays    int  `json:"everyDays"`
+	// StartupMessage is the global message: every tab gets it, before its
+	// own, when its claude starts again. Off unless set.
+	StartupMessage backend.StartupMessage `json:"startupMessage"`
+	Page           json.RawMessage        `json:"page,omitempty"` // the page's own settings, which the hub keeps without reading
 }
+
+// maxStartupMessage caps the global message: it travels in the backend's
+// and claude's command lines.
+const maxStartupMessage = 4000
 
 func (s Settings) validate() error {
 	if s.EveryDays < 1 || s.EveryDays > 365 {
 		return errors.New("check every 1 to 365 days")
+	}
+	if len(s.StartupMessage.Message) > maxStartupMessage {
+		return fmt.Errorf("the startup message is over %d characters", maxStartupMessage)
 	}
 	return nil
 }

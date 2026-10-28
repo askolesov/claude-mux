@@ -37,6 +37,7 @@ type Manager struct {
 	changes stream.Notifier // wakes /api/events
 
 	mu       sync.Mutex
+	global   StartupMessage // before every tab's own message (startupPrompt)
 	claude   Claude
 	sessions []*Session
 	groups   []*Group
@@ -51,9 +52,9 @@ type State struct {
 }
 
 // NewManager loads the tabs and starts every one of them, continuing each
-// tab's conversation. old is the resume default from before v0.7, for
-// upgrading backend.json.
-func NewManager(stateDir, hookURL, exe, defaultCwd string, old ResumeDefault) (*Manager, error) {
+// tab's conversation, with global before each tab's own startup message.
+// old is the resume default from before v0.7, for upgrading backend.json.
+func NewManager(stateDir, hookURL, exe, defaultCwd string, global, old StartupMessage) (*Manager, error) {
 	if err := os.MkdirAll(stateDir, 0o700); err != nil {
 		return nil, err
 	}
@@ -62,6 +63,7 @@ func NewManager(stateDir, hookURL, exe, defaultCwd string, old ResumeDefault) (*
 		hooksFile:  filepath.Join(stateDir, "backend-hooks.json"),
 		hookURL:    hookURL,
 		defaultCwd: defaultCwd,
+		global:     global,
 	}
 	if err := writeHookSettings(m.hooksFile, exe); err != nil {
 		return nil, err
@@ -192,7 +194,8 @@ func (m *Manager) Create(name, parent, after, cwd string, resume ResumeMode, res
 }
 
 // Start runs the tab's claude: it continues the tab's conversation, if it
-// has one yet, and sends its resume message as the first prompt then.
+// has one yet, and sends its startup prompt (the global message, then its
+// own) as the first prompt then.
 func (m *Manager) Start(id string) error {
 	s, err := m.Get(id)
 	if err != nil {
@@ -214,7 +217,7 @@ func (m *Manager) Start(id string) error {
 	// background tasks and watchers, is gone.
 	if hasConversation(sid) {
 		args = append([]string{"--resume", sid}, args...)
-		if msg := resumeMessage(resume, own); msg != "" {
+		if msg := startupPrompt(m.globalMessage(), resume, own); msg != "" {
 			args = append(args, "--", msg) // after "--", a message starting with "-" stays a prompt
 		}
 	}
@@ -446,6 +449,20 @@ func (m *Manager) Close(id string) error {
 	m.save()
 	m.changes.Notify()
 	return nil
+}
+
+// SetGlobalMessage sets the message every tab gets before its own, from
+// each tab's next start.
+func (m *Manager) SetGlobalMessage(g StartupMessage) {
+	m.mu.Lock()
+	m.global = g
+	m.mu.Unlock()
+}
+
+func (m *Manager) globalMessage() StartupMessage {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.global
 }
 
 // Claude is what the backend last found of claude here.

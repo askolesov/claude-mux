@@ -45,6 +45,7 @@ func NewHandler(m *Manager) http.Handler {
 	api.DELETE("/groups/:id", h.deleteGroup)
 	api.PUT("/nodes/:id/place", h.move)
 	api.GET("/dirs", h.dirs)
+	api.PUT("/global-message", h.setGlobalMessage)
 	api.POST("/claude/check", h.checkClaude)
 	api.POST("/claude/install", h.installClaude)
 	return r
@@ -206,6 +207,16 @@ func (h *Handler) move(c *gin.Context) {
 		return
 	}
 	respond(c, nil, h.m.Move(c.Param("id"), req.Parent, req.Before, req.After))
+}
+
+// setGlobalMessage takes the message every tab gets before its own; the hub
+// sends it on every change.
+func (h *Handler) setGlobalMessage(c *gin.Context) {
+	var g StartupMessage
+	if bind(c, &g) {
+		h.m.SetGlobalMessage(g)
+		respond(c, nil, nil)
+	}
 }
 
 func (h *Handler) checkClaude(c *gin.Context) { respond(c, h.m.CheckClaude(), nil) }

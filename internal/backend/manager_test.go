@@ -7,24 +7,30 @@ import (
 	"testing"
 )
 
-func TestResumeMessage(t *testing.T) {
+func TestStartupPrompt(t *testing.T) {
+	on := StartupMessage{Enabled: true, Message: " you were restarted "}
 	for _, c := range []struct {
-		mode ResumeMode
-		own  string
-		want string
+		global StartupMessage
+		mode   ResumeMode
+		own    string
+		want   string
 	}{
-		{ResumeOff, "kept", ""},
-		{ResumeCustom, " mine ", "mine"},
+		{StartupMessage{}, ResumeOff, "kept", ""},
+		{StartupMessage{}, ResumeCustom, " mine ", "mine"},
+		{on, ResumeOff, "kept", "you were restarted"},
+		{on, ResumeCustom, "restart the watcher", "you were restarted\n\nrestart the watcher"},
+		{StartupMessage{Message: "off, kept"}, ResumeCustom, "mine", "mine"},
+		{StartupMessage{Enabled: true, Message: "  "}, ResumeCustom, "mine", "mine"},
 	} {
-		if got := resumeMessage(c.mode, c.own); got != c.want {
-			t.Errorf("mode %q, own %q: got %q, want %q", c.mode, c.own, got, c.want)
+		if got := startupPrompt(c.global, c.mode, c.own); got != c.want {
+			t.Errorf("global %+v, mode %q, own %q: got %q, want %q", c.global, c.mode, c.own, got, c.want)
 		}
 	}
 }
 
-func TestResumeFlag(t *testing.T) {
-	want := ResumeDefault{Enabled: true, Message: "it's 'quoted' -- and $HOME"}
-	got, err := ParseResumeFlag(want.Flag())
+func TestStartupFlag(t *testing.T) {
+	want := StartupMessage{Enabled: true, Message: "it's 'quoted' -- and $HOME"}
+	got, err := ParseStartupFlag(want.Flag())
 	if err != nil || got != want {
 		t.Errorf("got %+v, %v; want %+v", got, err, want)
 	}
@@ -32,7 +38,7 @@ func TestResumeFlag(t *testing.T) {
 
 // loadState writes files into a fresh state directory and loads it, with
 // old as the hub's resume default from before v0.7.
-func loadState(t *testing.T, files map[string]string, old ...ResumeDefault) (*Manager, string) {
+func loadState(t *testing.T, files map[string]string, old ...StartupMessage) (*Manager, string) {
 	t.Helper()
 	dir := t.TempDir()
 	for name, data := range files {
@@ -40,7 +46,7 @@ func loadState(t *testing.T, files map[string]string, old ...ResumeDefault) (*Ma
 			t.Fatal(err)
 		}
 	}
-	var def ResumeDefault
+	var def StartupMessage
 	if len(old) > 0 {
 		def = old[0]
 	}
@@ -92,7 +98,7 @@ const stateV1 = `{"version":1,"sessions":[
 	{"id":"c","name":"quiet","cwd":"/w","order":"s","resume":"off","resumeMessage":"kept"}],"groups":[]}`
 
 func TestMigrateV1(t *testing.T) {
-	m, dir := loadState(t, map[string]string{"backend.json": stateV1}, ResumeDefault{Enabled: true, Message: "restarted"})
+	m, dir := loadState(t, map[string]string{"backend.json": stateV1}, StartupMessage{Enabled: true, Message: "restarted"})
 	a, b, c := m.sessions[0], m.sessions[1], m.sessions[2]
 	if a.Resume != ResumeCustom || a.ResumeMessage != "restarted" {
 		t.Errorf("a tab on the default gets it as its own: %+v", a)
@@ -103,7 +109,7 @@ func TestMigrateV1(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "backend.json.v1.bak")); err != nil {
 		t.Errorf("no backup: %v", err)
 	}
-	off, _ := loadState(t, map[string]string{"backend.json": stateV1}, ResumeDefault{Message: "restarted"})
+	off, _ := loadState(t, map[string]string{"backend.json": stateV1}, StartupMessage{Message: "restarted"})
 	if off.sessions[0].Resume != ResumeOff {
 		t.Errorf("with the default off, none: %+v", off.sessions[0])
 	}
@@ -130,7 +136,7 @@ func TestRefuseNewer(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := &Manager{stateFile: filepath.Join(dir, "backend.json")}
-	if err := m.load(dir, stateSteps(ResumeDefault{})); err == nil {
+	if err := m.load(dir, stateSteps(StartupMessage{})); err == nil {
 		t.Error("loaded a file from a newer version")
 	}
 }

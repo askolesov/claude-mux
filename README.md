@@ -56,9 +56,10 @@ When the hub quits, or an SSH connection drops, the backend hangs up its
 claudes, the way closing a terminal window does. It keeps the list of tabs.
 On the next start it opens each tab again with `claude --resume`, so the
 conversation continues. What was running inside the old process
-(background tasks, watchers, dev servers) is gone. A tab can have a
-startup message, sent as its first prompt each time its claude starts
-again, to say so or to restart a watcher (New tab and Tab settings).
+(background tasks, watchers, dev servers) is gone. A startup message,
+sent as the first prompt each time a claude starts again, can say so or
+restart a watcher: one for every tab (Settings › Tabs), and each tab's own
+(New tab and Tab settings), which comes after it.
 
 The details are in [docs/how-it-works.md](docs/how-it-works.md).
 

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/askolesov/claude-mux/internal/backend"
 	"github.com/gorilla/websocket"
 )
 
@@ -52,7 +53,7 @@ func TestReorder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h.envs = append(h.envs, newEnv(EnvConfig{Name: "devbox", Kind: KindSSH, Target: "devbox"}, nil, func() {}))
+	h.envs = append(h.envs, newEnv(EnvConfig{Name: "devbox", Kind: KindSSH, Target: "devbox"}, nil, nil, func() {}))
 	if err := h.Reorder([]string{"local"}); err == nil {
 		t.Error("a missing environment was accepted")
 	}
@@ -84,7 +85,7 @@ func TestRename(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h.envs = append(h.envs, newEnv(EnvConfig{Name: "devbox", Kind: KindSSH, Target: "devbox"}, nil, func() {}))
+	h.envs = append(h.envs, newEnv(EnvConfig{Name: "devbox", Kind: KindSSH, Target: "devbox"}, nil, nil, func() {}))
 	if err := h.Rename("local", "here"); err == nil {
 		t.Error("renamed local")
 	}
@@ -167,5 +168,23 @@ func TestStateStream(t *testing.T) {
 	}
 	if res != nil {
 		_ = res.Body.Close()
+	}
+}
+
+func TestStartupMessageLimit(t *testing.T) {
+	h, err := New(t.TempDir(), Backends{}, Connectors{}, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	long := Settings{CheckUpdates: true, EveryDays: 1, StartupMessage: backend.StartupMessage{Enabled: true, Message: strings.Repeat("x", maxStartupMessage+1)}}
+	if err := h.SetSettings(long); err == nil {
+		t.Error("took a startup message over the limit")
+	}
+	long.StartupMessage.Message = "you were restarted"
+	if err := h.SetSettings(long); err != nil {
+		t.Fatal(err)
+	}
+	if got := h.st.get().Settings.StartupMessage; got != long.StartupMessage {
+		t.Errorf("stored %+v", got)
 	}
 }

@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/askolesov/claude-mux/internal/backend"
 	"github.com/askolesov/claude-mux/internal/sysproc"
 	"github.com/hashicorp/yamux"
 )
@@ -66,6 +67,7 @@ type EnvView struct {
 // over the child's stdin and stdout. A backend that stops is started again.
 type Env struct {
 	prepare  func(step func(string)) ([]string, string, error) // installs the backend if needed; the command that runs it and the platform
+	global   func() backend.StartupMessage                     // the global startup message now
 	onChange func()
 
 	mu        sync.Mutex
@@ -80,14 +82,16 @@ type Env struct {
 	err       string
 	backend   json.RawMessage // see EnvView
 
+	pushing sync.Mutex // one pushGlobal at a time
+
 	quit chan struct{} // closed by Close
 	done chan struct{} // closed when Supervise returns
 
 	proxy *httputil.ReverseProxy
 }
 
-func newEnv(cfg EnvConfig, prepare func(step func(string)) ([]string, string, error), onChange func()) *Env {
-	e := &Env{cfg: cfg, prepare: prepare, onChange: onChange, state: StateConnecting,
+func newEnv(cfg EnvConfig, prepare func(step func(string)) ([]string, string, error), global func() backend.StartupMessage, onChange func()) *Env {
+	e := &Env{cfg: cfg, prepare: prepare, global: global, onChange: onChange, state: StateConnecting,
 		quit: make(chan struct{}), done: make(chan struct{})}
 	e.proxy = &httputil.ReverseProxy{
 		Rewrite: func(r *httputil.ProxyRequest) {
@@ -266,6 +270,9 @@ func (e *Env) run() error {
 		e.setLatency(rtt)
 		e.setState(StateConnected, "")
 		go e.follow(session)
+		// The launch gave it the message as it was then (-global); this one
+		// covers a change made while it was starting.
+		go e.pushGlobal()
 		for {
 			select {
 			case <-session.CloseChan():
@@ -290,6 +297,33 @@ func (e *Env) run() error {
 		err = errors.New("the backend exited")
 	}
 	return err
+}
+
+// pushGlobal gives the running backend the global startup message as it
+// is now (PUT /api/global-message); a backend that isn't running gets it at
+// its next launch instead. One push at a time, each reading the message when
+// it sends, so the last to finish carries the latest.
+func (e *Env) pushGlobal() {
+	e.pushing.Lock()
+	defer e.pushing.Unlock()
+	body, _ := json.Marshal(e.global()) // a bool and a string: can't fail
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, "http://backend/api/global-message", bytes.NewReader(body))
+	if err != nil {
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	res, err := e.proxy.Transport.RoundTrip(req)
+	if err == nil {
+		_ = res.Body.Close()
+		if res.StatusCode != http.StatusNoContent {
+			err = errors.New(res.Status)
+		}
+	}
+	if err != nil && !errors.Is(err, errNotConnected) {
+		fmt.Fprintf(os.Stderr, "env %s: giving it the global startup message: %v\n", e.Config().Name, err)
+	}
 }
 
 // follow keeps the backend's state from its event stream, until the

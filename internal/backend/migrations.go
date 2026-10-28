@@ -8,7 +8,7 @@ import (
 // default the hub kept before v0.7. Never remove or change a step once
 // released: add the next one, and a test with a file of the version before
 // it.
-func stateSteps(old ResumeDefault) []migrate.Step {
+func stateSteps(old StartupMessage) []migrate.Step {
 	return []migrate.Step{
 		// 0 → 1: everything before versions (up to v0.6).
 		// - A tab's startupMessage (before v0.5) is its own resume message.

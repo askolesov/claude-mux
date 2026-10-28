@@ -20,19 +20,23 @@ func main() {
 	home, _ := os.UserHomeDir()
 	stateDir := flag.String("state", filepath.Join(home, ".claude-mux"), "where sessions, saved conversations and the hooks file are kept")
 	defaultCwd := flag.String("cwd", home, "default directory for new sessions")
-	resume := flag.String("resume", "", "the resume default from before v0.7, to upgrade backend.json with: base64url of {\"enabled\", \"message\"}")
+	global := flag.String("global", "", "the startup message every tab gets before its own: base64url of {\"enabled\", \"message\"}")
+	resume := flag.String("resume", "", "the resume default from before v0.7, to upgrade backend.json with; the same encoding")
 	flag.Parse()
 
-	var d backend.ResumeDefault
-	if *resume != "" {
-		var err error
-		if d, err = backend.ParseResumeFlag(*resume); err != nil {
-			fmt.Fprintln(os.Stderr, "claude-mux-backend: -resume:", err)
+	parse := func(name, value string) backend.StartupMessage {
+		if value == "" {
+			return backend.StartupMessage{}
+		}
+		m, err := backend.ParseStartupFlag(value)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "claude-mux-backend: -%s: %v\n", name, err)
 			os.Exit(2)
 		}
+		return m
 	}
 
-	if err := backend.Run(*stateDir, *defaultCwd, d); err != nil {
+	if err := backend.Run(*stateDir, *defaultCwd, parse("global", *global), parse("resume", *resume)); err != nil {
 		fmt.Fprintln(os.Stderr, "claude-mux-backend:", err)
 		os.Exit(1)
 	}
