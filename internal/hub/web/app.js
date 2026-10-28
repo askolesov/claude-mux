@@ -475,14 +475,14 @@ function ensureTerm(key) {
     el.classList.remove("dropping");
     if (!e.dataTransfer.files.length) return;
     e.preventDefault();
-    attachFiles(key, [...e.dataTransfer.files]);
+    attachFiles(key, [...e.dataTransfer.files], "drag");
   });
   el.addEventListener("paste", (e) => {
     const files = [...(e.clipboardData?.files || [])];
     if (!files.length) return;
     e.preventDefault();
     e.stopPropagation();
-    attachFiles(key, files);
+    attachFiles(key, files, "clipboard");
   }, true);
   connect(key, t);
   terms.set(key, t);
@@ -496,30 +496,43 @@ function openLink(uri) {
   else window.open(uri, "_blank", "noopener");
 }
 
-// attachFiles copies files into a tab's environment and types their paths
-// into its terminal.
-async function attachFiles(key, files) {
+// attachFiles types the paths of files dropped or pasted (from "drag" or
+// "clipboard") into a tab's terminal. A local tab in claude-mux's own window
+// gets the files where they are, from the hub (cmuxPaths); otherwise, and
+// for an image that is only on the clipboard, they are copied to the tab's
+// environment first.
+async function attachFiles(key, files, from) {
   const t = tab(key);
   if (!t) return;
   const windows = env(t.env)?.platform?.startsWith("windows");
+  const quote = (p) => (windows ? `"${p}"` : p.replace(/[^\w/.,:@%+=~-]/g, "\\$&"));
   try {
-    const paths = [];
-    for (const f of files) {
-      const data = await new Promise((resolve, reject) => {
-        const r = new FileReader();
-        r.onload = () => resolve(String(r.result).split(",")[1] || "");
-        r.onerror = () => reject(r.error);
-        r.readAsDataURL(f);
-      });
-      const { path } = await api(t.env, "POST", `/api/sessions/${t.id}/files`, { name: f.name || "pasted.png", data });
-      paths.push(windows ? `"${path}"` : path.replace(/[^\w/.,:@%+=~-]/g, "\\$&"));
+    let paths = env(t.env)?.kind === "local" && window.cmuxPaths ? await window.cmuxPaths(from) : [];
+    // The hub's list must be these very files, else copy.
+    const names = files.map((f) => f.name).sort().join("\n");
+    if (paths.map(base).sort().join("\n") !== names) paths = [];
+    if (!paths.length) {
+      for (const f of files) paths.push(await copyFile(t, f));
     }
     const term = terms.get(key);
-    term?.term.paste(paths.join(" ") + " ");
+    term?.term.paste(paths.map(quote).join(" ") + " ");
     term?.term.focus();
   } catch (err) {
     say(`The file didn't go through: ${err.message}`);
   }
+}
+
+// copyFile sends a file to the tab's backend, which keeps it until the tab
+// closes, and gives its path there.
+async function copyFile(t, f) {
+  const data = await new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).split(",")[1] || "");
+    r.onerror = () => reject(r.error);
+    r.readAsDataURL(f);
+  });
+  const { path } = await api(t.env, "POST", `/api/sessions/${t.id}/files`, { name: f.name || "pasted.png", data });
+  return path;
 }
 
 function send(t, msg) {

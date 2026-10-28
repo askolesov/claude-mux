@@ -22,6 +22,7 @@ func window(ctx context.Context, url string) {
 	nativeMenu()
 	_ = w.Bind("cmuxNotify", notify)
 	_ = w.Bind("cmuxOpen", openLink)
+	_ = w.Bind("cmuxPaths", filePaths)
 	_ = w.Bind("cmuxBadge", func(label string) { w.Dispatch(func() { badge(label) }) })
 	w.Navigate(url)
 	closed := make(chan struct{})
