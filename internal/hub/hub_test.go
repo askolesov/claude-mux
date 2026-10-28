@@ -52,7 +52,7 @@ func TestReorder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h.envs = append(h.envs, newEnv(EnvConfig{Name: "devbox", Kind: KindSSH, Target: "devbox"}, nil, func() {}))
+	h.envs = append(h.envs, newEnv(EnvConfig{Name: "devbox", Kind: KindSSH, Target: "devbox"}, nil, nil, func() {}))
 	if err := h.Reorder([]string{"local"}); err == nil {
 		t.Error("a missing environment was accepted")
 	}
@@ -84,7 +84,7 @@ func TestRename(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h.envs = append(h.envs, newEnv(EnvConfig{Name: "devbox", Kind: KindSSH, Target: "devbox"}, nil, func() {}))
+	h.envs = append(h.envs, newEnv(EnvConfig{Name: "devbox", Kind: KindSSH, Target: "devbox"}, nil, nil, func() {}))
 	if err := h.Rename("local", "here"); err == nil {
 		t.Error("renamed local")
 	}

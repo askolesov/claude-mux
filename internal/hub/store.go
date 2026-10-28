@@ -24,15 +24,19 @@ type hubState struct {
 	Update       updateState `json:"update"`
 	// ResumeDefault is the message every tab got when it started again,
 	// before v0.7 gave each tab its own. Kept for backends that haven't
-	// upgraded their backend.json yet (backend/migrations.go).
-	ResumeDefault backend.ResumeDefault `json:"resumeDefault,omitzero"`
+	// upgraded their backend.json yet (backend/migrations.go); the global
+	// message in Settings is a new setting, not this one.
+	ResumeDefault backend.StartupMessage `json:"resumeDefault,omitzero"`
 }
 
 // Settings are the hub's settings, set in the page.
 type Settings struct {
-	CheckUpdates bool            `json:"checkUpdates"`
-	EveryDays    int             `json:"everyDays"`
-	Page         json.RawMessage `json:"page,omitempty"` // the page's own settings, which the hub keeps without reading
+	CheckUpdates bool `json:"checkUpdates"`
+	EveryDays    int  `json:"everyDays"`
+	// StartupMessage is the global message: every tab gets it, before its
+	// own, when its claude starts again. Off unless set.
+	StartupMessage backend.StartupMessage `json:"startupMessage"`
+	Page           json.RawMessage        `json:"page,omitempty"` // the page's own settings, which the hub keeps without reading
 }
 
 func (s Settings) validate() error {

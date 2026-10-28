@@ -806,7 +806,7 @@ function streamHub() {
       applyPage();
     }
     refresh();
-    if ($("setDlg").open && !$("setDlg").contains(document.activeElement?.matches("input, select") ? document.activeElement : null)) renderSettings();
+    if ($("setDlg").open && !$("setDlg").contains(document.activeElement?.matches("input, select, textarea") ? document.activeElement : null)) renderSettings();
   };
 }
 
@@ -1191,6 +1191,7 @@ const sRow = (label, control) => `<div class="srow"><span>${label}</span>${contr
 function renderSettings() {
   const u = update || {};
   const s = hubSettings || {};
+  const startup = s.startupMessage || { enabled: false, message: "" };
   const days = s.everyDays || 1;
   let checked = checking ? "checking…" : u.lastCheck ? `checked ${dayAndTime(u.lastCheck)}` : "not checked yet";
   if (u.dev) checked = "a development build, which doesn't update";
@@ -1208,6 +1209,9 @@ function renderSettings() {
     ${sRow("Tab rows", segOf("tabRows", [["two", "Detailed"], ["one", "Compact"]]))}
     <div class="ssec">Tabs</div>
     ${pageSw("confirmClose", "Ask before closing a tab")}
+    ${swRow("Startup message for every tab", startup.enabled, `id="sStartup"`)}
+    <textarea id="sStartupText" class="stext" rows="2" aria-label="Startup message for every tab"
+      placeholder="Sent first, before a tab's own, whenever claude starts again in any tab" ${startup.enabled ? "" : "hidden"}>${esc(startup.message || "")}</textarea>
     <div class="ssec">Notifications</div>
     ${pageSw("notifyNeeds", "When a tab needs me")}
     ${pageSw("notifyReady", "When a tab finishes")}
@@ -1232,6 +1236,13 @@ $("sBody").addEventListener("click", async (e) => {
   if (font) { setPage({ termSize: Math.min(20, Math.max(10, page.termSize + Number(font.dataset.font))) }); renderSettings(); return; }
   if (t.closest("#sAllow")) { await Notification.requestPermission(); renderSettings(); return; }
   if (t.closest("#sCheck")) { saveSettings({ checkUpdates: !hubSettings?.checkUpdates }); renderSettings(); return; }
+  if (t.closest("#sStartup")) {
+    const was = hubSettings?.startupMessage || { enabled: false, message: "" };
+    saveSettings({ startupMessage: { ...was, enabled: !was.enabled } });
+    renderSettings();
+    if (!was.enabled) $("sStartupText").focus();
+    return;
+  }
   if (t.closest("#sNow")) {
     checking = true;
     renderSettings();
@@ -1243,6 +1254,10 @@ $("sBody").addEventListener("click", async (e) => {
   if (t.closest("#sApply")) { $("setDlg").close(); applyUpdate(); }
 });
 $("sLog").onclick = () => request("POST", "/hub/open-log").catch((err) => say(err.message));
+// The global startup message saves as it is typed (saveSettings waits for a pause).
+$("sBody").addEventListener("input", (e) => {
+  if (e.target.id === "sStartupText") saveSettings({ startupMessage: { enabled: true, message: e.target.value } });
+});
 $("sBody").addEventListener("change", (e) => {
   const t = e.target;
   if (t.id === "sTerm") setPage({ termTheme: t.value });

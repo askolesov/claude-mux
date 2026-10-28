@@ -76,8 +76,8 @@ which runs the backend on the other side:
 
 | Kind | The hub runs |
 |---|---|
-| `local` | `~/.claude-mux/bin/<version>/claude-mux-backend -state … -cwd … -resume …` |
-| `ssh` | `ssh -T -o BatchMode=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=3 <host> 'exec $HOME/.claude-mux/bin/<version>/claude-mux-backend -resume …'` |
+| `local` | `~/.claude-mux/bin/<version>/claude-mux-backend -state … -cwd … -global … -resume …` |
+| `ssh` | `ssh -T -o BatchMode=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=3 <host> 'exec $HOME/.claude-mux/bin/<version>/claude-mux-backend -global … -resume …'` |
 | `docker` | `docker exec -i <container> sh -c 'exec …'` |
 | `wsl` | `wsl.exe -d <distro> --exec sh -c 'exec …'` |
 
@@ -135,6 +135,7 @@ And a backend's, under `/env/<name>`:
 | `GET /api/state`, `GET /api/events` | the tabs, claude's path and version, the default directory; SSE on every change, which the hub follows |
 | `POST /api/sessions` | new tab |
 | `PUT /api/sessions/:id` | Tab settings: directory, args, startup message |
+| `PUT /api/global-message` | the global startup message, from the hub on every change |
 | `POST /api/groups`, `PUT /api/groups/:id`, `DELETE /api/groups/:id` | new group, rename, delete (its contents move up) |
 | `PUT /api/nodes/:id/place` | move a tab or a group: `{parent, before \| after}` |
 | `POST /api/sessions/:id/start`, `/restart`, `/seen`; `DELETE /api/sessions/:id` | lifecycle |
@@ -185,8 +186,9 @@ backend:
    there, the hub pipes the file through the same connection, `cat > ….tmp
    && chmod +x && mv`, then removes every other version under `bin/`. The
    environment needs no internet for this.
-4. The start command: `exec <bin> -resume <base64url>` (the resume default
-   from before v0.7, for upgrading an old `backend.json`; see Files).
+4. The start command: `exec <bin> -global <base64url> -resume <base64url>`:
+   the global startup message, and the resume default from before v0.7,
+   for upgrading an old `backend.json` (see Files).
 
 The local backend is installed the same way, into this machine's
 `~/.claude-mux/bin/<version>/`. It is always a fresh file renamed into
@@ -237,7 +239,7 @@ page loses nothing on screen.
 Starting a tab runs:
 
 ```
-claude [--resume <claudeSessionId>] --settings ~/.claude-mux/backend-hooks.json --name <name> <args…> [-- "<startup message>"]
+claude [--resume <claudeSessionId>] --settings ~/.claude-mux/backend-hooks.json --name <name> <args…> [-- "<startup prompt>"]
 ```
 
 in a pty (creack/pty; ConPTY through go-pty on Windows), 120×40 until the
@@ -324,17 +326,21 @@ The next backend starts every tab again, with `--resume`. Restart in Tab
 settings does the same for one tab: it hangs up its claude and starts it
 again once it has exited.
 
-**The startup message.** A resumed claude continues the conversation, but
+**Startup messages.** A resumed claude continues the conversation, but
 whatever ran in its old process (background shells, watchers, dev servers)
-is gone, and it doesn't know. A tab's startup message tells it, or restarts
-the watcher, as the first prompt after `--`.
+is gone, and it doesn't know. A startup message tells it, or restarts the
+watcher, as the first prompt after `--`. There are two, and a tab gets
+both, the global one first, a blank line between (`startupPrompt`):
 
-- Each tab has its own, set in New tab and Tab settings. New tab repeats
-  the last tab's.
-- It is never sent on a tab's first start, only when a conversation is
+- The global one, for every tab, is in Settings › Tabs, off unless set.
+  The hub keeps it in `hub.json` and gives it to a backend at launch
+  (`-global`) and on every change (`PUT /api/global-message`).
+- A tab's own is set in New tab and Tab settings. New tab repeats the last
+  tab's.
+- Neither is sent on a tab's first start, only when a conversation is
   resumed.
 - Before v0.7 the hub kept one default for every tab. A tab that followed
-  it got it as its own on upgrade.
+  it got it as its own on upgrade, so the global message starts empty.
 
 **Names.** A tab gets its name in New tab (the folder's, if left empty),
 and claude gets it with `--name`. After that the name is claude's:
@@ -501,7 +507,7 @@ Everything is in `~/.claude-mux/` (`-state` moves it). On this machine:
 
 | File | Written by | Holds |
 |---|---|---|
-| `hub.json` | hub | `version`, `settings` (update check, `page`), `environments` in sidebar order with `local` among them, `update` (last check), `resumeDefault` (see above) |
+| `hub.json` | hub | `version`, `settings` (update check, the global startup message, `page`), `environments` in sidebar order with `local` among them, `update` (last check), `resumeDefault` (see above) |
 | `hub.lock` | hub | its pid and address, locked while it runs |
 | `hub.log` | hub | its output and its backends', when started from Finder or Explorer |
 | `cache/<version>/` | hub | downloaded backend builds |

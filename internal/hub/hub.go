@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/askolesov/claude-mux/internal/backend"
 	"github.com/askolesov/claude-mux/internal/stream"
 )
 
@@ -62,7 +63,8 @@ func New(stateDir string, backends Backends, connectors Connectors, defaultCwd s
 
 func (h *Hub) newEnv(cfg EnvConfig) *Env {
 	prepare := func(step func(string)) ([]string, string, error) {
-		args := []string{"-resume", h.st.get().ResumeDefault.Flag()}
+		st := h.st.get()
+		args := []string{"-global", st.Settings.StartupMessage.Flag(), "-resume", st.ResumeDefault.Flag()}
 		if cfg.Kind != KindLocal {
 			return h.connectors.Prepare(cfg, h.backends, args, step)
 		}
@@ -76,7 +78,7 @@ func (h *Hub) newEnv(cfg EnvConfig) *Env {
 		bin, err := installLocal(src, filepath.Join(h.stateDir, "bin"), ver)
 		return append([]string{bin, "-state", h.stateDir, "-cwd", h.defaultCwd}, args...), plat, err
 	}
-	return newEnv(cfg, prepare, h.changes.Notify)
+	return newEnv(cfg, prepare, func() backend.StartupMessage { return h.st.get().Settings.StartupMessage }, h.changes.Notify)
 }
 
 // Start serves the page on addr and starts the environments' backends. The
@@ -132,7 +134,13 @@ func (h *Hub) SetSettings(s Settings) error {
 	if err := s.validate(); err != nil {
 		return err
 	}
+	was := h.st.get().Settings.StartupMessage
 	h.st.change(func(st *hubState) { st.Settings = s })
+	if s.StartupMessage != was {
+		for _, e := range h.list() {
+			go e.setGlobalMessage(s.StartupMessage)
+		}
+	}
 	h.changes.Notify()
 	return nil
 }

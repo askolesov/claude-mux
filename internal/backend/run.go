@@ -19,7 +19,7 @@ import (
 // Run serves the backend to the hub over stdin and stdout until the hub
 // closes them: the hub quit or the connection to it broke. It then hangs up
 // its sessions; they stay in backend.json, and the next start resumes them.
-func Run(stateDir, defaultCwd string, old ResumeDefault) error {
+func Run(stateDir, defaultCwd string, global, old StartupMessage) error {
 	lock, err := lockState(stateDir)
 	if err != nil {
 		return err
@@ -39,7 +39,7 @@ func Run(stateDir, defaultCwd string, old ResumeDefault) error {
 	_, _ = rand.Read(token)
 	hookURL := fmt.Sprintf("http://%s/hook/%s", hookLn.Addr(), hex.EncodeToString(token))
 
-	m, err := NewManager(stateDir, hookURL, exe, defaultCwd, old)
+	m, err := NewManager(stateDir, hookURL, exe, defaultCwd, global, old)
 	if err != nil {
 		return err
 	}

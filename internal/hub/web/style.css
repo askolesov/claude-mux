@@ -264,6 +264,7 @@ dialog pre { margin: 0; font: 11.5px/1.4 var(--mono); background: var(--term); b
 }
 .srow > :first-child { flex: 1; }
 .srow .quiet { color: var(--muted); }
+.stext { width: 100%; margin: 2px 0 8px; }
 .srow.every { gap: 8px; }
 .srow.every > :first-child { flex: none; }
 .srow.every .fill { flex: 1; }
