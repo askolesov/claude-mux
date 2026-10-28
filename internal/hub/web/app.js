@@ -227,7 +227,9 @@ const backendOf = (name) => env(name)?.backend;
 const sessionsOf = (name) => backendOf(name)?.sessions || [];
 const groupsIn = (name) => backendOf(name)?.groups || [];
 const groupOf = (name, id) => groupsIn(name).find((g) => g.id === id);
-const bold = (t) => t.key === selected || t.unseen || t.status === "needs-you";
+// dotClass is a tab's dot: its status, and the ring of "look at me" when it
+// finished and hasn't been seen (needs-you has its ring by status).
+const dotClass = (t) => (t.status === "ready" && t.unseen ? "ready unseen" : t.status);
 const rank = (t) => (t.status === "needs-you" ? 0 : t.status === "ready" && t.unseen ? 1 : 2);
 const hasClaude = (name) => !!backendOf(name)?.claude?.path;
 const canStart = (name) => env(name)?.state === "connected" && hasClaude(name);
@@ -285,9 +287,10 @@ function pathOf(name, parent) {
 }
 const placeOf = (name, parent) => [name, ...pathOf(name, parent).map((g) => g.name)].join(" / ");
 const crumbOf = (t) => placeOf(t.env, t.parent || "");
-// urgent is what a folded group shows: the most urgent status inside.
+// urgent is what a folded group shows: the most urgent tab's dot inside,
+// ring and all.
 function urgent(list) {
-  for (const [st, has] of [["needs-you", (t) => t.status === "needs-you"], ["ready", (t) => t.status === "ready" && t.unseen],
+  for (const [st, has] of [["needs-you", (t) => t.status === "needs-you"], ["ready unseen", (t) => t.status === "ready" && t.unseen],
     ["working", (t) => t.status === "working" || t.status === "starting"], ["ready", (t) => t.status === "ready"], ["exited", dead]]) {
     if (list.some(has)) return st;
   }
@@ -404,12 +407,12 @@ function envNote(e) {
 // A tab row: its dot, then its name and, in Detailed rows, its directory.
 function tabRow(t, depth, path) {
   const fid = "t:" + t.key;
-  const cls = ["trow", "tab", selected === t.key && "active", bold(t) && "bold", dead(t) && "dead"].filter(Boolean).join(" ");
+  const cls = ["trow", "tab", selected === t.key && "active", dead(t) && "dead"].filter(Boolean).join(" ");
   const mark = hasStartup(t) ? `<span class="mark" title="Startup message: ${esc(t.resumeMessage)}">↻</span>` : "";
   const name = `<span class="name">${esc(t.name)}</span>${mark}`;
   return `<div class="${cls}" role="treeitem" aria-level="${depth + 1}" aria-selected="${selected === t.key}" tabindex="-1" data-fid="${esc(fid)}" data-kind="tab" data-key="${esc(t.key)}" data-env="${esc(t.env)}" data-node="${esc(t.id)}" data-parent="${esc(t.parent || "")}" data-depth="${depth}" data-path="${esc(path.join("/"))}"
     style="padding-left:${pad(depth) + 4}px" title="${esc(STATUS_TEXT[t.status] || t.status)} for ${ago(t.statusSince)} · ${esc(home(t.cwd))}" draggable="true">${guides(depth)}
-    <span class="dot ${esc(t.status)}"></span><span class="lines"><span class="line1">${name}</span>
+    <span class="dot ${dotClass(t)}"></span><span class="lines"><span class="line1">${name}</span>
     ${page.tabRows === "one" ? "" : `<span class="cwd">${esc(home(t.cwd))}</span>`}</span></div>`;
 }
 
@@ -1302,7 +1305,7 @@ function renderPalette() {
     for (const t of found) {
       const n = vis.indexOf(t);
       const [word, colour] = statusWord(t);
-      html += item(`<span class="dot ${esc(t.status)}"></span><span class="name">${esc(t.name)}</span><span class="where">${esc(crumbOf(t))}</span>
+      html += item(`<span class="dot ${dotClass(t)}"></span><span class="name">${esc(t.name)}</span><span class="where">${esc(crumbOf(t))}</span>
         <span class="st" style="color:${colour}">${word}</span><kbd>${n < 9 ? "⌥" + (n + 1) : ""}</kbd>`);
     }
     if (actions.length) html += `<div class="sec">Actions</div>`;

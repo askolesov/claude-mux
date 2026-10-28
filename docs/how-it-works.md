@@ -300,8 +300,9 @@ shows it. The hook payload's `session_id` is kept as the tab's
 `claudeSessionId`: that is how a tab knows which conversation to resume,
 including after `/clear` starts a new one.
 
-The page shows each status as a dot: blue working, green ready, amber with
-a ring needs you, hollow exited or stopped. `stopped` is a tab the backend
+The page shows each status as a dot: blue working, green ready, hollow
+exited or stopped. A ring means "look at me": amber needs you, green
+finished unseen. `stopped` is a tab the backend
 loaded from `backend.json` but couldn't start yet, usually because claude
 isn't installed.
 
