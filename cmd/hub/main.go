@@ -55,10 +55,6 @@ func main() {
 		fmt.Println(version)
 		return
 	}
-	if gui {
-		logToFile(filepath.Join(stateDir, "hub.log"))
-		loginShellEnv()
-	}
 	if exe, err := os.Executable(); err == nil {
 		_ = os.Remove(exe + ".old") // what an update on Windows moved aside
 	}
@@ -76,6 +72,11 @@ func main() {
 			return
 		}
 		fail(fmt.Errorf("claude-mux is already running for %s (pid %s, http://%s)", stateDir, pid, other))
+	}
+	// Only the hub logs, so another window (above) doesn't empty its log.
+	if gui {
+		logToFile(filepath.Join(stateDir, "hub.log"))
+		loginShellEnv()
 	}
 	if err != nil {
 		fail(err)
@@ -96,9 +97,14 @@ func main() {
 		fail(err)
 	}
 	go func() { <-h.Restart(); cancel() }() // an update is installed
+	var windows windowProcs
+	h.NewWindow = windows.start
 	switch {
 	case !*headless:
 		window(ctx, url) // until the window closes
+		if ctx.Err() == nil {
+			windows.wait() // the hub goes on while windows of its own are open
+		}
 	case *open:
 		_ = sysproc.Open(url)
 		fallthrough

@@ -504,6 +504,9 @@ function ensureTerm(key) {
       return false;
     }
     if (e.key === "F4" && e.altKey) return false;
+    // Ctrl+V pastes on Windows and Linux, as in their terminals, so a
+    // screenshot goes through too; left to the terminal it is a bare ^V.
+    if (!isMac && e.ctrlKey && !e.altKey && !e.metaKey && e.code === "KeyV") return false;
     return true;
   });
   // In a tab whose claude exited, Enter resumes it.

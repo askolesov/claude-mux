@@ -43,6 +43,10 @@ type Hub struct {
 
 	changes stream.Notifier // wakes the page's event stream
 
+	// NewWindow opens another window onto the hub, as a process of its own
+	// (POST /hub/windows); nil where windows aren't processes.
+	NewWindow func() error
+
 	mu   sync.Mutex
 	envs []*Env
 }
@@ -302,6 +306,13 @@ func (h *Hub) Handler() http.Handler {
 		respond(c, gin.H{"version": h.version, "kinds": h.connectors.Kinds(), "stateDir": h.stateDir}, nil)
 	})
 	r.POST("/hub/open-log", func(c *gin.Context) { respond(c, nil, h.OpenLog()) })
+	r.POST("/hub/windows", func(c *gin.Context) {
+		if h.NewWindow == nil {
+			respond(c, nil, errors.New("this hub opens no windows of its own"))
+			return
+		}
+		respond(c, nil, h.NewWindow())
+	})
 	r.POST("/hub/pick-folder", func(c *gin.Context) {
 		var req struct {
 			Start string `json:"start"`
