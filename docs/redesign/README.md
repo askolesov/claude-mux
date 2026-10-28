@@ -192,13 +192,19 @@ growing and only the guides show the depth, so names keep their width.
 
 ## Status
 
-| State | Dot | Name |
-|---|---|---|
-| Working | blue `#7AA2F7` | regular |
-| Ready | green `#4FD18B` | regular |
-| Finished while you looked elsewhere | green | **bold** until opened |
-| Needs you (permission, question) | amber `#F5B14C` with a soft ring | **bold** |
-| Exited | hollow grey ring | grey |
+| State | Dot |
+|---|---|
+| Working | blue `#7AA2F7` |
+| Ready, seen | green `#4FD18B` |
+| Ready, **not seen yet** (claude finished while you looked elsewhere) | green with a soft green ring |
+| Needs you (permission, question) | amber `#F5B14C` with a soft amber ring |
+| Exited | hollow grey ring, grey name |
+
+One dot, one rule: **a ring means "look at me"**. Amber when claude waits
+for you, green when it finished and you haven't seen the result. Opening
+the tab clears the green ring. Names are not bolded for status; only the
+selected tab is. A collapsed group shows the dot (and ring) of its most
+urgent tab.
 
 The selected tab has a filled row background. The window title still counts
 what waits: `(2) claude-mux`.

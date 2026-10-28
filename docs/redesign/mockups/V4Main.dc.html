@@ -134,8 +134,8 @@ class Component extends DCLogic {
   renderVals() {
     const s = this.state || {};
         const THEMES = {
-      dark: { bg: '#0F1115', panel: '#14171C', line: '#252A33', field: '#1B1F26', sel: '#232834', term: '#0B0D10', termLine: '#1E222A', boxLine: '#3A3F4A', text: '#E6E8EC', text2: '#C4C9D3', muted: '#8A92A2', accent: '#7AA2F7', accentSoft: '#1B2233', pop: '#1B1F26', danger: '#F38B8B', accentText: '#AFC6FA', onAccent: '#0F1115', working: '#7AA2F7', ready: '#4FD18B', needs: '#F5B14C', halo: 'rgba(245,177,76,0.25)', exited: '#6B7383', exitedText: '#8A92A2', termText: '#D7DAE0', termDim: '#9098A8', termStrong: '#E6E8EC', mark: '#161A21', markFg: '#E6E8EC' },
-      light: { bg: '#FFFFFF', panel: '#F6F7F9', line: '#E3E6EB', field: '#ECEEF2', sel: '#E2E7F0', term: '#FBFBFC', termLine: '#E3E6EB', boxLine: '#C9CED8', text: '#1D2129', text2: '#3D4452', muted: '#626A7A', accent: '#2F5FD0', accentSoft: '#E8EEFB', pop: '#FFFFFF', danger: '#C93C3C', accentText: '#2A55BD', onAccent: '#FFFFFF', working: '#2F5FD0', ready: '#1F9D5C', needs: '#B86F0A', halo: 'rgba(184,111,10,0.2)', exited: '#9AA1AD', exitedText: '#7A8291', termText: '#2B303A', termDim: '#626A7A', termStrong: '#1D2129', mark: '#1D2129', markFg: '#FFFFFF' }
+      dark: { bg: '#0F1115', panel: '#14171C', line: '#252A33', field: '#1B1F26', sel: '#232834', term: '#0B0D10', termLine: '#1E222A', boxLine: '#3A3F4A', text: '#E6E8EC', text2: '#C4C9D3', muted: '#8A92A2', accent: '#7AA2F7', accentSoft: '#1B2233', pop: '#1B1F26', danger: '#F38B8B', accentText: '#AFC6FA', onAccent: '#0F1115', working: '#7AA2F7', ready: '#4FD18B', needs: '#F5B14C', readyHalo: 'rgba(79,209,139,0.25)', halo: 'rgba(245,177,76,0.25)', exited: '#6B7383', exitedText: '#8A92A2', termText: '#D7DAE0', termDim: '#9098A8', termStrong: '#E6E8EC', mark: '#161A21', markFg: '#E6E8EC' },
+      light: { bg: '#FFFFFF', panel: '#F6F7F9', line: '#E3E6EB', field: '#ECEEF2', sel: '#E2E7F0', term: '#FBFBFC', termLine: '#E3E6EB', boxLine: '#C9CED8', text: '#1D2129', text2: '#3D4452', muted: '#626A7A', accent: '#2F5FD0', accentSoft: '#E8EEFB', pop: '#FFFFFF', danger: '#C93C3C', accentText: '#2A55BD', onAccent: '#FFFFFF', working: '#2F5FD0', ready: '#1F9D5C', needs: '#B86F0A', readyHalo: 'rgba(31,157,92,0.2)', halo: 'rgba(184,111,10,0.2)', exited: '#9AA1AD', exitedText: '#7A8291', termText: '#2B303A', termDim: '#626A7A', termStrong: '#1D2129', mark: '#1D2129', markFg: '#FFFFFF' }
     };
     const c = THEMES[this.props.theme] || THEMES.dark;
     const twoLine = (this.props.rows || 'two') === 'two';
@@ -181,7 +181,8 @@ class Component extends DCLogic {
     const rankOf = (t) => t.status === 'needs' ? 4 : (t.unread ? 3 : RANK[t.status]);
     const dot = (t) => {
       if (t.status === 'exited') return 'width:8px;height:8px;border-radius:50%;border:1.5px solid ' + c.exited + ';box-sizing:border-box;flex:none';
-      const halo = t.status === 'needs' ? ';box-shadow:0 0 0 3px ' + c.halo : '';
+      // A ring means "look at me": amber when claude waits for you, green when it finished and you haven't seen it yet.
+      const halo = t.status === 'needs' ? ';box-shadow:0 0 0 3px ' + c.halo : (t.status === 'ready' && t.unread) ? ';box-shadow:0 0 0 3px ' + c.readyHalo : '';
       return 'width:8px;height:8px;border-radius:50%;flex:none;background:' + COL[t.status] + halo;
     };
     const collapsed = s.collapsed || { 'g-infra': true };
@@ -208,7 +209,7 @@ class Component extends DCLogic {
     };
     const dec = (t) => {
       const active = t.id === activeId;
-      const bold = active || t.unread || t.status === 'needs';
+      const bold = active;
       const path = pathOf[t.id] || [];
       return Object.assign({}, t, {
         name: t.id, startup: !!t.startup, twoLine: twoLine, env: envOf[t.id],
