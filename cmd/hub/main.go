@@ -97,14 +97,9 @@ func main() {
 		fail(err)
 	}
 	go func() { <-h.Restart(); cancel() }() // an update is installed
-	var windows windowProcs
-	h.NewWindow = windows.start
 	switch {
 	case !*headless:
-		window(ctx, url) // until the window closes
-		if ctx.Err() == nil {
-			windows.wait() // the hub goes on while windows of its own are open
-		}
+		window(ctx, url) // until the last window closes
 	case *open:
 		_ = sysproc.Open(url)
 		fallthrough

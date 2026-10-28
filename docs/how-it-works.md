@@ -116,7 +116,7 @@ The hub's own API is `/hub/...`:
 
 | Route | Does |
 |---|---|
-| `GET /hub/events` | SSE: version, platform, environments, update state, settings, on every change |
+| `GET /hub/ws` | WebSocket: version, platform, environments with each backend's state, update state, settings, on every change |
 | `GET /hub/info` | version, the kinds of environment this machine can add, the state directory |
 | `GET /hub/targets/:kind` | what can be added: hosts from `~/.ssh/config`, running containers, WSL distros |
 | `POST /hub/environments`, `PUT /hub/environments/:name`, `DELETE /hub/environments/:name` | add, rename (not local), remove |
@@ -131,7 +131,7 @@ And a backend's, under `/env/<name>`:
 
 | Route | Does |
 |---|---|
-| `GET /api/state`, `GET /api/events` | the tabs, claude's path and version, the default directory; SSE on every change |
+| `GET /api/state`, `GET /api/events` | the tabs, claude's path and version, the default directory; SSE on every change, which the hub follows |
 | `POST /api/sessions` | new tab |
 | `PUT /api/sessions/:id` | Tab settings: directory, args, startup message |
 | `POST /api/groups`, `PUT /api/groups/:id`, `DELETE /api/groups/:id` | new group, rename, delete (its contents move up) |
@@ -345,9 +345,14 @@ the sidebar.
 with nothing to build. xterm.js, its fit and web-links addons, Inter and
 JetBrains Mono are in `vendor/`, so the page needs no internet.
 
-- It holds one `EventSource` on `/hub/events`, and one on each connected
-  environment's `/api/events`. Every event is the whole state, not a diff.
-  The tab list is rebuilt from it each time.
+- It holds one WebSocket, `/hub/ws`, whatever the environments. The hub
+  follows each backend's `/api/events` once (`Env.follow`) and sends its
+  state on inside the environment's entry. Every message is the whole
+  state, not a diff, and the tab list is rebuilt from it each time. A
+  browser holds at most six plain HTTP connections to one server and
+  WebSockets don't count against them; with an event stream per
+  environment, a third window with two environments got none and stayed
+  blank.
 - A terminal is created the first time its tab is opened and kept, hidden,
   after that. Each has its own WebSocket, which reconnects with a growing
   pause.
@@ -382,7 +387,7 @@ JetBrains Mono are in `vendor/`, so the page needs no internet.
   backend (`/api/dirs`); its folder button, local only, asks the hub for
   the system picker (`osascript`, a PowerShell FolderBrowserDialog, or
   zenity / kdialog).
-- When `/hub/events` reports a different hub version (after an update),
+- When `/hub/ws` reports a different hub version (after an update),
   the page reloads.
 - The app's window is a bare web view, which answers `confirm()` and
   `alert()` without showing anything. The page uses its own dialogs
@@ -394,18 +399,14 @@ JetBrains Mono are in `vendor/`, so the page needs no internet.
 [webview_go](https://github.com/webview/webview_go): WKWebView on a Mac,
 WebView2 on Windows, WebKitGTK on Linux.
 
-- **More windows**: New window (⌘N) opens another window on the same
-  page (`cmuxNewWindow`). On a Mac it is another web view in the app. On
-  Windows and Linux, where a third web view in one process stayed blank,
-  the hub starts its own program again (`POST /hub/windows`), which finds
-  the hub running and shows its page; the hub goes on until the last of
-  these windows closes. Every window is a page of its own,
-  with its own selected tab (`sessionStorage`); they all show the same
-  backends live. They find each other on a `BroadcastChannel` and are
-  numbered in the order they were opened, 1 to N with no gaps, shown as
-  "2/3" while more than one is open; the first to see a status change
-  sends its notification. In a browser, New
-  window opens a browser window.
+- **More windows**: New window (⌘N) asks the hub (`cmuxNewWindow`) for
+  another web view on the same page, in the same app; they are made one
+  at a time. Every window is a page of its own, with its own selected tab
+  (`sessionStorage`); they all show the same backends live. They find each
+  other on a `BroadcastChannel` and are numbered in the order they were
+  opened, 1 to N with no gaps, shown as "2/3" while more than one is open;
+  the first to see a status change sends its notification. In a browser,
+  New window opens a browser window.
 - Closing the last window quits the hub; Quit (⌘Q) stops them all. The
   backends shut down the same way either way.
 
