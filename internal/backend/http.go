@@ -40,6 +40,7 @@ func NewHandler(m *Manager, defaultCwd string) http.Handler {
 	api.POST("/sessions/:id/restart", h.restart)
 	api.POST("/sessions/:id/seen", h.seen)
 	api.GET("/sessions/:id/term", h.term)
+	api.POST("/sessions/:id/files", h.saveFile)
 	api.POST("/groups", h.createGroup)
 	api.PUT("/groups/:id", h.renameGroup)
 	api.DELETE("/groups/:id", h.deleteGroup)
@@ -144,6 +145,22 @@ func (h *Handler) configure(c *gin.Context) {
 		return
 	}
 	respond(c, nil, h.m.Configure(c.Param("id"), expandHome(strings.TrimSpace(req.Cwd)), req.Resume, req.ResumeMessage, strings.Fields(req.Args)))
+}
+
+// saveFile keeps a file dropped or pasted into a tab, and answers its path
+// for the page to type in. The body is JSON, as the hub requires of writes.
+func (h *Handler) saveFile(c *gin.Context) {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxFile*2)
+	var req struct {
+		Name string `json:"name" binding:"required"`
+		Data []byte `json:"data"` // base64
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respond(c, nil, err)
+		return
+	}
+	path, err := h.m.SaveFile(c.Param("id"), req.Name, req.Data)
+	respond(c, gin.H{"path": path}, err)
 }
 
 // dirs completes a directory path as it is typed in New tab: the

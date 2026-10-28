@@ -115,6 +115,9 @@ back.
   between rows. The line shows where it lands, and its left edge the
   level: drag left or right to change it. ⌘⇧↑/↓ moves the selected row
   within its group, and Move to… puts a tab in any group.
+- **Files**: drop a file on the terminal, or paste a screenshot, and its
+  path is typed in for claude to attach. It is copied to the tab's
+  environment first, so this works on SSH hosts and in containers too.
 - **Tab rows** (Settings › Appearance): Detailed shows each tab's
   directory under its name, Compact only the name.
 - **Environments**: **Connect environment**, under the last one, adds one.
