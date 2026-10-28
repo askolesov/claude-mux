@@ -2,6 +2,9 @@ module github.com/askolesov/claude-mux
 
 go 1.27.2
 
+// ESLint's packages (npm install) aren't Go code of ours.
+ignore ./node_modules
+
 require (
 	github.com/aymanbagabas/go-pty v0.2.3
 	github.com/creack/pty v1.1.24

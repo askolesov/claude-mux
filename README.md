@@ -163,9 +163,12 @@ Go 1.27 or newer. The hub's window needs cgo and the system web view.
 
 ```sh
 scripts/restart.sh        # build the hub and every backend, restart a dev hub on :7777
-go test ./...
+scripts/check.sh          # every check CI runs: gofmt, vet, golangci-lint, ESLint, tests, -race
 scripts/macapp.sh v0.0.0 out   # build claude-mux.app
 ```
+
+The checks need [golangci-lint](https://golangci-lint.run) 2.x and Node,
+for ESLint (`npm install` once).
 
 A development build installs the backends you built (`-backend-dir`)
 instead of downloading them, and doesn't update itself. Releases are made by
