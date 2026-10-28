@@ -1,8 +1,8 @@
 const $ = (id) => document.getElementById(id);
 const store = {
   get(k) { try { return localStorage.getItem(k); } catch { return null; } },
-  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
-  remove(k) { try { localStorage.removeItem(k); } catch {} },
+  set(k, v) { try { localStorage.setItem(k, v); } catch { /* storage blocked: nothing is kept */ } },
+  remove(k) { try { localStorage.removeItem(k); } catch { /* storage blocked */ } },
 };
 const isMac = /Mac/.test(navigator.platform);
 const MOD = isMac ? "⌘" : "Ctrl+";
@@ -22,7 +22,7 @@ let selected = null;             // the selected tab's key
 // in any window (a new window starts on it).
 const selection = {
   get() { try { return sessionStorage.getItem("mux.selected"); } catch { return null; } },
-  set(k) { try { sessionStorage.setItem("mux.selected", k); } catch {} store.set("mux.selected", k); },
+  set(k) { try { sessionStorage.setItem("mux.selected", k); } catch { /* storage blocked */ } store.set("mux.selected", k); },
 };
 let pendingSelect = selection.get() || store.get("mux.selected"); // until its tab shows up
 const terms = new Map();         // tab key -> {term, fit, ws, el, closed}
@@ -168,7 +168,7 @@ async function request(method, url, body) {
     body: body ? JSON.stringify(body) : undefined,
   });
   let data = null;
-  try { data = res.status === 204 ? null : await res.json(); } catch {}
+  try { data = res.status === 204 ? null : await res.json(); } catch { /* not JSON: the status says it */ }
   if (!res.ok) {
     const err = new Error(data?.error || res.statusText);
     err.data = data;
@@ -206,8 +206,8 @@ function ago(ts) {
   if (s < 86400) return `${Math.floor(s / 3600)}h`;
   return `${Math.floor(s / 86400)}d`;
 }
-// when says when a time was: "today at 14:20", "yesterday at 9:05", or the date.
-function when(ts) {
+// dayAndTime says when a time was: "today at 14:20", "yesterday at 9:05", or the date.
+function dayAndTime(ts) {
   const d = new Date(ts);
   const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   const days = Math.round((new Date().setHours(0, 0, 0, 0) - new Date(ts).setHours(0, 0, 0, 0)) / 86400000);
@@ -315,11 +315,10 @@ function favicon(dot) {
 let drag = null;          // the tab or group being dragged: {env, id, kind}; renders wait for the drop
 let dragEnv = null;       // the environment being dragged, by its name
 let editing = null;       // the row being renamed: {fid, fresh}; fresh is a new group, which Esc removes
-let renderPending = false;
 let lastBadge = null;
 
 function render() {
-  if (drag || dragEnv) { renderPending = true; return; }
+  if (drag || dragEnv) return; // dragend renders
   const waitingCount = tabs.filter(waiting).length;
   const needs = tabs.some((t) => t.status === "needs-you");
   const name = winLabel() ? `claude-mux · ${winLabel()}` : "claude-mux";
@@ -592,8 +591,8 @@ function send(t, msg) {
 }
 
 function connect(key, t) {
-  const { env, id } = tab(key);
-  const ws = new WebSocket(`ws://${location.host}/env/${encodeURIComponent(env)}/api/sessions/${encodeURIComponent(id)}/term`);
+  const { env: name, id } = tab(key);
+  const ws = new WebSocket(`ws://${location.host}/env/${encodeURIComponent(name)}/api/sessions/${encodeURIComponent(id)}/term`);
   ws.binaryType = "arraybuffer";
   t.ws = ws;
   ws.onopen = () => {
@@ -1085,6 +1084,7 @@ async function envAct(what, name) {
       await streamLines(`/env/${encodeURIComponent(name)}/api/claude/install`, (msg) => {
         if (msg.out === undefined) { result = msg; return; }
         const out = $("iOut");
+        // eslint-disable-next-line no-control-regex -- the terminal escapes are what it strips
         out.textContent += msg.out.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "");
         out.scrollTop = out.scrollHeight;
       });
@@ -1145,11 +1145,11 @@ function renderSettings() {
   const u = update || {};
   const s = hubSettings || {};
   const days = s.everyDays || 1;
-  let checked = checking ? "checking…" : u.lastCheck ? `checked ${when(u.lastCheck)}` : "not checked yet";
+  let checked = checking ? "checking…" : u.lastCheck ? `checked ${dayAndTime(u.lastCheck)}` : "not checked yet";
   if (u.dev) checked = "a development build, which doesn't update";
   else if (u.error && !checking) checked += ` · <span title="${esc(u.error)}">the last check failed</span>`;
   const notifyAsk = !window.cmuxNotify && typeof Notification !== "undefined" && Notification.permission === "default";
-  const refresh = `<button type="button" class="icon-btn small ${checking ? "spin" : ""}" id="sNow" title="Check now" aria-label="Check now" ${u.dev || u.updating || checking ? "disabled" : ""}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 4v5h-5"/></svg></button>`;
+  const checkNow = `<button type="button" class="icon-btn small ${checking ? "spin" : ""}" id="sNow" title="Check now" aria-label="Check now" ${u.dev || u.updating || checking ? "disabled" : ""}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 4v5h-5"/></svg></button>`;
   const latest = u.updating ? `<span class="quiet">Updating: ${esc(u.step || "starting")}…</span>`
     : u.latest ? `<button type="button" class="btn small primary" id="sApply" title="Restarts claude-mux; every tab resumes">Update to ${esc(u.latest)}</button>` : "";
   $("sBody").innerHTML = `
@@ -1170,7 +1170,7 @@ function renderSettings() {
       <input id="sDays" class="num" type="number" min="1" max="365" value="${days}" aria-label="Days between checks" ${s.checkUpdates ? "" : "disabled"}>
       <span>${days === 1 ? "day" : "days"}</span><span class="fill"></span>
       <button type="button" class="switchbtn" role="switch" aria-checked="${!!s.checkUpdates}" aria-label="Check automatically" id="sCheck"><span class="switch"></span></button></div>
-    <div class="srow ver"><span>${esc(u.current || hubVersion)}</span><span class="quiet">· ${checked}</span>${u.dev ? "" : refresh}<span class="fill"></span>${latest}</div>`;
+    <div class="srow ver"><span>${esc(u.current || hubVersion)}</span><span class="quiet">· ${checked}</span>${u.dev ? "" : checkNow}<span class="fill"></span>${latest}</div>`;
   $("sState").textContent = hubInfo?.stateDir ? home(hubInfo.stateDir) : "~/.claude-mux";
 }
 
@@ -1178,8 +1178,8 @@ $("sBody").addEventListener("click", async (e) => {
   const t = e.target;
   const set = t.closest("[data-page-set]");
   if (set) { setPage({ [set.dataset.pageSet]: set.dataset.v }); renderSettings(); return; }
-  const toggle = t.closest("[data-page]");
-  if (toggle) { setPage({ [toggle.dataset.page]: !page[toggle.dataset.page] }); renderSettings(); return; }
+  const sw = t.closest("[data-page]");
+  if (sw) { setPage({ [sw.dataset.page]: !page[sw.dataset.page] }); renderSettings(); return; }
   const font = t.closest("[data-font]");
   if (font) { setPage({ termSize: Math.min(20, Math.max(10, page.termSize + Number(font.dataset.font))) }); renderSettings(); return; }
   if (t.closest("#sAllow")) { await Notification.requestPermission(); renderSettings(); return; }
@@ -1515,7 +1515,6 @@ $("list").addEventListener("drop", async (e) => {
 $("list").addEventListener("dragend", () => {
   dragEnv = null;
   drag = null;
-  renderPending = false;
   clearDrop();
   render();
 });

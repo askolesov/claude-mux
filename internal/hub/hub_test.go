@@ -70,7 +70,7 @@ func TestPageFiles(t *testing.T) {
 	handler := h.Handler()
 	for _, path := range []string{"/", "/app.js", "/style.css", "/vendor/xterm.js", "/vendor/xterm.css", "/vendor/inter.woff2"} {
 		rec := httptest.NewRecorder()
-		handler.ServeHTTP(rec, httptest.NewRequest("GET", "http://127.0.0.1:7777"+path, nil))
+		handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "http://127.0.0.1:7777"+path, nil))
 		if rec.Code != http.StatusOK || rec.Body.Len() == 0 {
 			t.Errorf("%s: %d, %d bytes", path, rec.Code, rec.Body.Len())
 		}

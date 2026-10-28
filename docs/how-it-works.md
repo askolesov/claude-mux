@@ -44,7 +44,7 @@ internal/migrate/     the state files: versioned upgrade steps, atomic writes
 internal/lockfile/    one process per state directory (flock / LockFileEx)
 internal/sysproc/     starting helper processes: no console window on Windows, detached relaunch
 assets/icon/          the icon: SVG sources, rendered PNGs, AppIcon.icns, Windows resources
-scripts/              restart.sh (dev hub), macapp.sh (the .app), icons.sh
+scripts/              restart.sh (dev hub), check.sh (what CI checks), macapp.sh (the .app), icons.sh
 ```
 
 Every process involved, when one SSH environment is added:
@@ -546,8 +546,19 @@ It shares `~/.claude-mux` with the installed app, so quit the app first.
 Run it from a regular terminal, not from a tab: the restart hangs that tab
 up too.
 
-CI (`.github/workflows/ci.yml`) checks gofmt, runs vet for linux, darwin
-and windows, and runs the tests.
+CI (`.github/workflows/ci.yml`) runs on every push to main and every PR,
+and `scripts/check.sh` runs the same checks locally:
+
+| Job | Checks |
+|---|---|
+| go (ubuntu) | gofmt; vet for linux, windows and darwin; the tests, and the internals again with `-race` |
+| lint (ubuntu) | golangci-lint (`.golangci.yml`) for linux and windows; ESLint on the page (`eslint.config.js`) |
+| mac | the hub with its window (cgo): vet, build, tests with `-race` |
+
+Dependabot (`.github/dependabot.yml`) proposes updates to the Go modules,
+the actions and ESLint weekly, one PR each. ESLint is the only Node in the
+repo (`package.json`); nothing of it is built or shipped, and `go.mod`
+ignores `node_modules`.
 
 A `v*` tag runs `release.yml`:
 
