@@ -43,10 +43,6 @@ type Hub struct {
 
 	changes stream.Notifier // wakes the page's event stream
 
-	// NewWindow opens another window onto the hub, as a process of its own
-	// (POST /hub/windows); nil where windows aren't processes.
-	NewWindow func() error
-
 	mu   sync.Mutex
 	envs []*Env
 }
@@ -301,18 +297,11 @@ func (h *Hub) Handler() http.Handler {
 	r.StaticFileFS("/style.css", "style.css", http.FS(web))
 	r.StaticFS("/vendor", http.FS(vendor))
 
-	r.GET("/hub/events", h.events)
+	r.GET("/hub/ws", func(c *gin.Context) { stream.WebSocket(c, &h.changes, h.snapshot) })
 	r.GET("/hub/info", func(c *gin.Context) {
 		respond(c, gin.H{"version": h.version, "kinds": h.connectors.Kinds(), "stateDir": h.stateDir}, nil)
 	})
 	r.POST("/hub/open-log", func(c *gin.Context) { respond(c, nil, h.OpenLog()) })
-	r.POST("/hub/windows", func(c *gin.Context) {
-		if h.NewWindow == nil {
-			respond(c, nil, errors.New("this hub opens no windows of its own"))
-			return
-		}
-		respond(c, nil, h.NewWindow())
-	})
 	r.POST("/hub/pick-folder", func(c *gin.Context) {
 		var req struct {
 			Start string `json:"start"`
@@ -405,13 +394,12 @@ func (h *Hub) applyUpdate(c *gin.Context) {
 	out.End(h.updates.Apply(func(step string) { out.Send(gin.H{"step": step}) }))
 }
 
-// events streams the environments, the update state and the settings on
-// every change.
-func (h *Hub) events(c *gin.Context) {
-	stream.Events(c, &h.changes, func() any {
-		return gin.H{"version": h.version, "platform": runtime.GOOS + "-" + runtime.GOARCH,
-			"envs": h.views(), "update": h.updates.View(), "settings": h.st.get().Settings}
-	})
+// snapshot is everything the page shows, sent on every change (/hub/ws):
+// the environments with each backend's own state, the update state and the
+// settings.
+func (h *Hub) snapshot() any {
+	return gin.H{"version": h.version, "platform": runtime.GOOS + "-" + runtime.GOARCH,
+		"envs": h.views(), "update": h.updates.View(), "settings": h.st.get().Settings}
 }
 
 // localOnly turns away requests that didn't come from this machine's own

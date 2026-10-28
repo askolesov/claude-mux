@@ -1,6 +1,7 @@
-// Package stream pushes state to the page as it changes: server-sent events
-// of a whole snapshot on every change, and JSON lines for the progress of a
-// long request. The hub and every backend serve both.
+// Package stream pushes state as it changes: a whole snapshot on every
+// change, as server-sent events (a backend's, which the hub follows) or over
+// a WebSocket (the hub's, which every window of the page holds), and JSON
+// lines for the progress of a long request.
 package stream
 
 import (
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 )
 
 // Notifier wakes the event streams when the state they show changed.
@@ -67,6 +69,47 @@ func Events(c *gin.Context, n *Notifier, snapshot func() any) {
 			return
 		case <-sub:
 		case <-ping.C:
+		}
+	}
+}
+
+// The default CheckOrigin rejects cross-origin upgrades, so another site
+// open in the browser can't follow the state.
+var upgrader = websocket.Upgrader{}
+
+// WebSocket streams snapshot() over a WebSocket, as JSON text messages:
+// once now, then on every Notify, with a ping every 20 s to keep it alive.
+// A browser holds at most six plain HTTP connections to one server, which
+// server-sent events count against and WebSockets don't: every window of
+// the page holds one of these.
+func WebSocket(c *gin.Context, n *Notifier, snapshot func() any) {
+	ws, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+	if err != nil {
+		return // Upgrade has answered
+	}
+	defer func() { _ = ws.Close() }()
+	sub := n.subscribe()
+	defer n.unsubscribe(sub)
+	// The page sends nothing; reading notices that it went away.
+	gone := make(chan struct{})
+	go func() {
+		defer close(gone)
+		for {
+			if _, _, err := ws.ReadMessage(); err != nil {
+				return
+			}
+		}
+	}()
+	ping := time.NewTicker(20 * time.Second)
+	defer ping.Stop()
+	for err := ws.WriteJSON(snapshot()); err == nil; {
+		select {
+		case <-gone:
+			return
+		case <-sub:
+			err = ws.WriteJSON(snapshot())
+		case <-ping.C:
+			err = ws.WriteControl(websocket.PingMessage, nil, time.Now().Add(5*time.Second))
 		}
 	}
 }

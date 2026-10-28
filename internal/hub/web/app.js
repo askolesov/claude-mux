@@ -15,7 +15,6 @@ let hubSettings = null;          // {checkUpdates, everyDays, page}
 let hubVersion = "", hubPlatform = "";
 let hubInfo = null;              // {version, kinds, stateDir}
 const envData = new Map();       // environment -> its backend's state: {claude, sessions, groups, defaultCwd}
-const streams = new Map();       // environment -> EventSource of its backend's state
 let tabs = [];                   // every environment's tabs in sidebar order: {...session, env, key}
 let selected = null;             // the selected tab's key
 // The selection is per window: this window's own, or else the last one made
@@ -756,31 +755,20 @@ function refresh() {
   if ($("palette").classList.contains("open")) renderPalette();
 }
 
-// Each connected environment streams its backend's state; one that goes
-// away takes its tabs with it.
-function syncStreams() {
-  for (const e of envs) {
-    const es = streams.get(e.name);
-    if (e.state !== "connected" || (es && es.readyState !== EventSource.CLOSED)) continue;
-    const next = new EventSource(`/env/${encodeURIComponent(e.name)}/api/events`);
-    next.onmessage = (m) => {
-      const st = JSON.parse(m.data);
-      envData.set(e.name, { ...st, sessions: st.sessions || [] });
-      refresh();
-    };
-    streams.set(e.name, next);
-  }
-  for (const [name, es] of streams) {
-    if (env(name)) continue;
-    es.close();
-    streams.delete(name);
-    envData.delete(name);
-  }
-}
-
+// streamHub follows the hub's state over one WebSocket: the environments,
+// each with its backend's own state, the update state and the settings. One
+// per window, whatever the environments: a browser holds at most six plain
+// HTTP connections to a server, and WebSockets don't count against them. A
+// WebSocket doesn't reconnect by itself, so this does, with a growing pause.
+let hubRetry = 0;
 function streamHub() {
-  const es = new EventSource("/hub/events");
-  es.onmessage = (m) => {
+  const ws = new WebSocket(`ws://${location.host}/hub/ws`);
+  ws.onopen = () => { hubRetry = 0; };
+  ws.onclose = () => {
+    hubRetry = Math.min(hubRetry + 1, 6);
+    setTimeout(streamHub, 500 * hubRetry);
+  };
+  ws.onmessage = (m) => {
     const hub = JSON.parse(m.data);
     // A new hub (an update, a restart) serves a new page.
     if (hubVersion && hub.version !== hubVersion) { location.reload(); return; }
@@ -796,7 +784,8 @@ function streamHub() {
       if (!hub.settings?.page || saved.version !== page.version) saveSettings({});
       applyPage();
     }
-    syncStreams();
+    envData.clear();
+    for (const e of envs) if (e.backend) envData.set(e.name, { ...e.backend, sessions: e.backend.sessions || [] });
     refresh();
     if ($("setDlg").open && !$("setDlg").contains(document.activeElement?.matches("input, select") ? document.activeElement : null)) renderSettings();
   };

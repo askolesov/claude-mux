@@ -1,8 +1,10 @@
 package hub
 
 import (
+	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -53,6 +55,9 @@ type EnvView struct {
 	Latency  int    `json:"latency,omitempty"`  // ms, the last ping
 	Step     string `json:"step,omitempty"`     // while connecting: what it is doing
 	Error    string `json:"error,omitempty"`
+	// Backend is the backend's own state (its tabs, groups, claude), as
+	// its event stream last sent it; kept while it reconnects.
+	Backend json.RawMessage `json:"backend,omitempty"`
 }
 
 // Env is one environment: a backend the hub runs as its child and talks to
@@ -71,6 +76,7 @@ type Env struct {
 	latency   time.Duration
 	reconnect bool // the next exit is a reconnect, not a failure
 	err       string
+	backend   json.RawMessage // see EnvView
 
 	quit chan struct{} // closed by Close
 	done chan struct{} // closed when Supervise returns
@@ -113,7 +119,7 @@ func (e *Env) View() EnvView {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return EnvView{EnvConfig: e.cfg, State: e.state, Platform: e.platform, Latency: int(e.latency.Milliseconds()),
-		Step: e.step, Error: e.err}
+		Step: e.step, Error: e.err, Backend: e.backend}
 }
 
 func (e *Env) setState(state, err string) {
@@ -255,6 +261,7 @@ func (e *Env) run() error {
 		}
 		e.setLatency(rtt)
 		e.setState(StateConnected, "")
+		go e.follow(session)
 		for {
 			select {
 			case <-session.CloseChan():
@@ -279,6 +286,54 @@ func (e *Env) run() error {
 		err = errors.New("the backend exited")
 	}
 	return err
+}
+
+// follow keeps the backend's state from its event stream, until the
+// session closes: the hub follows each backend once, however many windows
+// show it, and sends it on in its own stream.
+func (e *Env) follow(session *yamux.Session) {
+	client := &http.Client{Transport: &http.Transport{
+		DialContext: func(context.Context, string, string) (net.Conn, error) { return session.Open() },
+	}}
+	defer client.CloseIdleConnections()
+	for {
+		err := e.readState(client)
+		select {
+		case <-session.CloseChan():
+			return
+		case <-time.After(time.Second):
+		}
+		fmt.Fprintf(os.Stderr, "env %s: its state stream ended (%v); following it again\n", e.Config().Name, err)
+	}
+}
+
+// readState reads the backend's event stream, keeping each state it sends,
+// until the stream ends.
+func (e *Env) readState(client *http.Client) error {
+	res, err := client.Get("http://backend/api/events")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = res.Body.Close() }()
+	if res.StatusCode != http.StatusOK {
+		return errors.New(res.Status)
+	}
+	lines := bufio.NewScanner(res.Body)
+	lines.Buffer(make([]byte, 64<<10), 64<<20) // a state is one line, long with many tabs
+	for lines.Scan() {
+		data, ok := bytes.CutPrefix(lines.Bytes(), []byte("data: "))
+		if !ok {
+			continue
+		}
+		e.mu.Lock()
+		e.backend = append(json.RawMessage(nil), data...)
+		e.mu.Unlock()
+		e.onChange()
+	}
+	if err := lines.Err(); err != nil {
+		return err
+	}
+	return io.EOF
 }
 
 // Close ends the backend the way a quitting hub does: it closes the pipe, so

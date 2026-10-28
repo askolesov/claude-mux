@@ -22,9 +22,9 @@ func window(ctx context.Context, url string) {
 	var all []webview.WebView
 	// Making a window waits for its web view inside a message loop of its
 	// own, which runs dispatched calls too: a New window handled there would
-	// be made inside that wait, and on Windows leave this window blank. So a
-	// call while one is being made only counts itself (queued), and the
-	// outer call makes it once the window before is done.
+	// start a web view inside another's setup. So a call while one is being
+	// made only counts itself (queued), and the outer call makes it once the
+	// window before is done.
 	making, queued := false, 0
 	var open, make1 func()
 	open = func() {
@@ -47,7 +47,7 @@ func window(ctx context.Context, url string) {
 		_ = w.Bind("cmuxOpen", openLink)
 		_ = w.Bind("cmuxPaths", filePaths)
 		_ = w.Bind("cmuxBadge", func(label string) { w.Dispatch(func() { badge(label) }) })
-		_ = w.Bind("cmuxNewWindow", func() { newWindow(w, open, url) })
+		_ = w.Bind("cmuxNewWindow", func() { w.Dispatch(open) })
 		w.Navigate(url)
 	}
 	open()

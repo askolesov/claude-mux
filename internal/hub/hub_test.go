@@ -5,6 +5,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/gorilla/websocket"
 )
 
 func TestLocalOnly(t *testing.T) {
@@ -125,5 +127,45 @@ func TestRespond(t *testing.T) {
 				t.Errorf("got %d %s, want %d", rec.Code, rec.Body, c.want)
 			}
 		})
+	}
+}
+
+func TestStateStream(t *testing.T) {
+	h, err := New(t.TempDir(), Backends{}, Connectors{}, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(h.Handler())
+	defer srv.Close()
+	url := "ws" + strings.TrimPrefix(srv.URL, "http") + "/hub/ws"
+	ws, res, err := websocket.DefaultDialer.Dial(url, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = res.Body.Close()
+	defer func() { _ = ws.Close() }()
+	var got struct {
+		Envs []EnvView `json:"envs"`
+	}
+	if err := ws.ReadJSON(&got); err != nil || len(got.Envs) != 1 || got.Envs[0].Name != "local" {
+		t.Fatalf("first state %+v, %v", got, err)
+	}
+	// A change sends the state again.
+	if err := h.SetSettings(Settings{CheckUpdates: false, EveryDays: 2}); err != nil {
+		t.Fatal(err)
+	}
+	var next struct {
+		Settings Settings `json:"settings"`
+	}
+	if err := ws.ReadJSON(&next); err != nil || next.Settings.EveryDays != 2 {
+		t.Errorf("after a change %+v, %v", next, err)
+	}
+	// Another site's page can't follow it.
+	_, res, err = websocket.DefaultDialer.Dial(url, http.Header{"Origin": {"http://evil.example"}})
+	if err == nil || res == nil || res.StatusCode != http.StatusForbidden {
+		t.Errorf("a foreign origin got in: %v", err)
+	}
+	if res != nil {
+		_ = res.Body.Close()
 	}
 }
