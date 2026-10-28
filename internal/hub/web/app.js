@@ -507,6 +507,16 @@ function ensureTerm(key) {
     // Ctrl+V pastes on Windows and Linux, as in their terminals, so a
     // screenshot goes through too; left to the terminal it is a bare ^V.
     if (!isMac && e.ctrlKey && !e.altKey && !e.metaKey && e.code === "KeyV") return false;
+    // Copying as in Windows Terminal: Ctrl+Shift+C copies the selection, and
+    // so does Ctrl+C while there is one; without one Ctrl+C interrupts.
+    if (!isMac && e.ctrlKey && !e.altKey && !e.metaKey && e.code === "KeyC" && (e.shiftKey || term.hasSelection())) {
+      if (e.type === "keydown") {
+        e.preventDefault();
+        if (term.hasSelection()) copyText(term.getSelection());
+        if (!e.shiftKey) term.clearSelection();
+      }
+      return false;
+    }
     return true;
   });
   // In a tab whose claude exited, Enter resumes it.
