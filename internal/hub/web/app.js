@@ -225,14 +225,14 @@ function ago(ts) {
   if (s < 86400) return `${Math.floor(s / 3600)}h`;
   return `${Math.floor(s / 86400)}d`;
 }
-// dayAndTime says when a time was: "today at 14:20", "yesterday at 9:05", or the date.
+// dayAndTime says when a time was: "today, 14:20", "yesterday, 9:05", or the date.
 function dayAndTime(ts) {
   const d = new Date(ts);
   const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   const days = Math.round((new Date().setHours(0, 0, 0, 0) - new Date(ts).setHours(0, 0, 0, 0)) / 86400000);
-  if (days === 0) return `today at ${time}`;
-  if (days === 1) return `yesterday at ${time}`;
-  return `${d.toLocaleDateString([], { month: "short", day: "numeric" })} at ${time}`;
+  if (days === 0) return `today, ${time}`;
+  if (days === 1) return `yesterday, ${time}`;
+  return `${d.toLocaleDateString([], { month: "short", day: "numeric" })}, ${time}`;
 }
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const home = (p) => String(p || "").replace(/^\/(Users|home)\/[^/]+/, "~");
@@ -250,12 +250,12 @@ const groupsIn = (name) => backendOf(name)?.groups || [];
 const groupOf = (name, id) => groupsIn(name).find((g) => g.id === id);
 const rank = (t) => (t.status === "needs-you" ? 0 : t.status === "ready" && t.unseen ? 1 : 2);
 const hasAgent = (name, kind) => !!backendOf(name)?.agents?.[kind]?.path;
-const hasClaude = (name) => hasAgent(name, "claude");
 // canStart: the environment can start a tab of kind; a terminal needs no agent.
 const canStart = (name, kind = "claude") => env(name)?.state === "connected" && (kind === "terminal" || hasAgent(name, kind));
-// health: ok (connected, with claude), problem (failed, or no claude) or connecting.
+// health: ok (connected), problem (failed) or connecting. A missing agent
+// isn't the environment's problem: it is asked about when a tab of it starts.
 function health(e) {
-  if (e.state === "connected") return backendOf(e.name) && !hasClaude(e.name) ? "problem" : "ok";
+  if (e.state === "connected") return "ok";
   return e.state === "failed" ? "problem" : "connecting";
 }
 // envMeta is an environment's details, for its name's hover.
@@ -274,9 +274,7 @@ function kindLabel(e) {
 // envWord is the state beside the dot, only when something is wrong; a
 // folded environment shows it, an open one says it in its note.
 function envWord(e) {
-  if (e.state === "failed") return "disconnected";
-  if (e.state === "connected" && backendOf(e.name) && !hasClaude(e.name)) return "no claude";
-  return "";
+  return e.state === "failed" ? "disconnected" : "";
 }
 const CHEVRON = `<svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>`;
 const PLUG = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 2v5M15 2v5M6 7h12v4a6 6 0 0 1-12 0zM12 17v5"/></svg>`;
@@ -453,9 +451,6 @@ function envNote(e) {
   const n = esc(e.name);
   if (e.state === "failed") return `<div class="envnote problem">${esc(e.error)} · <button class="link" data-env-act="reconnect" data-env="${n}">Reconnect</button></div>`;
   if (e.state === "connecting") return `<div class="envnote">${esc(e.step ? e.step + "…" : "Connecting…")}</div>`;
-  if (backendOf(e.name) && !hasClaude(e.name)) {
-    return `<div class="envnote">No claude · <button class="link" data-env-act="install" data-env="${n}">Install</button> · <button class="link" data-env-act="retry" data-env="${n}">Look again</button></div>`;
-  }
   return "";
 }
 
@@ -464,7 +459,7 @@ function tabRow(t, depth, path) {
   const fid = "t:" + t.key;
   const cls = ["trow", "tab", selected === t.key && "active", dead(t) && "dead"].filter(Boolean).join(" ");
   const mark = hasStartup(t) ? `<span class="mark" title="Startup message: ${esc(t.resumeMessage)}">↻</span>` : "";
-  const name = `<span class="name">${esc(t.name)}</span>${mark}`;
+  const name = editing?.fid === fid ? renameBox(fid, t.name, "Tab name") : `<span class="name">${esc(t.name)}</span>${mark}`;
   return `<div class="${cls}" role="treeitem" aria-level="${depth + 1}" aria-selected="${selected === t.key}" tabindex="-1" data-fid="${esc(fid)}" data-kind="tab" data-key="${esc(t.key)}" data-env="${esc(t.env)}" data-node="${esc(t.id)}" data-parent="${esc(t.parent || "")}" data-depth="${depth}" data-path="${esc(path.join("/"))}"
     style="padding-left:${pad(depth) + 4}px" title="${esc(STATUS_TEXT[t.status] || t.status)} for ${ago(t.statusSince)} · ${esc(home(t.cwd))}" draggable="true">${guides(depth)}
     ${glyph(t.kind, t)}<span class="lines"><span class="line1">${name}</span>
@@ -918,6 +913,7 @@ function renderDlg() {
   const dirty = $("tCwd").value.trim() !== o.cwd || dlgArgs() !== o.args;
   dlg.restart = dirty && t && !dead(t);
   $("tNotice").hidden = !dlg.restart;
+  $("tNoticeText").textContent = `Saving restarts ${{ codex: "codex", terminal: "the shell" }[dlg.kind] || "claude"} in this tab.${dlg.kind === "terminal" ? "" : " The conversation continues where it was."}`;
   $("tOk").textContent = dlg.restart ? "Save and restart" : "Save";
 }
 for (const id of ["tArgs", "tCwd", "tStartup"]) $(id).addEventListener("input", renderDlg);
@@ -996,6 +992,10 @@ function openNew(at = {}, kind = page.lastKind || "claude") {
     if (at.env || !e) { say(at.env ? `${at.env} can't start a tab: ${envWord(env(at.env)) || "it isn't connected yet"}.` : "No environment can start a tab yet."); return; }
     where = { env: e.name, parent: "", after: "" };
   }
+  if (kind !== "terminal" && backendOf(where.env) && !hasAgent(where.env, kind)) {
+    openMissing(where.env, kind, () => openNew(where, kind));
+    return;
+  }
   dlg = { mode: "new", kind, env: where.env, parent: where.parent || "", after: where.after || "", argsOpen: false };
   pickKind(kind);
   $("tMeta").textContent = "in " + placeOf(where.env, dlg.parent);
@@ -1031,8 +1031,6 @@ function openTabSettings(key) {
   $("tTitle").textContent = "Tab settings";
   $("tMeta").textContent = [crumbOf(t), t.agentSessionId && "session " + t.agentSessionId.slice(0, 8)].filter(Boolean).join(" · ");
   $("tName").value = t.name;
-  $("tName").readOnly = true;
-  $("tName").title = "Type /rename <name> in the tab to rename it";
   $("tCwd").value = home(t.cwd);
   $("tStartup").value = t.resumeMessage || "";
   $("tArgs").value = rest;
@@ -1052,6 +1050,8 @@ $("tabForm").addEventListener("submit", async (e) => {
     if (dlg.mode === "edit") {
       const t = tab(dlg.key);
       const o = dlg.orig;
+      const newName = $("tName").value.trim();
+      if (newName && newName !== t.name) await renameTab(t, newName);
       if (body.cwd !== o.cwd || dlg.startup !== o.startup || message !== o.message || body.args !== o.args) {
         if (dlg.restart && t.status === "working" && !(await sure(`Restart ${t.name}?`, "It is working: the turn in progress is cut off. Its conversation continues.", "Save and restart"))) return;
         await api(t.env, "PUT", `/api/sessions/${t.id}`, body);
@@ -1155,13 +1155,15 @@ function openEnvSettings(name) {
 function renderEnvFacts() {
   const e = env(envDlgName);
   if (!e) { $("envDlg").close(); return; }
-  const c = backendOf(e.name)?.agents?.claude;
   const n = tabs.filter((t) => t.env === e.name).length;
   const status = e.state === "connected" ? (e.kind === "local" ? "connected" : `connected · ${e.latency || "<1"} ms`)
     : e.state === "failed" ? `disconnected: ${e.error}` : e.step ? e.step + "…" : "connecting…";
-  const claude = !backendOf(e.name) ? "" : c?.path ? `${esc(c.version || "")} <span class="mono">${esc(home(c.path))}</span>`
-    : `not installed · <button type="button" class="link" data-env-act="install" data-env="${esc(e.name)}">Install</button>`;
-  const facts = [["Status", esc(status)], ["Platform", esc((e.platform || "").replace("-", "/"))], ["Claude", claude], ["Tabs", String(n)]];
+  const agent = (kind) => {
+    const a = backendOf(e.name)?.agents?.[kind];
+    if (!backendOf(e.name)) return "";
+    return a?.path ? `${esc(a.version || "")} <span class="mono">${esc(home(a.path))}</span>` : "not installed";
+  };
+  const facts = [["Status", esc(status)], ["Platform", esc((e.platform || "").replace("-", "/"))], ["Claude", agent("claude")], ["Codex", agent("codex")], ["Tabs", String(n)]];
   $("eFacts").innerHTML = facts.filter(([, v]) => v).map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join("");
 }
 $("eFacts").addEventListener("click", (e) => {
@@ -1185,9 +1187,8 @@ async function renameEnv(from, to) {
   renameEnvKeys(from, to);
 }
 
-// Install, look for claude again, reconnect, remove.
+// Reconnect, remove, settings.
 async function envAct(what, name) {
-  if (what === "retry") { await api(name, "POST", "/api/agents/claude/check").catch((err) => say(err.message)); return; }
   if (what === "reconnect") {
     const n = tabs.filter((t) => t.env === name).length;
     if (n && !(await sure(`Reconnect ${name}?`, `Its backend starts again: its ${n} tab${n > 1 ? "s are" : " is"} hung up and resumed.`, "Reconnect"))) return;
@@ -1200,19 +1201,39 @@ async function envAct(what, name) {
     }
     return;
   }
-  if (what === "settings") { openEnvSettings(name); return; }
-  $("iTitle").textContent = `Install claude on ${name}`;
-  $("iCmd").textContent = backendOf(name)?.agents?.claude?.installer || "";
+  if (what === "settings") openEnvSettings(name);
+}
+
+// openMissing asks to install an agent an environment hasn't got, the first
+// time a tab of it starts there, and goes on to New tab (next) once it is.
+function openMissing(name, kind, next) {
+  const label = TAB_KIND_TEXT[kind];
+  const installer = backendOf(name)?.agents?.[kind]?.installer || "";
+  $("iTitle").textContent = `${label} isn't installed on ${name}`;
+  $("iMeta").textContent = envMeta(env(name));
+  $("iIntro").textContent = installer ? `Install it there to start a ${label} tab. This runs the official installer:` : `Install it there by hand to start a ${label} tab.`;
+  $("iCmd").textContent = installer;
+  $("iCmd").hidden = !installer;
+  $("iState").textContent = "Installed it yourself just now? Check again.";
   $("iOut").textContent = "";
   $("iOut").hidden = true;
-  $("iRun").hidden = false;
+  $("iRun").hidden = !installer;
   $("iRun").disabled = false;
-  $("iClose").textContent = "Cancel";
-  $("iState").textContent = "";
+  $("iCheck").hidden = false;
+  const done = () => { $("installDlg").close(); next(); };
+  $("iCheck").onclick = async () => {
+    try {
+      const a = await api(name, "POST", `/api/agents/${kind}/check`);
+      if (a?.path) done();
+      else $("iState").textContent = `Still no ${kind} on ${name}.`;
+    } catch (err) {
+      $("iState").textContent = err.message;
+    }
+  };
   $("iRun").onclick = async () => {
     $("iRun").disabled = true;
+    $("iCheck").hidden = true;
     $("iOut").hidden = false;
-    $("iOut").textContent = "";
     const started = Date.now();
     const tick = () => { $("iState").textContent = `Installing… ${Math.round((Date.now() - started) / 1000)} s`; };
     tick();
@@ -1220,7 +1241,7 @@ async function envAct(what, name) {
     let result = { error: "the connection to the installer broke" };
     try {
       // The installer's output comes as JSON lines while it runs.
-      await streamLines(`/env/${encodeURIComponent(name)}/api/agents/claude/install`, (msg) => {
+      await streamLines(`/env/${encodeURIComponent(name)}/api/agents/${kind}/install`, (msg) => {
         if (msg.out === undefined) { result = msg; return; }
         const out = $("iOut");
         // eslint-disable-next-line no-control-regex -- the terminal escapes are what it strips
@@ -1231,15 +1252,10 @@ async function envAct(what, name) {
       result = { error: err.message };
     }
     clearInterval(timer);
-    const secs = Math.round((Date.now() - started) / 1000);
-    if (result.done) {
-      const c = backendOf(name)?.agents?.claude;
-      $("iState").textContent = `Done in ${secs} s${c?.version ? ": " + c.version : ""}. In a new tab there, claude asks you to log in the first time.`;
-    } else {
-      $("iState").textContent = `The installer failed after ${secs} s: ${result.error}`;
-    }
-    $("iRun").hidden = true;
-    $("iClose").textContent = "Close";
+    if (result.done && hasAgent(name, kind)) { done(); return; }
+    $("iState").textContent = `The installer failed after ${Math.round((Date.now() - started) / 1000)} s: ${result.error || `no ${kind} found afterwards`}`;
+    $("iRun").disabled = false;
+    $("iCheck").hidden = false;
   };
   $("iClose").onclick = () => $("installDlg").close();
   $("installDlg").showModal();
@@ -1289,7 +1305,8 @@ function renderSettings() {
   if (u.dev) checked = "a development build, which doesn't update";
   else if (u.error && !checking) checked += ` · <span title="${esc(u.error)}">the last check failed</span>`;
   const notifyAsk = !window.cmuxNotify && typeof Notification !== "undefined" && Notification.permission === "default";
-  const checkNow = `<button type="button" class="icon-btn small ${checking ? "spin" : ""}" id="sNow" title="Check now" aria-label="Check now" ${u.dev || u.updating || checking ? "disabled" : ""}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 4v5h-5"/></svg></button>`;
+  // The version line reads as a sentence: "0.9.2 · checked today, 14:20 · Check now".
+  const checkNow = u.updating || checking ? "" : `<span class="quiet">·</span><button type="button" class="link" id="sNow">Check now</button>`;
   const latest = u.updating ? `<span class="quiet">Updating: ${esc(u.step || "starting")}…</span>`
     : u.latest ? `<button type="button" class="btn small primary" id="sApply" title="Restarts claude-mux; every tab resumes">Update to ${esc(u.latest)}</button>` : "";
   $("sBody").innerHTML = `
@@ -1301,8 +1318,8 @@ function renderSettings() {
     ${sRow("Tab rows", segOf("tabRows", [["two", "Detailed"], ["one", "Compact"]]))}
     <div class="ssec">Tabs</div>
     ${pageSw("confirmClose", "Ask before closing a tab")}
-    ${swRow("Startup message for every tab", startup.enabled, `id="sStartup"`)}
-    <textarea id="sStartupText" class="stext" rows="2" aria-label="Startup message for every tab"
+    ${swRow("Startup message for every agent tab", startup.enabled, `id="sStartup"`)}
+    <textarea id="sStartupText" class="stext" rows="2" aria-label="Startup message for every agent tab"
       placeholder="Sent first, before a tab's own, whenever claude starts again in any tab" ${startup.enabled ? "" : "hidden"}>${esc(startup.message || "")}</textarea>
     <div class="ssec">Notifications</div>
     ${pageSw("notifyNeeds", "When a tab needs me")}
@@ -1416,9 +1433,13 @@ function renderPalette() {
     $("pItems").innerHTML = html || `<div class="empty">No other group here.</div>`;
   } else {
     const actionsOnly = raw.startsWith(">");
-    const q = actionsOnly ? raw.slice(1).trim() : raw.trim();
+    let q = actionsOnly ? raw.slice(1).trim() : raw.trim();
+    // "claude", "codex" or "term" first keeps that kind.
+    const first = q.split(/\s+/)[0].toLowerCase();
+    const only = { claude: "claude", codex: "codex", term: "terminal", terminal: "terminal" }[first];
+    if (only) q = q.slice(first.length).trim();
     const vis = visual();
-    const found = actionsOnly ? [] : vis.filter((t) => fuzzy(`${t.name} ${crumbOf(t)} ${t.branch || ""}`, q))
+    const found = actionsOnly ? [] : vis.filter((t) => (!only || t.kind === only) && fuzzy(`${t.name} ${crumbOf(t)} ${t.branch || ""}`, q))
       .sort((a, b) => rank(a) - rank(b) || vis.indexOf(a) - vis.indexOf(b));
     const actions = ACTIONS.filter(([k, l]) => fuzzy(l, q) && (k !== "tab-settings" || selected));
     pal.items = [...found.map((t) => ({ tab: t })), ...actions.map((a) => ({ action: a[0] }))];
@@ -1500,7 +1521,7 @@ $("list").addEventListener("click", (e) => {
 });
 $("list").addEventListener("dblclick", (e) => {
   const row = e.target.closest(".trow");
-  if (row && row.dataset.kind === "group" && !e.target.closest("button")) startRename(row.dataset.fid);
+  if (row && (row.dataset.kind === "group" || row.dataset.kind === "tab") && !e.target.closest("button")) startRename(row.dataset.fid);
 });
 
 function toggle(fid) {
@@ -1535,9 +1556,9 @@ function newGroupNear() {
 }
 
 // ---------- renaming ----------
-// Groups and environments rename in place; local keeps its name. A tab's
-// name is claude's: /rename typed in the tab is the only way to rename one.
-const canRename = (row) => row.dataset.kind === "group" || (row.dataset.kind === "env" && env(row.dataset.env)?.kind !== "local");
+// Tabs, groups and environments rename in place; local keeps its name. A
+// Claude tab's new name goes to claude as /rename (the backend's Rename).
+const canRename = (row) => row.dataset.kind === "group" || row.dataset.kind === "tab" || (row.dataset.kind === "env" && env(row.dataset.env)?.kind !== "local");
 function startRename(fid, fresh = false) {
   editing = { fid, fresh };
   render();
@@ -1550,6 +1571,9 @@ async function finishRename(input, save) {
     if (fid.startsWith("env:")) {
       const from = fid.slice(4);
       if (save && to && to !== from) await renameEnv(from, to);
+    } else if (fid.startsWith("t:")) {
+      const t = tab(fid.slice(2));
+      if (save && t && to && to !== t.name) await renameTab(t, to);
     } else {
       const [name, id] = fid.slice(2).split("/");
       if (!save && fresh) await api(name, "DELETE", `/api/groups/${id}`);
@@ -1569,6 +1593,15 @@ $("list").addEventListener("keydown", (e) => {
   if (e.key === "Escape") { e.preventDefault(); finishRename(input, false); }
 });
 $("list").addEventListener("focusout", (e) => { if (e.target.matches?.(".rename") && editing) finishRename(e.target, true); });
+// renameTab names a tab, at once on the page.
+async function renameTab(t, name) {
+  await api(t.env, "PUT", `/api/sessions/${t.id}/name`, { name });
+  t.name = name;
+  const s = sessionsOf(t.env).find((x) => x.id === t.id);
+  if (s) s.name = name;
+  render();
+}
+
 // renameEnvKeys carries what this page keeps by environment name over to
 // the new one: folded rows, the last directory, the open terminals (tab keys
 // start with the name) and the selection.
@@ -1742,23 +1775,23 @@ $("list").addEventListener("keydown", (e) => {
 const targetOf = (row) => ({ kind: row.dataset.kind, key: row.dataset.key, env: row.dataset.env, id: row.dataset.node, fid: row.dataset.fid, row });
 function menuItems(target) {
   if (target.kind === "plus") return TAB_KINDS.map((k) => ["new-" + k, newLabel(k), k === page.lastKind ? "⌥N" : "", "", k]);
+  // New Claude, New Codex, New terminal, with their glyphs.
+  const kinds = (can) => TAB_KINDS.map((k) => can && ["new-" + k, newLabel(k), k === page.lastKind ? "⌥N" : "", "", k]);
   if (target.kind === "env") {
     const e = env(target.env);
-    const can = canStart(target.env);
-    return [can && ["new-tab", "New tab", "⌥N"], backendOf(target.env) && ["new-group", "New group", "⇧⌥N"], null,
+    return [...kinds(e?.state === "connected"), null, backendOf(target.env) && ["new-group", "New group", "⇧⌥N"], null,
       ["env-reconnect", "Reconnect"], ["env-settings", "Environment settings…"],
-      e?.state === "connected" && backendOf(e.name) && !hasClaude(e.name) && ["env-install", "Install claude…"],
       e?.kind !== "local" && null, e?.kind !== "local" && ["env-remove", "Remove environment", "", "danger"]].filter((x) => x !== false && x !== undefined);
   }
   if (target.kind === "group") {
     const shut = collapsed.has(target.fid);
-    return [canStart(target.env) && ["new-tab", "New tab", "⌥N"], ["new-group", "New group", "⇧⌥N"], null,
+    return [...kinds(env(target.env)?.state === "connected"), null, ["new-group", "New group", "⇧⌥N"], null,
       ["rename", "Rename", "F2"], ["fold", shut ? "Expand" : "Collapse", shut ? "→" : "←"], null,
       ["delete-group", "Delete group", "⌫", "danger"]].filter((x) => x !== false);
   }
   const t = tab(target.key);
   if (!t) return [];
-  return [["tab-settings", "Tab settings…", MOD + "I"], ["duplicate", "Duplicate", ""], ["move", "Move to…", ""], null,
+  return [["tab-settings", "Tab settings…", MOD + "I"], ["rename", "Rename", "F2"], ["duplicate", "Duplicate", ""], ["move", "Move to…", ""], null,
     dead(t) ? ["start", "Resume", "↵"] : ["restart", "Restart", ""], ["close", "Close tab", MOD + "W", "danger"]];
 }
 

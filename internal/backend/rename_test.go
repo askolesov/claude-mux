@@ -80,3 +80,17 @@ func TestRenameRejectsEmptyAndMultiline(t *testing.T) {
 		}
 	}
 }
+
+// Claude takes text and Enter that come together for a paste, and keeps the
+// Enter as a newline in the prompt: Enter goes on its own, a moment later.
+func TestRenameEnterComesAfterTheText(t *testing.T) {
+	m, s := catTab(t, KindClaude, StatusReady)
+	_ = m.Rename("t", "new name")
+	// The terminal echoes the text at once; cat prints it again once Enter
+	// ends the line.
+	waitFor(t, "the echo", func() bool { return strings.Contains(typed(s), "/rename new name") })
+	if n := strings.Count(typed(s), "/rename new name"); n != 1 {
+		t.Fatalf("Enter came with the text: %d copies", n)
+	}
+	waitFor(t, "Enter", func() bool { return strings.Count(typed(s), "/rename new name") == 2 })
+}

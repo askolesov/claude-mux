@@ -73,7 +73,7 @@
         <div class="checks" id="tChecks"></div>
       </div>
     </div>
-    <div class="notice" id="tNotice" role="status" hidden><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg><span>Saving restarts claude in this tab. The conversation continues where it was.</span></div>
+    <div class="notice" id="tNotice" role="status" hidden><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg><span id="tNoticeText">Saving restarts claude in this tab. The conversation continues where it was.</span></div>
     <div class="err" id="tErr"></div>
     <div class="dfoot">
       <button type="button" class="btn danger" id="tClose">Close tab</button>
@@ -130,14 +130,16 @@
   </form>
 </dialog>
 
+<!-- Agent not installed: asked the first time a tab of it starts. -->
 <dialog id="installDlg">
-  <div class="dhead"><h3 id="iTitle"></h3><div class="dmeta">Runs Anthropic's official installer there</div></div>
+  <div class="dhead"><h3 id="iTitle"></h3><div class="dmeta" id="iMeta"></div></div>
   <div class="dbody">
+    <div class="note" id="iIntro"></div>
     <code id="iCmd"></code>
     <div class="note" id="iState"></div>
     <pre id="iOut" hidden></pre>
   </div>
-  <div class="dfoot"><span class="gap"></span><button type="button" class="btn" id="iClose">Cancel</button><button class="btn primary" id="iRun">Install</button></div>
+  <div class="dfoot"><button type="button" class="link" id="iCheck">Check again</button><span class="gap"></span><button type="button" class="btn" id="iClose">Cancel</button><button class="btn primary" id="iRun">Install</button></div>
 </dialog>
 
 <script src="app.js"></script>

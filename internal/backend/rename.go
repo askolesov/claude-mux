@@ -10,6 +10,9 @@ import (
 // it back; after that, claude's name wins.
 const renameWait = 15 * time.Second
 
+// enterDelay is how long after a typed command its Enter follows.
+const enterDelay = 300 * time.Millisecond
+
 // Rename names a tab; the new name shows at once. A Claude tab's name is
 // claude's too: Rename types /rename into the session, after clearing the
 // input line (a half-typed prompt there is lost), once claude is ready for
@@ -46,6 +49,9 @@ func (m *Manager) sendRename(s *Session) {
 	}
 	s.mu.Unlock()
 	if due {
-		s.write([]byte("\x15/rename " + name + "\r"))
+		s.write([]byte("\x15/rename " + name))
+		// Text and Enter that arrive together are a paste to claude, which
+		// keeps the Enter as a newline: Enter goes on its own.
+		time.AfterFunc(enterDelay, func() { s.write([]byte("\r")) })
 	}
 }
