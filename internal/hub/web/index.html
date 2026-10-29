@@ -55,24 +55,25 @@
   <form method="dialog" id="tabForm">
     <div class="dhead"><h3 id="tTitle"></h3><div class="dmeta" id="tMeta"></div></div>
     <div class="dbody">
+      <div class="seg kinds" id="tKinds" role="radiogroup" aria-label="Runs" hidden></div>
       <label class="field">Name<input id="tName" autocomplete="off" spellcheck="false"></label>
       <label class="field">Directory
         <span class="withbtn"><input id="tCwd" class="mono-in" list="dirs" autocomplete="off" spellcheck="false">
           <button type="button" class="sqbtn" id="tPick" title="Choose folder" aria-label="Choose folder"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 6.5h6l2 2h10V19H3z"/></svg></button></span>
       </label>
     </div>
-    <div class="fold first">
+    <div class="fold first" id="tStartupFold">
       <button type="button" class="foldhead" id="tStartupBtn" aria-expanded="false"><span>Startup message</span><span class="switch" role="switch" aria-checked="false" id="tStartupSw" aria-label="Startup message"></span></button>
       <textarea id="tStartup" rows="2" aria-label="Startup message text" placeholder="Sent as its first prompt whenever claude starts again in this tab, after the global one in Settings, if that's on" hidden></textarea>
     </div>
-    <div class="fold">
+    <div class="fold" id="tArgsFold">
       <button type="button" class="foldhead" id="tArgsBtn" aria-expanded="false"><span>Arguments</span><span class="sum" id="tArgsSum"></span><svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
       <div class="foldbody" id="tArgsBody" hidden>
         <input id="tArgs" class="input mono-in" aria-label="Extra arguments" placeholder="e.g. --model opus" autocomplete="off" spellcheck="false">
         <div class="checks" id="tChecks"></div>
       </div>
     </div>
-    <div class="notice" id="tNotice" role="status" hidden><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg><span>Saving restarts claude in this tab. The conversation continues where it was.</span></div>
+    <div class="notice" id="tNotice" role="status" hidden><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg><span id="tNoticeText">Saving restarts claude in this tab. The conversation continues where it was.</span></div>
     <div class="err" id="tErr"></div>
     <div class="dfoot">
       <button type="button" class="btn danger" id="tClose">Close tab</button>
@@ -129,14 +130,16 @@
   </form>
 </dialog>
 
+<!-- Agent not installed: asked the first time a tab of it starts. -->
 <dialog id="installDlg">
-  <div class="dhead"><h3 id="iTitle"></h3><div class="dmeta">Runs Anthropic's official installer there</div></div>
+  <div class="dhead"><h3 id="iTitle"></h3><div class="dmeta" id="iMeta"></div></div>
   <div class="dbody">
+    <div class="note" id="iIntro"></div>
     <code id="iCmd"></code>
     <div class="note" id="iState"></div>
     <pre id="iOut" hidden></pre>
   </div>
-  <div class="dfoot"><span class="gap"></span><button type="button" class="btn" id="iClose">Cancel</button><button class="btn primary" id="iRun">Install</button></div>
+  <div class="dfoot"><button type="button" class="link" id="iCheck">Check again</button><span class="gap"></span><button type="button" class="btn" id="iClose">Cancel</button><button class="btn primary" id="iRun">Install</button></div>
 </dialog>
 
 <script src="app.js"></script>

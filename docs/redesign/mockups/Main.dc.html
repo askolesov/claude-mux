@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>claude-mux main window</title>
+<title>agent-mux main window</title>
 <script src="./support.js"></script>
 </head>
 <body>
@@ -17,13 +17,20 @@ body{margin:0}
 <div style="min-height: 900px; display: flex; flex-direction: column; background: {{c.bg}}; color: {{c.text}}; font-family: Inter, system-ui, sans-serif; font-size: 13px; line-height: 1.4">
 <div style="flex: 1 1 auto; display: flex; flex-wrap: wrap; min-height: 0">
 
-<aside style="flex: 1 1 248px; max-width: 100%; display: flex; flex-direction: column; background: {{c.panel}}; border-right: 1px solid {{c.line}}">
+<aside style="position: relative; flex: 1 1 248px; max-width: 100%; display: flex; flex-direction: column; background: {{c.panel}}; border-right: 1px solid {{c.line}}">
 <div style="display: flex; align-items: center; gap: 8px; padding: 12px 10px 12px 14px">
 <svg width="20" height="20" viewBox="0 0 64 64" aria-hidden="true" style="flex: none"><rect width="64" height="64" rx="14" fill="#161A21"></rect><rect x="20" y="10" width="34" height="27" rx="5" fill="#2E3542"></rect><rect x="10" y="22" width="36" height="30" rx="5" fill="#0B0D10" stroke="#7AA2F7" stroke-width="4"></rect><path d="M17 31l6 5-6 5" fill="none" stroke="#E6E8EC" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"></path></svg>
-<span style="font-weight: 700; font-size: 14px; letter-spacing: -0.01em; flex: 1">claude-mux</span>
-<a href="NewTab.dc.html" aria-label="New tab (⌥N)" title="New tab (⌥N), next to the selected tab" style="width: 28px; height: 28px; display: grid; place-items: center; border-radius: 6px; color: {{c.text2}}; "><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></a>
+<span style="font-weight: 700; font-size: 14px; letter-spacing: -0.01em; flex: 1">agent-mux</span>
+<button type="button" onClick="{{togglePlus}}" aria-haspopup="menu" aria-expanded="{{plusOpen}}" aria-label="New" title="New Claude, Codex or terminal, next to the selected tab · ⌥N repeats the last" style="width: 28px; height: 28px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 6px; cursor: pointer; color: {{c.text2}}; background: {{plusBg}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button>
 <a href="Settings.dc.html" aria-label="Settings" style="width: 28px; height: 28px; display: grid; place-items: center; border-radius: 6px; color: {{c.muted}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"></path><circle cx="15" cy="6" r="2"></circle><circle cx="9" cy="12" r="2"></circle><circle cx="17" cy="18" r="2"></circle></svg></a>
 </div>
+<sc-if value="{{plusOpen}}" hint-placeholder-val="{{ false }}">
+<div role="menu" aria-label="New" style="position: absolute; top: 46px; left: 96px; z-index: 6; width: 200px; box-sizing: border-box; padding: 4px; background: {{c.pop}}; border: 1px solid {{c.line}}; border-radius: 8px; box-shadow: 0 10px 28px rgba(0,0,0,0.4)">
+<sc-for list="{{plusItems}}" as="mi" hint-placeholder-count="3">
+<a href="NewTab.dc.html" role="menuitem" style="{{mi.style}}"><span style="{{mi.gWrap}}"><sc-if value="{{mi.isDot}}" hint-placeholder-val="{{ true }}"><span style="{{mi.dotStyle}}"></span></sc-if><sc-if value="{{mi.isGlyph}}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" style="overflow: visible"><path d="{{mi.gD}}" fill="{{mi.hColor}}" stroke="{{mi.hColor}}" stroke-width="7" stroke-linejoin="round"></path><path fill-rule="evenodd" d="{{mi.gD}}" fill="{{mi.gFill}}" stroke="{{mi.gStroke}}" stroke-width="{{mi.gSw}}" stroke-linejoin="round"></path></svg></sc-if></span><span style="flex: 1">{{mi.label}}</span><span style="font-size: 11px; color: {{c.muted}}">{{mi.key}}</span></a>
+</sc-for>
+</div>
+</sc-if>
 <div style="padding: 0 10px 6px">
 <a href="Jump.dc.html" style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border-radius: 6px; background: {{c.field}}; color: {{c.muted}}; text-decoration: none; font-size: 12px">
 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
@@ -58,9 +65,9 @@ body{margin:0}
 </sc-if>
 <sc-if value="{{r.isTab}}" hint-placeholder-val="{{ true }}">
 <button type="button" onClick="{{r.select}}" style="{{r.rowStyle}}">
-<span style="{{r.dotStyle}}"></span>
+<span style="{{r.gWrap}}"><sc-if value="{{r.isDot}}" hint-placeholder-val="{{ true }}"><span style="{{r.dotStyle}}"></span></sc-if><sc-if value="{{r.isGlyph}}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" style="overflow: visible"><path d="{{r.gD}}" fill="{{r.hColor}}" stroke="{{r.hColor}}" stroke-width="7" stroke-linejoin="round"></path><path fill-rule="evenodd" d="{{r.gD}}" fill="{{r.gFill}}" stroke="{{r.gStroke}}" stroke-width="{{r.gSw}}" stroke-linejoin="round"></path></svg></sc-if></span>
 <span style="display: flex; flex-direction: column; flex: 1; min-width: 0">
-<span style="display: flex; align-items: center; gap: 6px; min-width: 0"><span style="{{r.nameStyle}}">{{r.name}}</span><sc-if value="{{r.startup}}" hint-placeholder-val="{{ false }}"><span title="Has a startup message" style="font-size: 11px; color: {{c.muted}}">↻</span></sc-if></span>
+<span style="display: flex; align-items: center; gap: 6px; min-width: 0"><sc-if value="{{r.notRenaming}}" hint-placeholder-val="{{ true }}"><span style="{{r.nameStyle}}">{{r.name}}</span></sc-if><sc-if value="{{r.renaming}}" hint-placeholder-val="{{ false }}"><input aria-label="Tab name" value="{{r.newName}}" style="flex: 1; min-width: 0; height: 22px; margin: -2px 0; padding: 0 6px; border: 1px solid {{c.accent}}; border-radius: 4px; background: {{c.bg}}; color: {{c.text}}; font: inherit; font-size: 13px; outline: none; box-shadow: 0 0 0 3px {{c.accentSoft}}"></sc-if><sc-if value="{{r.startup}}" hint-placeholder-val="{{ false }}"><span title="Has a startup message" style="font-size: 11px; color: {{c.muted}}">↻</span></sc-if></span>
 <sc-if value="{{r.twoLine}}" hint-placeholder-val="{{ true }}"><span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: {{c.muted}}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.cwd}}</span></sc-if>
 </span>
 </button>
@@ -76,7 +83,7 @@ body{margin:0}
 <sc-for list="{{r.ctxItems}}" as="mi" hint-placeholder-count="5">
 <div>
 <sc-if value="{{mi.isSep}}" hint-placeholder-val="{{ false }}"><div role="separator" style="height: 1px; margin: 4px 6px; background: {{c.line}}"></div></sc-if>
-<sc-if value="{{mi.isItem}}" hint-placeholder-val="{{ true }}"><button type="button" role="menuitem" style="{{mi.style}}"><span style="flex: 1">{{mi.label}}</span><span style="font-size: 11px; color: {{c.muted}}">{{mi.key}}</span></button></sc-if>
+<sc-if value="{{mi.isItem}}" hint-placeholder-val="{{ true }}"><button type="button" role="menuitem" style="{{mi.style}}"><sc-if value="{{mi.hasIcon}}" hint-placeholder-val="{{ false }}"><span style="{{mi.gWrap}}"><sc-if value="{{mi.isDot}}" hint-placeholder-val="{{ true }}"><span style="{{mi.dotStyle}}"></span></sc-if><sc-if value="{{mi.isGlyph}}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" style="overflow: visible"><path d="{{mi.gD}}" fill="{{mi.hColor}}" stroke="{{mi.hColor}}" stroke-width="7" stroke-linejoin="round"></path><path fill-rule="evenodd" d="{{mi.gD}}" fill="{{mi.gFill}}" stroke="{{mi.gStroke}}" stroke-width="{{mi.gSw}}" stroke-linejoin="round"></path></svg></sc-if></span></sc-if><span style="flex: 1">{{mi.label}}</span><span style="font-size: 11px; color: {{c.muted}}">{{mi.key}}</span></button></sc-if>
 </div>
 </sc-for>
 </div>
@@ -123,7 +130,7 @@ body{margin:0}
 </div>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"rows":{"editor":"enum","options":["one","two"],"default":"one"},"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"contextMenu":{"editor":"enum","options":["","local","g-api","g-pay","g-infra","build-box","billing-fix"],"default":""},"newGroupIn":{"editor":"enum","options":["","g-api","g-pay","g-infra"],"default":""},"activeTab":{"editor":"enum","options":["rpc-gateway","billing-fix","ledger-sync","invoice-export","docs-site","terraform-plan","k8s-watch","release-v0.9","flaky-tests"],"default":"billing-fix"},"$preview":{"width":1440,"height":900}}'>
+<script type="text/x-dc" data-dc-script data-props='{"rows":{"editor":"enum","options":["one","two"],"default":"one"},"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"contextMenu":{"editor":"enum","options":["","local","g-api","g-pay","g-infra","build-box","billing-fix"],"default":""},"newGroupIn":{"editor":"enum","options":["","g-api","g-pay","g-infra"],"default":""},"agents":{"editor":"boolean","default":true},"plusMenu":{"editor":"boolean","default":false},"renameTab":{"editor":"enum","options":["","rpc-gateway","ledger-sync","k8s-watch"],"default":""},"activeTab":{"editor":"enum","options":["rpc-gateway","billing-fix","ledger-sync","invoice-export","docs-site","terraform-plan","k8s-watch","release-v0.9","flaky-tests"],"default":"billing-fix"},"$preview":{"width":1440,"height":900}}'>
 class Component extends DCLogic {
   renderVals() {
     const s = this.state || {};
@@ -136,20 +143,20 @@ class Component extends DCLogic {
     const activeId = s.active || this.props.activeTab || 'billing-fix';
     const COL = { working: c.working, ready: c.ready, needs: c.needs };
     const TABS = [
-      { id: 'rpc-gateway', cwd: '~/src/rpc-gateway', branch: 'feat/rate-limits', status: 'working' },
+      { id: 'rpc-gateway', cwd: '~/src/rpc-gateway', branch: 'feat/rate-limits', status: 'working', startup: true },
       { id: 'billing-fix', cwd: '~/src/billing', branch: 'fix/invoice-rounding', status: 'needs' },
       { id: 'ledger-sync', cwd: '~/src/ledger', branch: 'main', status: 'working' },
       { id: 'invoice-export', cwd: '~/src/billing', branch: 'feat/csv-export', status: 'ready', unread: true },
       { id: 'terraform-plan', cwd: '~/infra/terraform', branch: 'main', status: 'ready' },
-      { id: 'k8s-watch', cwd: '~/infra/k8s', branch: 'main', status: 'working', startup: true },
+      { id: 'k8s-watch', cwd: '~/infra/k8s', branch: 'main', status: 'working' },
       { id: 'docs-site', cwd: '~/src/docs', branch: 'main', status: 'ready' },
-      { id: 'release-v0.9', cwd: '/srv/claude-mux', branch: 'release/v0.9', status: 'working' },
-      { id: 'flaky-tests', cwd: '/srv/claude-mux', branch: 'main', status: 'exited' }
+      { id: 'release-v0.9', cwd: '/srv/agent-mux', branch: 'release/v0.9', status: 'working' },
+      { id: 'flaky-tests', cwd: '/srv/agent-mux', branch: 'main', status: 'exited' }
     ];
     const ENVS = [
       { id: 'local', label: 'local', kind: 'this Mac', metaShort: 'This machine · darwin/arm64' },
       { id: 'build-box', label: 'build-box', kind: 'ssh', metaShort: 'SSH host build-box · linux/amd64 · 42 ms' },
-      { id: 'sandbox', label: 'sandbox', kind: 'docker', metaShort: 'Docker container sandbox · linux/arm64 · no claude', noClaude: true }
+      { id: 'sandbox', label: 'sandbox', kind: 'docker', metaShort: 'Docker container sandbox · linux/arm64' }
     ];
     const GROUPS = { 'g-api': 'api', 'g-pay': 'payments', 'g-infra': 'infra' };
     // The tree: every container lists its children in the user's order. Groups and tabs mix freely.
@@ -161,6 +168,15 @@ class Component extends DCLogic {
       'build-box': ['release-v0.9', 'flaky-tests'],
       'sandbox': []
     };
+    // With agents on, tabs run Claude, Codex or a plain terminal (a shell: running, idle or done).
+    const AGENTS = this.props.agents !== false;
+    if (AGENTS) {
+      const K = {
+        'ledger-sync': ['codex', 'working'], 'invoice-export': ['codex', 'ready', true], 'release-v0.9': ['codex', 'needs'],
+        'terraform-plan': ['term', 'ready', true], 'k8s-watch': ['term', 'working'], 'docs-site': ['term', 'idle'], 'flaky-tests': ['term', 'exited']
+      };
+      TABS.forEach((t) => { const k = K[t.id]; if (k) { t.kind = k[0]; t.status = k[1]; t.unread = !!k[2]; } });
+    }
     const byId = {}; TABS.forEach((t) => { byId[t.id] = t; });
     const envOf = {}; const pathOf = {};
     const index = (id, env, path) => {
@@ -171,7 +187,7 @@ class Component extends DCLogic {
     };
     ENVS.forEach((e) => index(e.id, e.id, []));
     const tabsUnder = (id) => (KIDS[id] || []).reduce((acc, k) => GROUPS[k] ? acc.concat(tabsUnder(k)) : acc.concat([byId[k]]), []);
-    const RANK = { needs: 4, unread: 3, working: 2, ready: 1, exited: 0 };
+    const RANK = { needs: 4, unread: 3, working: 2, ready: 1, idle: 1, exited: 0 };
     const rankOf = (t) => t.status === 'needs' ? 4 : (t.unread ? 3 : RANK[t.status]);
     const dot = (t) => {
       if (t.status === 'exited') return 'width:8px;height:8px;border-radius:50%;border:1.5px solid ' + c.exited + ';box-sizing:border-box;flex:none';
@@ -179,22 +195,45 @@ class Component extends DCLogic {
       const halo = t.status === 'needs' ? ';box-shadow:0 0 0 3px ' + c.halo : (t.status === 'ready' && t.unread) ? ';box-shadow:0 0 0 3px ' + c.readyHalo : '';
       return 'width:8px;height:8px;border-radius:50%;flex:none;background:' + COL[t.status] + halo;
     };
-    const collapsed = s.collapsed || { 'g-infra': true };
+    // The glyph: one pure shape per kind, all of a like weight. Claude a wide rounded rectangle, Codex a circle,
+    // a terminal a triangle pointing right. Colour is the state; the ring (a soft halo of the same shape) means "look at me".
+    const SHAPES = {
+      claude: 'M3.9 3.6h6.2a1.7 1.7 0 0 1 1.7 1.7v3.4a1.7 1.7 0 0 1-1.7 1.7H3.9a1.7 1.7 0 0 1-1.7-1.7V5.3a1.7 1.7 0 0 1 1.7-1.7zM4.3 6.6a1 1 0 1 0 2 0 1 1 0 1 0-2 0zM7.7 6.6a1 1 0 1 0 2 0 1 1 0 1 0-2 0z',
+      codex: 'M7 2.2a4.8 4.8 0 1 1 0 9.6 4.8 4.8 0 1 1 0-9.6z',
+      codexExited: 'M7 2.2a4.8 4.8 0 1 1 0 9.6 4.8 4.8 0 1 1 0-9.6z',
+      claudeExited: 'M3.9 3.6h6.2a1.7 1.7 0 0 1 1.7 1.7v3.4a1.7 1.7 0 0 1-1.7 1.7H3.9a1.7 1.7 0 0 1-1.7-1.7V5.3a1.7 1.7 0 0 1 1.7-1.7z',
+      term: 'M4.6 2.7 11.7 7l-7.1 4.3z'
+    };
+    const glyph = (kind, t) => {
+      const base = { gWrap: 'flex:none;width:14px;height:14px;display:grid;place-items:center', isDot: false, isGlyph: false, dotStyle: '', gD: '', hColor: 'none', gFill: 'none', gStroke: 'none', gSw: 0 };
+      if (kind === 'none') return base;
+      if (!AGENTS) return Object.assign(base, { isDot: true, dotStyle: t ? dot(t) : '' });
+      const st = t ? t.status : '';
+      const color = !t ? c.text2 : st === 'exited' ? c.exited : st === 'idle' ? c.muted : COL[st];
+      const halo = t && (st === 'needs' ? c.halo : st === 'ready' && t.unread ? c.readyHalo : '');
+      const exited = st === 'exited';
+      // Filled shapes get a thin stroke of their own colour so the corners soften; exited ones are outlines.
+      return Object.assign(base, { isGlyph: true, gD: SHAPES[(kind || 'claude') + (exited && SHAPES[(kind || 'claude') + 'Exited'] ? 'Exited' : '')], hColor: halo || 'none',
+        gFill: exited ? 'none' : color, gStroke: color, gSw: exited ? 1.5 : kind === 'term' ? 0.8 : 0 });
+    };
+    const collapsed = s.collapsed || (AGENTS ? {} : { 'g-infra': true });
     const ctx = s.ctx !== undefined ? s.ctx : (this.props.contextMenu || '');
     const newGroupIn = this.props.newGroupIn || '';
+    const NEW = AGENTS ? [['New Claude', '⌥N', false, 'claude'], ['New Codex', '', false, 'codex'], ['New terminal', '', false, 'term'], null, ['New group', '⇧⌥N']] : [['New tab', '⌥N'], ['New group', '⇧⌥N']];
     const ITEMS = {
-      env: [['New tab', '⌥N'], ['New group', '⇧⌥N'], null, ['Reconnect', ''], ['Environment settings…', '']],
+      env: NEW.concat([null, ['Reconnect', ''], ['Environment settings…', '']]),
       envRemovable: [null, ['Remove environment', '', true]],
-      group: [['New tab', '⌥N'], ['New group', '⇧⌥N'], null, ['Rename', 'F2'], ['Collapse', '←'], null, ['Delete group', '⌫', true]],
-      tab: [['Tab settings…', '⌘I'], ['Duplicate', ''], ['Move to…', ''], null, ['Restart', ''], ['Close tab', '⌘W', true]],
-      deadTab: [['Tab settings…', '⌘I'], ['Duplicate', ''], ['Move to…', ''], null, ['Resume', '↵'], ['Close tab', '⌘W', true]]
+      group: NEW.concat([null, ['Rename', 'F2'], ['Collapse', '←'], null, ['Delete group', '⌫', true]]),
+      tab: [['Tab settings…', '⌘I'], ['Rename', 'F2'], ['Duplicate', ''], ['Move to…', ''], null, ['Restart', ''], ['Close tab', '⌘W', true]],
+      deadTab: [['Tab settings…', '⌘I'], ['Rename', 'F2'], ['Duplicate', ''], ['Move to…', ''], null, ['Resume', '↵'], ['Close tab', '⌘W', true]]
     };
     const ctxFor = (kind, id, depth) => ({
       // The local environment can't be removed; an exited tab resumes instead of restarting.
       ctxOpen: ctx === id,
       openCtx: (e) => { if (e && e.preventDefault) e.preventDefault(); this.setState({ ctx: ctx === id ? '' : id }); },
-      ctxStyle: 'position:absolute;top:calc(100% - 4px);left:' + Math.min(padFor(depth) + 18, 28) + 'px;z-index:5;width:210px;padding:4px;background:' + c.pop + ';border:1px solid ' + c.line + ';border-radius:8px;box-shadow:0 10px 28px rgba(0,0,0,0.4)',
-      ctxItems: (kind === 'env' && id !== 'local' ? ITEMS.env.concat(ITEMS.envRemovable) : kind === 'tab' && byId[id].status === 'exited' ? ITEMS.deadTab : ITEMS[kind]).map((it, i) => it ? { isItem: true, isSep: false, label: it[0], key: it[1],
+      ctxStyle: 'position:absolute;top:calc(100% - 4px);left:' + Math.min(padFor(depth) + 18, 28) + 'px;z-index:5;width:210px;box-sizing:border-box;padding:4px;background:' + c.pop + ';border:1px solid ' + c.line + ';border-radius:8px;box-shadow:0 10px 28px rgba(0,0,0,0.4)',
+      ctxItems: (kind === 'env' && id !== 'local' ? ITEMS.env.concat(ITEMS.envRemovable) : kind === 'tab' && byId[id].status === 'exited' ? ITEMS.deadTab : ITEMS[kind]).map((it, i) => it ? { isItem: true, isSep: false, label: it[0], key: it[1], hasIcon: AGENTS && kind !== 'tab', iconless: !it[3],
+        ...glyph(it[3] || 'none'),
         style: 'display:flex;align-items:center;gap:10px;width:100%;height:28px;padding:0 10px;border:0;border-radius:5px;font:inherit;font-size:13px;text-align:left;cursor:pointer;background:' + (i === 0 ? c.sel : 'transparent') + ';color:' + (it[2] ? c.danger : c.text) } : { isItem: false, isSep: true })
     });
     const INDENT = 16;
@@ -209,8 +248,10 @@ class Component extends DCLogic {
       const bold = active;
       const path = pathOf[t.id] || [];
       return Object.assign({}, t, {
-        name: t.id, startup: !!t.startup, twoLine: twoLine, env: envOf[t.id],
-        dotStyle: dot(t),
+        // Rename works the same for every kind: in place (F2, double-click, the menu). For Claude it is sent as
+        // /rename and the name comes back from the session; Codex and terminal names are kept by agent-mux.
+        name: t.id, renaming: this.props.renameTab === t.id, notRenaming: this.props.renameTab !== t.id, newName: t.id, startup: !!t.startup, twoLine: twoLine, env: envOf[t.id],
+        ...glyph(t.kind, t),
         nameStyle: 'flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:' + (bold ? '600' : '400') + ';color:' + (t.status === 'exited' ? c.exitedText : c.text),
         crumb: [envOf[t.id]].concat(path).join(' / ') + '  ·  ' + t.cwd + '  ·  ' + t.branch,
         select: () => this.setState({ active: t.id })
@@ -280,8 +321,12 @@ class Component extends DCLogic {
       T('  Done. The new keys are documented under Configuration, with defaults.'),
       { isText: false, isBox: false, isPrompt: true }
     ];
+    const plusOpen = s.plus !== undefined ? s.plus : !!this.props.plusMenu;
+    const plusItems = [['New Claude', '⌥N', 'claude'], ['New Codex', '', 'codex'], ['New terminal', '', 'term']].map((it, i) => Object.assign({ label: it[0], key: it[1],
+      style: 'display:flex;align-items:center;gap:10px;height:28px;padding:0 10px;border-radius:5px;font-size:13px;text-decoration:none;color:' + c.text + ';background:' + (i === 0 ? c.sel : 'transparent') }, glyph(it[2])));
     return {
-      c: c, rows: rows, cur: cur, lines: lines
+      c: c, rows: rows, cur: cur, lines: lines,
+      plusOpen: plusOpen, plusItems: plusItems, togglePlus: () => this.setState({ plus: !plusOpen }), plusBg: plusOpen ? c.sel : 'transparent'
     };
   }
 }

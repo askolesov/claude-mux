@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>claude-mux environment settings</title>
+<title>agent-mux environment settings</title>
 <script src="./support.js"></script>
 </head>
 <body>
@@ -27,7 +27,7 @@ body{margin:0}
 <input value="build-box" style="height: 34px; padding: 0 10px; border: 1px solid #2B313C; border-radius: 6px; background: #0F1115; color: #E6E8EC; outline: none; font: inherit; font-size: 13px; border-color: #3A4A6B">
 </label>
 <dl style="display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 2px 0 0; font-size: 12px">
-<sc-for list="{{facts}}" as="f" hint-placeholder-count="4"><dt style="color: #8A92A2">{{f.k}}</dt><dd style="margin: 0; min-width: 0; overflow-wrap: anywhere; {{f.style}}">{{f.v}}</dd></sc-for>
+<sc-for list="{{facts}}" as="f" hint-placeholder-count="5"><dt style="color: #8A92A2">{{f.k}}</dt><dd style="margin: 0; min-width: 0; overflow-wrap: anywhere; {{f.style}}">{{f.v}}</dd></sc-for>
 </dl>
 </div>
 <div style="display: flex; align-items: center; gap: 8px; padding: 16px 20px; border-top: 1px solid #252A33; margin-top: 12px">
@@ -49,6 +49,7 @@ class Component extends DCLogic {
         { k: 'Status', v: 'connected · 42 ms', style: '' },
         { k: 'Platform', v: 'linux/amd64', style: '' },
         { k: 'Claude', v: '2.1.3  ~/.local/bin/claude', style: mono },
+        { k: 'Codex', v: 'not installed', style: 'color:#8A92A2' },
         { k: 'Tabs', v: '2', style: '' }
       ],
       noop: (e) => { if (e && e.preventDefault) e.preventDefault(); }
