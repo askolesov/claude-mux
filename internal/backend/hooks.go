@@ -11,7 +11,8 @@ import (
 	"time"
 )
 
-// hookEvents are the Claude Code hook events that move a session's status.
+// hookEvents are the Claude Code hook events that move a session's status
+// (codexHookEvents are Codex's).
 var hookEvents = []string{"SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Notification", "Stop", "SessionEnd"}
 
 // writeHookSettings writes the settings file passed to every claude the
@@ -56,39 +57,68 @@ func Hook() {
 type HookPayload struct {
 	Event            string `json:"hook_event_name"`
 	SessionID        string `json:"session_id"`
+	Source           string `json:"source"` // SessionStart's: startup, resume, clear…
 	NotificationType string `json:"notification_type"`
 }
 
-// ApplyHook moves a session's status for one hook event.
+// ApplyHook moves a session's status for one hook event. The hook address
+// is inherited, so an agent the tab's own agent runs (a codex in a claude
+// tab) posts here too: once the tab has its session, events of another one
+// are ignored. The first SessionStart after a start names the session (a
+// resumed one may come back under a new id), and so does one from /clear.
 func (m *Manager) ApplyHook(id string, p HookPayload) error {
 	s, err := m.Get(id)
 	if err != nil {
 		return err
 	}
-	if p.SessionID != "" {
-		s.mu.Lock()
-		changedID := s.AgentSessionID != p.SessionID
-		s.AgentSessionID = p.SessionID
+	s.mu.Lock()
+	kind := s.Kind
+	if kind == KindTerminal {
 		s.mu.Unlock()
-		if changedID { // a new session, or /clear started a fresh one
-			m.save()
-		}
+		return nil
 	}
-	var st Status
-	switch p.Event {
-	case "SessionStart", "Stop":
-		st = StatusReady
-	case "UserPromptSubmit", "PreToolUse", "PostToolUse":
-		st = StatusWorking
-	case "Notification":
-		if p.NotificationType == "permission_prompt" || p.NotificationType == "elicitation_dialog" {
-			st = StatusNeedsYou
+	changedID := false
+	if p.Event == "SessionStart" && (!s.started || p.Source == "clear") {
+		s.started = true
+		changedID = p.SessionID != "" && s.AgentSessionID != p.SessionID
+		if changedID {
+			s.AgentSessionID = p.SessionID
 		}
-	case "SessionEnd":
-		st = StatusExited
+	} else if s.AgentSessionID != "" && p.SessionID != "" && p.SessionID != s.AgentSessionID {
+		s.mu.Unlock()
+		return nil
 	}
+	s.mu.Unlock()
+	if changedID {
+		m.save()
+	}
+	st := hookStatus(kind, p)
 	if st != "" && s.setStatus(st) {
 		m.changes.Notify()
 	}
 	return nil
+}
+
+// hookStatus is the status a hook event moves a tab of kind to, or "" for
+// none.
+func hookStatus(kind Kind, p HookPayload) Status {
+	switch p.Event {
+	case "SessionStart", "Stop", "Interrupt":
+		return StatusReady
+	case "UserPromptSubmit", "PreToolUse", "PostToolUse":
+		return StatusWorking
+	case "PermissionRequest":
+		return StatusNeedsYou
+	case "Notification":
+		if p.NotificationType == "permission_prompt" || p.NotificationType == "elicitation_dialog" {
+			return StatusNeedsYou
+		}
+	case "SessionEnd":
+		// Codex also ends a session after 30 idle minutes, with its process
+		// still running; the process's exit says exited.
+		if kind == KindClaude {
+			return StatusExited
+		}
+	}
+	return ""
 }

@@ -41,6 +41,7 @@ type Session struct {
 	unseen      bool
 	branch      string   // the git branch of Cwd, if it is in a repository
 	restarting  bool     // the next exit starts it again
+	started     bool     // a SessionStart came since the process started (ApplyHook)
 	proc        *ptyProc // nil while claude isn't running
 	scrollback  []byte
 	lastOutput  time.Time
@@ -126,6 +127,7 @@ func (s *Session) start(claude string, claudeArgs []string, env []string, onExit
 	s.mu.Lock()
 	s.proc = proc
 	s.scrollback = nil
+	s.started = false
 	s.mu.Unlock()
 	s.setStatus(StatusStarting)
 
