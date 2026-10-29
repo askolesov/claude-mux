@@ -62,7 +62,7 @@
       </label>
     </div>
     <div class="fold first">
-      <button type="button" class="foldhead" id="tStartupBtn" aria-expanded="false"><span>Startup message</span><span class="sum" id="tStartupSum">none</span><span class="switch" role="switch" aria-checked="false" id="tStartupSw" aria-label="Startup message"></span></button>
+      <button type="button" class="foldhead" id="tStartupBtn" aria-expanded="false"><span>Startup message</span><span class="switch" role="switch" aria-checked="false" id="tStartupSw" aria-label="Startup message"></span></button>
       <textarea id="tStartup" rows="2" aria-label="Startup message text" placeholder="Sent as its first prompt whenever claude starts again in this tab, after the global one in Settings, if that's on" hidden></textarea>
     </div>
     <div class="fold">
@@ -118,11 +118,11 @@
 
 <dialog id="hostDlg">
   <form method="dialog" id="hostForm">
-    <div class="dhead"><h3>Connect environment</h3><div class="dmeta">An SSH host, a Docker container or a WSL distro</div></div>
+    <div class="dhead"><h3>Connect environment</h3><div class="dmeta" id="hMeta"></div></div>
     <div class="dbody">
-      <label class="field">Kind<select id="hKind"></select></label>
-      <label class="field"><span id="hHint"></span><input id="hHost" class="mono-in" list="targets" autocomplete="off" spellcheck="false"></label>
-      <label class="field">Name<input id="hName" placeholder="defaults to the host" autocomplete="off" spellcheck="false"></label>
+      <div class="field">Kind<div class="seg" id="hKind" role="radiogroup" aria-label="Kind"></div></div>
+      <label class="field"><span id="hLabel"></span><input id="hHost" class="mono-in" list="targets" autocomplete="off" spellcheck="false"><span class="hint" id="hHint"></span></label>
+      <label class="field">Name<input id="hName" autocomplete="off" spellcheck="false"></label>
     </div>
     <div class="err" id="hostErr"></div>
     <div class="dfoot"><span class="gap"></span><button type="button" class="btn" id="hostCancel">Cancel</button><button class="btn primary">Connect</button></div>

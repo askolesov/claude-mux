@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>claude-mux v4 settings</title>
+<title>claude-mux settings</title>
 <script src="./support.js"></script>
 </head>
 <body>
@@ -15,29 +15,32 @@ body{margin:0}
 </style>
 </helmet>
 <div style="position: relative; min-height: 900px; background: #0F1115; font-family: Inter, system-ui, sans-serif; font-size: 13px; color: #E6E8EC; line-height: 1.4">
-<dc-import name="V4Main" active-tab="billing-fix" hint-size="100%,900px"></dc-import>
+<dc-import name="Main" active-tab="billing-fix" hint-size="100%,900px"></dc-import>
 <div style="position: absolute; inset: 0; background: rgba(6,7,9,0.55); display: flex; justify-content: center; align-items: flex-start; padding: 64px 16px 16px">
 <div role="dialog" aria-label="Settings" style="width: 440px; max-width: 100%; background: #171A20; border: 1px solid #2E3440; border-radius: 12px; box-shadow: 0 24px 60px rgba(0,0,0,0.5); display: flex; flex-direction: column; max-height: 780px; overflow: hidden">
 
 <div style="display: flex; align-items: center; padding: 16px 12px 10px 20px">
 <span style="flex: 1; font-size: 15px; font-weight: 600">Settings</span>
-<a href="V4Main.dc.html" aria-label="Close" style="width: 28px; height: 28px; display: grid; place-items: center; border-radius: 6px; color: #9098A8"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg></a>
+<a href="Main.dc.html" aria-label="Close" style="width: 28px; height: 28px; display: grid; place-items: center; border-radius: 6px; color: #9098A8"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg></a>
 </div>
 
 <div style="overflow-y: auto; padding: 0 20px 8px">
 
 <div style="font-size: 11px; font-weight: 600; color: #8A92A2; padding: 10px 0 2px">Appearance</div>
-<div style="display: flex; align-items: center; gap: 12px; min-height: 36px">
+<div style="display: flex; align-items: center; gap: 12px; min-height: 32px">
 <span style="flex: 1">Theme</span>
 <div style="display: flex; padding: 2px; border-radius: 7px; background: #0F1115; border: 1px solid #2B313C">
 <sc-for list="{{themeSeg}}" as="o" hint-placeholder-count="3"><button type="button" onClick="{{o.pick}}" aria-pressed="{{o.on}}" style="{{o.style}}">{{o.label}}</button></sc-for>
 </div>
 </div>
-<div style="display: flex; align-items: center; gap: 12px; min-height: 36px">
+<div style="display: flex; align-items: center; gap: 12px; min-height: 32px">
 <label for="setTerm" style="flex: 1">Terminal colours</label>
 <select id="setTerm" style="height: 28px; padding: 0 8px; border: 1px solid #2B313C; border-radius: 6px; background: #0F1115; color: #E6E8EC; font: inherit; font-size: 12px"><option>Match theme</option><option>Tokyo Night</option><option>Dracula</option><option>Solarized Dark</option><option>Solarized Light</option></select>
 </div>
-<div style="display: flex; align-items: center; gap: 12px; min-height: 36px">
+<sc-for list="{{termSw}}" as="r" hint-placeholder-count="1">
+<button type="button" onClick="{{r.flip}}" role="switch" aria-checked="{{r.on}}" style="display: flex; align-items: center; gap: 12px; width: 100%; min-height: 32px; padding: 0; border: 0; background: transparent; color: #E6E8EC; font: inherit; font-size: 13px; text-align: left; cursor: pointer"><span style="flex: 1">{{r.label}}</span><span style="{{r.track}}"><span style="{{r.knob}}"></span></span></button>
+</sc-for>
+<div style="display: flex; align-items: center; gap: 12px; min-height: 32px">
 <span style="flex: 1">Terminal font size</span>
 <div style="display: flex; align-items: center; border: 1px solid #2B313C; border-radius: 6px; background: #0F1115">
 <button type="button" onClick="{{fontDown}}" aria-label="Smaller" style="width: 28px; height: 26px; border: 0; background: transparent; color: #C4C9D3; font: inherit; font-size: 15px; cursor: pointer">−</button>
@@ -45,7 +48,7 @@ body{margin:0}
 <button type="button" onClick="{{fontUp}}" aria-label="Larger" style="width: 28px; height: 26px; border: 0; background: transparent; color: #C4C9D3; font: inherit; font-size: 15px; cursor: pointer">+</button>
 </div>
 </div>
-<div style="display: flex; align-items: center; gap: 12px; min-height: 36px">
+<div style="display: flex; align-items: center; gap: 12px; min-height: 32px">
 <span style="flex: 1">Tab rows</span>
 <div style="display: flex; padding: 2px; border-radius: 7px; background: #0F1115; border: 1px solid #2B313C">
 <sc-for list="{{rowsSeg}}" as="o" hint-placeholder-count="2"><button type="button" onClick="{{o.pick}}" aria-pressed="{{o.on}}" style="{{o.style}}">{{o.label}}</button></sc-for>
@@ -53,17 +56,20 @@ body{margin:0}
 </div>
 
 <div style="font-size: 11px; font-weight: 600; color: #8A92A2; padding: 14px 0 2px; margin-top: 10px; border-top: 1px solid #252A33">Tabs</div>
-<sc-for list="{{tabSw}}" as="r" hint-placeholder-count="1">
-<button type="button" onClick="{{r.flip}}" role="switch" aria-checked="{{r.on}}" style="display: flex; align-items: center; gap: 12px; width: 100%; min-height: 36px; padding: 0; border: 0; background: transparent; color: #E6E8EC; font: inherit; font-size: 13px; text-align: left; cursor: pointer"><span style="flex: 1">{{r.label}}</span><span style="{{r.track}}"><span style="{{r.knob}}"></span></span></button>
+<sc-for list="{{tabSw}}" as="r" hint-placeholder-count="2">
+<button type="button" onClick="{{r.flip}}" role="switch" aria-checked="{{r.on}}" style="display: flex; align-items: center; gap: 12px; width: 100%; min-height: 32px; padding: 0; border: 0; background: transparent; color: #E6E8EC; font: inherit; font-size: 13px; text-align: left; cursor: pointer"><span style="flex: 1">{{r.label}}</span><span style="{{r.track}}"><span style="{{r.knob}}"></span></span></button>
 </sc-for>
+<sc-if value="{{startupOn}}" hint-placeholder-val="{{ false }}">
+<textarea rows="2" aria-label="Startup message for every tab" placeholder="Sent first, before a tab's own, whenever claude starts again in any tab" style="display: block; width: 100%; box-sizing: border-box; margin: 2px 0 8px; padding: 8px 10px; border: 1px solid #2B313C; border-radius: 6px; background: #0F1115; color: #E6E8EC; font: inherit; font-size: 13px; line-height: 1.45; resize: vertical; outline: none">You were restarted, and whatever ran in the background (shells, watchers, servers) is gone. Continue the work, if any.</textarea>
+</sc-if>
 
 <div style="font-size: 11px; font-weight: 600; color: #8A92A2; padding: 14px 0 2px; margin-top: 10px; border-top: 1px solid #252A33">Notifications</div>
 <sc-for list="{{noteSw}}" as="r" hint-placeholder-count="3">
-<button type="button" onClick="{{r.flip}}" role="switch" aria-checked="{{r.on}}" style="display: flex; align-items: center; gap: 12px; width: 100%; min-height: 36px; padding: 0; border: 0; background: transparent; color: #E6E8EC; font: inherit; font-size: 13px; text-align: left; cursor: pointer"><span style="flex: 1">{{r.label}}</span><span style="{{r.track}}"><span style="{{r.knob}}"></span></span></button>
+<button type="button" onClick="{{r.flip}}" role="switch" aria-checked="{{r.on}}" style="display: flex; align-items: center; gap: 12px; width: 100%; min-height: 32px; padding: 0; border: 0; background: transparent; color: #E6E8EC; font: inherit; font-size: 13px; text-align: left; cursor: pointer"><span style="flex: 1">{{r.label}}</span><span style="{{r.track}}"><span style="{{r.knob}}"></span></span></button>
 </sc-for>
 
 <div style="font-size: 11px; font-weight: 600; color: #8A92A2; padding: 14px 0 2px; margin-top: 10px; border-top: 1px solid #252A33">Updates</div>
-<div style="display: flex; align-items: center; gap: 8px; min-height: 36px">
+<div style="display: flex; align-items: center; gap: 8px; min-height: 32px">
 <span style="{{everyStyle}}">Check every</span>
 <input type="number" min="1" max="365" value="{{days}}" onChange="{{onDays}}" aria-label="Days between checks" disabled="{{offCheck}}" style="{{daysStyle}}">
 <span style="{{everyStyle}}">{{daysWord}}</span>
@@ -105,12 +111,15 @@ class Component extends DCLogic {
     };
     const fs = s.fs || 13;
     const check = sw('check', '', true);
+    const startupSw = sw('startup', 'Startup message for every tab', false);
     const days = s.days || 1;
     return {
       themeSeg: seg('theme', [['auto', 'Auto'], ['light', 'Light'], ['dark', 'Dark']], 'auto'),
-      rowsSeg: seg('rows', [['two', 'Detailed'], ['one', 'Compact']], 'two'),
+      rowsSeg: seg('rows', [['two', 'Detailed'], ['one', 'Compact']], 'one'),
       fontSize: fs, fontDown: set('fs', Math.max(10, fs - 1)), fontUp: set('fs', Math.min(20, fs + 1)),
-      tabSw: [sw('confirm', 'Ask before closing a tab', true)],
+      termSw: [sw('scroll', 'Terminal scroll bar', false)],
+      tabSw: [sw('confirm', 'Ask before closing a tab', true), startupSw],
+      startupOn: startupSw.on,
       noteSw: [sw('nNeeds', 'When a tab needs me', true), sw('nDone', 'When a tab finishes', true), sw('nBg', 'Only while I am in another window', true)],
       check: check, flipCheck: check.flip, offCheck: !check.on,
       days: days, daysWord: days === 1 ? 'day' : 'days',
@@ -118,7 +127,7 @@ class Component extends DCLogic {
       daysStyle: 'width:46px;height:28px;padding:0 8px;border:1px solid #2B313C;border-radius:6px;background:#0F1115;font-family:"JetBrains Mono",monospace;font-size:12px;text-align:right;color:' + (check.on ? '#E6E8EC' : '#6B7383'),
       onDays: (e) => this.setState({ days: Math.max(1, parseInt(e.target.value, 10) || 1) }),
       lastChecked: s.checking ? 'checking…' : 'checked today at 14:20',
-      checkLabel: 'Check now', checkNow: () => this.setState({ checking: !s.checking })
+      checkNow: () => this.setState({ checking: !s.checking })
     };
   }
 }

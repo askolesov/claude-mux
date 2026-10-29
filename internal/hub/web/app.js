@@ -241,7 +241,7 @@ function health(e) {
   if (e.state === "connected") return backendOf(e.name) && !hasClaude(e.name) ? "problem" : "ok";
   return e.state === "failed" ? "problem" : "connecting";
 }
-// envMeta is an environment's details, for its dot's hover.
+// envMeta is an environment's details, for its name's hover.
 function envMeta(e) {
   const parts = [e.kind === "local" ? KIND_TEXT.local : `${KIND_TEXT[e.kind] || e.kind} ${e.target}`];
   if (e.platform) parts.push(e.platform.replace("-", "/"));
@@ -254,7 +254,8 @@ function kindLabel(e) {
   if (e.kind !== "local") return e.kind;
   return { darwin: "this Mac", windows: "this PC" }[hubPlatform.split("-")[0]] || "this machine";
 }
-// envWord is the state beside the dot, only when something is wrong.
+// envWord is the state beside the dot, only when something is wrong; a
+// folded environment shows it, an open one says it in its note.
 function envWord(e) {
   if (e.state === "failed") return "disconnected";
   if (e.state === "connected" && backendOf(e.name) && !hasClaude(e.name)) return "no claude";
@@ -356,13 +357,14 @@ function renderList() {
   for (const e of envs) {
     const fid = "env:" + e.name;
     const shut = collapsed.has(fid);
-    const word = envWord(e);
-    const name = editing?.fid === fid ? renameBox(fid, e.name, "Environment name") : `<span class="ename">${esc(e.name)}</span>`;
+    const word = shut ? envWord(e) : "";
+    const h = health(e);
+    const name = editing?.fid === fid ? renameBox(fid, e.name, "Environment name") : `<span class="ename" title="${esc(envMeta(e))}">${esc(e.name)}</span>`;
     html += `<div class="envblock" data-env="${esc(e.name)}" role="none">
       <div class="trow envhead" role="treeitem" aria-level="1" aria-expanded="${!shut}" tabindex="-1" data-fid="${esc(fid)}" data-kind="env" data-env="${esc(e.name)}" data-node="" data-depth="0" data-path=""
         title="Drag to reorder · right-click for actions" draggable="true">
       <button class="chevbtn" data-toggle="${esc(fid)}" tabindex="-1" aria-label="Fold ${esc(e.name)}">${CHEVRON}</button>${name}<span class="kind">${esc(kindLabel(e))}</span>
-      <span class="gap"></span>${word ? `<span class="estate">${word}</span>` : ""}<span class="hdot ${health(e)}" title="${esc(envMeta(e))}"></span></div>`;
+      <span class="gap"></span>${word ? `<span class="estate">${word}</span>` : ""}${h === "ok" ? "" : `<span class="hdot ${h}" title="${esc(envMeta(e))}"></span>`}</div>`;
     if (!shut) html += envNote(e) + walk(e.name, "", 1, []);
     html += `</div>`;
   }
@@ -404,7 +406,7 @@ function envNote(e) {
   if (e.state === "failed") return `<div class="envnote problem">${esc(e.error)} · <button class="link" data-env-act="reconnect" data-env="${n}">Reconnect</button></div>`;
   if (e.state === "connecting") return `<div class="envnote">${esc(e.step ? e.step + "…" : "Connecting…")}</div>`;
   if (backendOf(e.name) && !hasClaude(e.name)) {
-    return `<div class="envnote">No claude here · <button class="link" data-env-act="install" data-env="${n}">Install</button> · <button class="link" data-env-act="retry" data-env="${n}">Look again</button></div>`;
+    return `<div class="envnote">No claude · <button class="link" data-env-act="install" data-env="${n}">Install</button> · <button class="link" data-env-act="retry" data-env="${n}">Look again</button></div>`;
   }
   return "";
 }
@@ -841,21 +843,21 @@ const dlgArgs = () => [...dlgFlags(), ...words($("tArgs").value)].join(" ");
 function renderDlg() {
   $("tChecks").innerHTML = FLAGS.filter((f) => !typed(f))
     .map((f) => `<label><input type="checkbox" data-flag="${esc(f)}" ${dlg.checked.has(f) ? "checked" : ""}>${esc(f)}</label>`).join("");
+  $("tArgsSum").hidden = dlg.argsOpen;
   $("tArgsSum").textContent = [...dlgFlags().map((f) => FLAG_SHORT[f]), ...($("tArgs").value.trim() ? [$("tArgs").value.trim()] : [])].join(" · ") || "none";
   $("tArgsBtn").setAttribute("aria-expanded", dlg.argsOpen);
   $("tArgsBody").hidden = !dlg.argsOpen;
   $("tStartupSw").setAttribute("aria-checked", dlg.startup);
   $("tStartupBtn").setAttribute("aria-expanded", dlg.startup);
-  $("tStartupSum").hidden = dlg.startup;
-  $("tStartupSum").textContent = hubSettings?.startupMessage?.enabled ? "global only" : "none";
   $("tStartup").hidden = !dlg.startup;
   $("tName").placeholder = base($("tCwd").value) || "named after the folder";
   $("tPick").hidden = env(dlg.env)?.kind !== "local";
   if (dlg.mode !== "edit") return;
-  // Any change restarts claude.
+  // A new directory or new arguments restart claude; the startup message
+  // is read at each start, so changing it waits for the next one.
   const t = tab(dlg.key);
   const o = dlg.orig;
-  const dirty = $("tCwd").value.trim() !== o.cwd || dlg.startup !== o.startup || (dlg.startup && $("tStartup").value.trim() !== o.message) || dlgArgs() !== o.args;
+  const dirty = $("tCwd").value.trim() !== o.cwd || dlgArgs() !== o.args;
   dlg.restart = dirty && t && !dead(t);
   $("tNotice").hidden = !dlg.restart;
   $("tOk").textContent = dlg.restart ? "Save and restart" : "Save";
@@ -959,7 +961,7 @@ function openTabSettings(key) {
   const { checked, rest } = splitArgs(t.args);
   const startup = t.resume === "custom";
   dlg = { mode: "edit", key, env: t.env, startup, checked, argsOpen: true };
-  $("tTitle").textContent = t.name;
+  $("tTitle").textContent = "Tab settings";
   $("tMeta").textContent = [crumbOf(t), t.claudeSessionId && "session " + t.claudeSessionId.slice(0, 8)].filter(Boolean).join(" · ");
   $("tName").value = t.name;
   $("tName").readOnly = true;
@@ -1022,24 +1024,35 @@ async function duplicate(t) {
 }
 
 // ---------- environments ----------
+// Per kind: the target's label, the word for it, a placeholder, the hint.
 const kindHints = {
-  ssh: ["Host, as ssh takes it: host, user@host or an alias from ~/.ssh/config. It must take your key without a password prompt.", "devbox"],
-  docker: ["Container, running, with sh in it. Its tabs live as long as the container.", "my-container"],
-  wsl: ["WSL distro, as wsl -l lists it.", "Ubuntu"],
+  ssh: ["Host", "host", "devbox", "host, user@host or an alias from ~/.ssh/config. It must take your key without a password prompt."],
+  docker: ["Container", "container", "my-container", "A running container with sh in it. Its tabs live as long as the container."],
+  wsl: ["Distro", "distro", "Ubuntu", "As wsl -l lists it."],
 };
-async function fillTargets() {
-  const kind = $("hKind").value;
-  [$("hHint").textContent, $("hHost").placeholder] = kindHints[kind] || ["", ""];
+let hostKind = "";
+async function fillTargets(kind) {
+  hostKind = kind;
+  for (const b of $("hKind").children) b.setAttribute("aria-checked", b.dataset.kind === kind);
+  const [label, word, ph, hint] = kindHints[kind] || [KIND_TEXT[kind] || kind, "target", "", ""];
+  $("hLabel").textContent = label;
+  $("hHost").placeholder = ph;
+  $("hHint").textContent = hint;
+  $("hName").placeholder = `defaults to the ${word}`;
   const names = await request("GET", `/hub/targets/${encodeURIComponent(kind)}`).catch(() => []);
-  $("targets").innerHTML = (names || []).map((n) => `<option value="${esc(n)}">`).join("");
+  if (hostKind === kind) $("targets").innerHTML = (names || []).map((n) => `<option value="${esc(n)}">`).join("");
 }
-$("hKind").onchange = fillTargets;
+$("hKind").onclick = (e) => { const b = e.target.closest("[data-kind]"); if (b) { fillTargets(b.dataset.kind); $("hHost").focus(); } };
 function addEnv() {
-  $("hKind").innerHTML = hubKinds.map((k) => `<option value="${k}">${KIND_TEXT[k] || k}</option>`).join("");
+  $("hKind").innerHTML = hubKinds.map((k) => `<button type="button" role="radio" data-kind="${k}">${KIND_TEXT[k] || k}</button>`).join("");
+  // "An SSH host or a Docker container": the kinds this machine can add.
+  const names = hubKinds.map((k) => ({ ssh: "an SSH host", docker: "a Docker container", wsl: "a WSL distro" }[k] || k));
+  const meta = names.length > 1 ? `${names.slice(0, -1).join(", ")} or ${names.at(-1)}` : names[0] || "";
+  $("hMeta").textContent = meta.charAt(0).toUpperCase() + meta.slice(1);
   $("hHost").value = "";
   $("hName").value = "";
   $("hostErr").textContent = "";
-  fillTargets();
+  fillTargets(hubKinds[0]);
   $("hostDlg").showModal();
   $("hHost").focus();
 }
@@ -1047,7 +1060,7 @@ $("hostCancel").onclick = () => $("hostDlg").close();
 $("hostForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   try {
-    await request("POST", "/hub/environments", { kind: $("hKind").value, target: $("hHost").value, name: $("hName").value });
+    await request("POST", "/hub/environments", { kind: hostKind, target: $("hHost").value, name: $("hName").value });
     $("hostDlg").close();
   } catch (err) {
     $("hostErr").textContent = err.message;
@@ -1060,7 +1073,7 @@ function openEnvSettings(name) {
   const e = env(name);
   if (!e) return;
   envDlgName = name;
-  $("eTitle").textContent = name;
+  $("eTitle").textContent = "Environment settings";
   $("eMeta").textContent = e.kind === "local" ? KIND_TEXT.local : `${KIND_TEXT[e.kind] || e.kind} ${e.target}`;
   $("eName").value = name;
   $("eName").disabled = e.kind === "local";

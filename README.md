@@ -100,8 +100,9 @@ back.
   A ring means "look at me". A folded group shows its most urgent tab's
   dot. The window title and the Dock icon count the tabs that wait.
 - **Tab settings** (… above the terminal, ⌘I, or right-click a tab): its
-  directory, startup message and arguments. Saving restarts its claude,
-  and the conversation continues. A tab's name is claude's: type
+  directory, startup message and arguments. Saving a new directory or
+  arguments restarts its claude, and the conversation continues; a new
+  startup message waits for the tab's next start. A tab's name is claude's: type
   `/rename <name>` in the tab to change it.
 - **Right-click** any row for what it can do. A tab: Tab settings,
   Duplicate, Move to…, Restart, Close. A group: New tab, New group,

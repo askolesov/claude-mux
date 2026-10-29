@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>claude-mux v4 main window</title>
+<title>claude-mux main window</title>
 <script src="./support.js"></script>
 </head>
 <body>
@@ -15,20 +15,17 @@ body{margin:0}
 </style>
 </helmet>
 <div style="min-height: 900px; display: flex; flex-direction: column; background: {{c.bg}}; color: {{c.text}}; font-family: Inter, system-ui, sans-serif; font-size: 13px; line-height: 1.4">
-
-
 <div style="flex: 1 1 auto; display: flex; flex-wrap: wrap; min-height: 0">
 
-<sc-if value="{{isLeft}}" hint-placeholder-val="{{ true }}">
 <aside style="flex: 1 1 248px; max-width: 100%; display: flex; flex-direction: column; background: {{c.panel}}; border-right: 1px solid {{c.line}}">
 <div style="display: flex; align-items: center; gap: 8px; padding: 12px 10px 12px 14px">
 <svg width="20" height="20" viewBox="0 0 64 64" aria-hidden="true" style="flex: none"><rect width="64" height="64" rx="14" fill="#161A21"></rect><rect x="20" y="10" width="34" height="27" rx="5" fill="#2E3542"></rect><rect x="10" y="22" width="36" height="30" rx="5" fill="#0B0D10" stroke="#7AA2F7" stroke-width="4"></rect><path d="M17 31l6 5-6 5" fill="none" stroke="#E6E8EC" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"></path></svg>
 <span style="font-weight: 700; font-size: 14px; letter-spacing: -0.01em; flex: 1">claude-mux</span>
-<a href="V4NewTab.dc.html" aria-label="New tab (⌥N)" title="New tab (⌥N), next to the selected tab" style="width: 28px; height: 28px; display: grid; place-items: center; border-radius: 6px; color: {{c.text2}}; "><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></a>
-<a href="V4Settings.dc.html" aria-label="Settings" style="width: 28px; height: 28px; display: grid; place-items: center; border-radius: 6px; color: {{c.muted}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"></path><circle cx="15" cy="6" r="2"></circle><circle cx="9" cy="12" r="2"></circle><circle cx="17" cy="18" r="2"></circle></svg></a>
+<a href="NewTab.dc.html" aria-label="New tab (⌥N)" title="New tab (⌥N), next to the selected tab" style="width: 28px; height: 28px; display: grid; place-items: center; border-radius: 6px; color: {{c.text2}}; "><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></a>
+<a href="Settings.dc.html" aria-label="Settings" style="width: 28px; height: 28px; display: grid; place-items: center; border-radius: 6px; color: {{c.muted}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"></path><circle cx="15" cy="6" r="2"></circle><circle cx="9" cy="12" r="2"></circle><circle cx="17" cy="18" r="2"></circle></svg></a>
 </div>
 <div style="padding: 0 10px 6px">
-<a href="V4Jump.dc.html" style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border-radius: 6px; background: {{c.field}}; color: {{c.muted}}; text-decoration: none; font-size: 12px">
+<a href="Jump.dc.html" style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border-radius: 6px; background: {{c.field}}; color: {{c.muted}}; text-decoration: none; font-size: 12px">
 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
 <span style="flex: 1">Jump to tab</span>
 <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px">⌘K</span>
@@ -42,14 +39,14 @@ body{margin:0}
 <sc-if value="{{r.isEnv}}" hint-placeholder-val="{{ false }}">
 <div style="{{r.rowStyle}}">
 <button type="button" onClick="{{r.toggle}}" aria-label="Collapse or expand {{r.label}}" style="width: 16px; height: 22px; display: grid; place-items: center; border: 0; padding: 0; background: transparent; color: {{c.muted}}; cursor: pointer; flex: none"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="{{r.chevStyle}}"><path d="m6 9 6 6 6-6"></path></svg></button>
-<span style="font-weight: 600; font-size: 12px; color: {{c.text}}">{{r.label}}</span>
+<span title="{{r.metaShort}}" style="font-weight: 600; font-size: 12px; color: {{c.text}}">{{r.label}}</span>
 <span style="font-size: 11px; color: {{c.muted}}">{{r.kind}}</span>
 <span style="flex: 1"></span>
-<sc-if value="{{r.noClaude}}" hint-placeholder-val="{{ false }}"><span style="font-size: 11px; color: {{c.needs}}">no claude</span></sc-if>
-<span title="{{r.metaShort}}" style="{{r.healthDot}}"></span>
+<sc-if value="{{r.word}}" hint-placeholder-val="{{ false }}"><span style="font-size: 11px; color: {{c.needs}}">{{r.word}}</span></sc-if>
+<sc-if value="{{r.problem}}" hint-placeholder-val="{{ false }}"><span title="{{r.metaShort}}" style="{{r.healthDot}}"></span></sc-if>
 </div>
-<sc-if value="{{r.noClaude}}" hint-placeholder-val="{{ false }}">
-<div style="padding: 2px 8px 6px 28px; font-size: 12px; color: {{c.muted}}">No claude here · <button type="button" style="border: 0; padding: 0; background: transparent; color: {{c.accentText}}; font: inherit; cursor: pointer">Install</button></div>
+<sc-if value="{{r.showNote}}" hint-placeholder-val="{{ false }}">
+<div style="padding: 2px 8px 6px 28px; font-size: 12px; color: {{c.muted}}">No claude · <button type="button" style="border: 0; padding: 0; background: transparent; color: {{c.accentText}}; font: inherit; cursor: pointer">Install</button> · <button type="button" style="border: 0; padding: 0; background: transparent; color: {{c.accentText}}; font: inherit; cursor: pointer">Look again</button></div>
 </sc-if>
 </sc-if>
 <sc-if value="{{r.isGroup}}" hint-placeholder-val="{{ false }}">
@@ -94,14 +91,11 @@ body{margin:0}
 <button type="button" style="border: 0; padding: 0; background: transparent; color: {{c.accentText}}; font: inherit; font-weight: 600; cursor: pointer">Update and restart</button>
 </div>
 </aside>
-</sc-if>
-
-
 <main style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; background: {{c.bg}}">
 <div style="display: flex; align-items: center; gap: 10px; padding: 10px 12px 10px 18px; border-bottom: 1px solid {{c.line}}; flex-wrap: wrap">
 <span style="font-weight: 600; font-size: 14px">{{cur.name}}</span>
 <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: {{c.muted}}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1 1 200px">{{cur.crumb}}</span>
-<a href="V4TabSettings.dc.html" aria-label="Tab settings" title="Tab settings" style="width: 32px; height: 32px; display: grid; place-items: center; border-radius: 6px; color: {{c.muted}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"></circle><circle cx="12" cy="12" r="1.8"></circle><circle cx="19" cy="12" r="1.8"></circle></svg></a>
+<a href="TabSettings.dc.html" aria-label="Tab settings" title="Tab settings" style="width: 32px; height: 32px; display: grid; place-items: center; border-radius: 6px; color: {{c.muted}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"></circle><circle cx="12" cy="12" r="1.8"></circle><circle cx="19" cy="12" r="1.8"></circle></svg></a>
 </div>
 <div style="flex: 1 1 auto; display: flex; min-height: 0">
 <section aria-label="{{cur.name}}" style="flex: 1; min-width: 0; background: {{c.term}}; padding: 14px 18px; font-family: 'JetBrains Mono', monospace; font-size: 13px; line-height: 1.65; overflow: hidden">
@@ -129,16 +123,16 @@ body{margin:0}
 </div>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"rows":{"editor":"enum","options":["two","one"],"default":"two"},"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"contextMenu":{"editor":"enum","options":["","local","g-api","g-pay","g-infra","build-box","billing-fix"],"default":""},"newGroupIn":{"editor":"enum","options":["","g-api","g-pay","g-infra"],"default":""},"activeTab":{"editor":"enum","options":["rpc-gateway","billing-fix","ledger-sync","invoice-export","docs-site","terraform-plan","k8s-watch","release-v0.9","flaky-tests"],"default":"billing-fix"},"$preview":{"width":1440,"height":900}}'>
+<script type="text/x-dc" data-dc-script data-props='{"rows":{"editor":"enum","options":["one","two"],"default":"one"},"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"contextMenu":{"editor":"enum","options":["","local","g-api","g-pay","g-infra","build-box","billing-fix"],"default":""},"newGroupIn":{"editor":"enum","options":["","g-api","g-pay","g-infra"],"default":""},"activeTab":{"editor":"enum","options":["rpc-gateway","billing-fix","ledger-sync","invoice-export","docs-site","terraform-plan","k8s-watch","release-v0.9","flaky-tests"],"default":"billing-fix"},"$preview":{"width":1440,"height":900}}'>
 class Component extends DCLogic {
   renderVals() {
     const s = this.state || {};
-        const THEMES = {
+    const THEMES = {
       dark: { bg: '#0F1115', panel: '#14171C', line: '#252A33', field: '#1B1F26', sel: '#232834', term: '#0B0D10', termLine: '#1E222A', boxLine: '#3A3F4A', text: '#E6E8EC', text2: '#C4C9D3', muted: '#8A92A2', accent: '#7AA2F7', accentSoft: '#1B2233', pop: '#1B1F26', danger: '#F38B8B', accentText: '#AFC6FA', onAccent: '#0F1115', working: '#7AA2F7', ready: '#4FD18B', needs: '#F5B14C', readyHalo: 'rgba(79,209,139,0.25)', halo: 'rgba(245,177,76,0.25)', exited: '#6B7383', exitedText: '#8A92A2', termText: '#D7DAE0', termDim: '#9098A8', termStrong: '#E6E8EC', mark: '#161A21', markFg: '#E6E8EC' },
       light: { bg: '#FFFFFF', panel: '#F6F7F9', line: '#E3E6EB', field: '#ECEEF2', sel: '#E2E7F0', term: '#FBFBFC', termLine: '#E3E6EB', boxLine: '#C9CED8', text: '#1D2129', text2: '#3D4452', muted: '#626A7A', accent: '#2F5FD0', accentSoft: '#E8EEFB', pop: '#FFFFFF', danger: '#C93C3C', accentText: '#2A55BD', onAccent: '#FFFFFF', working: '#2F5FD0', ready: '#1F9D5C', needs: '#B86F0A', readyHalo: 'rgba(31,157,92,0.2)', halo: 'rgba(184,111,10,0.2)', exited: '#9AA1AD', exitedText: '#7A8291', termText: '#2B303A', termDim: '#626A7A', termStrong: '#1D2129', mark: '#1D2129', markFg: '#FFFFFF' }
     };
     const c = THEMES[this.props.theme] || THEMES.dark;
-    const twoLine = (this.props.rows || 'two') === 'two';
+    const twoLine = this.props.rows === 'two';
     const activeId = s.active || this.props.activeTab || 'billing-fix';
     const COL = { working: c.working, ready: c.ready, needs: c.needs };
     const TABS = [
@@ -153,9 +147,9 @@ class Component extends DCLogic {
       { id: 'flaky-tests', cwd: '/srv/claude-mux', branch: 'main', status: 'exited' }
     ];
     const ENVS = [
-      { id: 'local', label: 'local', kind: 'this Mac', metaShort: 'connected', health: c.ready },
-      { id: 'build-box', label: 'build-box', kind: 'ssh', metaShort: '42 ms', health: c.ready },
-      { id: 'sandbox', label: 'sandbox', kind: 'docker', metaShort: 'no claude', health: c.needs, noClaude: true }
+      { id: 'local', label: 'local', kind: 'this Mac', metaShort: 'This machine · darwin/arm64' },
+      { id: 'build-box', label: 'build-box', kind: 'ssh', metaShort: 'SSH host build-box · linux/amd64 · 42 ms' },
+      { id: 'sandbox', label: 'sandbox', kind: 'docker', metaShort: 'Docker container sandbox · linux/arm64 · no claude', noClaude: true }
     ];
     const GROUPS = { 'g-api': 'api', 'g-pay': 'payments', 'g-infra': 'infra' };
     // The tree: every container lists its children in the user's order. Groups and tabs mix freely.
@@ -189,15 +183,18 @@ class Component extends DCLogic {
     const ctx = s.ctx !== undefined ? s.ctx : (this.props.contextMenu || '');
     const newGroupIn = this.props.newGroupIn || '';
     const ITEMS = {
-      env: [['New tab', '⌥N'], ['New group', '⇧⌥N'], null, ['Reconnect', ''], ['Environment settings…', ''], null, ['Remove environment', '', true]],
+      env: [['New tab', '⌥N'], ['New group', '⇧⌥N'], null, ['Reconnect', ''], ['Environment settings…', '']],
+      envRemovable: [null, ['Remove environment', '', true]],
       group: [['New tab', '⌥N'], ['New group', '⇧⌥N'], null, ['Rename', 'F2'], ['Collapse', '←'], null, ['Delete group', '⌫', true]],
-      tab: [['Tab settings…', '⌘I'], ['Rename', 'F2'], ['Duplicate', ''], ['Move to…', ''], null, ['Restart', ''], ['Close tab', '⌘W', true]]
+      tab: [['Tab settings…', '⌘I'], ['Duplicate', ''], ['Move to…', ''], null, ['Restart', ''], ['Close tab', '⌘W', true]],
+      deadTab: [['Tab settings…', '⌘I'], ['Duplicate', ''], ['Move to…', ''], null, ['Resume', '↵'], ['Close tab', '⌘W', true]]
     };
     const ctxFor = (kind, id, depth) => ({
+      // The local environment can't be removed; an exited tab resumes instead of restarting.
       ctxOpen: ctx === id,
       openCtx: (e) => { if (e && e.preventDefault) e.preventDefault(); this.setState({ ctx: ctx === id ? '' : id }); },
-      ctxStyle: 'position:absolute;top:calc(100% - 4px);left:' + Math.min(padFor(depth) + 18, 28) + 'px;z-index:5;width:196px;padding:4px;background:' + c.pop + ';border:1px solid ' + c.line + ';border-radius:8px;box-shadow:0 10px 28px rgba(0,0,0,0.4)',
-      ctxItems: ITEMS[kind].map((it, i) => it ? { isItem: true, isSep: false, label: it[0], key: it[1],
+      ctxStyle: 'position:absolute;top:calc(100% - 4px);left:' + Math.min(padFor(depth) + 18, 28) + 'px;z-index:5;width:210px;padding:4px;background:' + c.pop + ';border:1px solid ' + c.line + ';border-radius:8px;box-shadow:0 10px 28px rgba(0,0,0,0.4)',
+      ctxItems: (kind === 'env' && id !== 'local' ? ITEMS.env.concat(ITEMS.envRemovable) : kind === 'tab' && byId[id].status === 'exited' ? ITEMS.deadTab : ITEMS[kind]).map((it, i) => it ? { isItem: true, isSep: false, label: it[0], key: it[1],
         style: 'display:flex;align-items:center;gap:10px;width:100%;height:28px;padding:0 10px;border:0;border-radius:5px;font:inherit;font-size:13px;text-align:left;cursor:pointer;background:' + (i === 0 ? c.sel : 'transparent') + ';color:' + (it[2] ? c.danger : c.text) } : { isItem: false, isSep: true })
     });
     const INDENT = 16;
@@ -219,7 +216,7 @@ class Component extends DCLogic {
         select: () => this.setState({ active: t.id })
       });
     };
-    const blank = { isEnv: false, isGroup: false, isTab: false, isEdit: false, ctxOpen: false, ctxItems: [], isMenu: false, noClaude: false, hasClaude: false, collapsed: false, menuOpen: false, guides: [] };
+    const blank = { isEnv: false, isGroup: false, isTab: false, isEdit: false, ctxOpen: false, ctxItems: [], showNote: false, problem: false, word: '', collapsed: false, guides: [] };
     const rows = [];
     const toggle = (id) => () => this.setState({ collapsed: Object.assign({}, collapsed, { [id]: !collapsed[id] }) });
     const walk = (id, depth) => {
@@ -235,7 +232,6 @@ class Component extends DCLogic {
             chevStyle: 'transition:transform 120ms;transform:rotate(' + (isC ? '-90' : '0') + 'deg)',
             wrapStyle: 'position:relative', rowStyle: 'position:relative;display:flex;align-items:center;gap:6px;height:28px;padding:0 4px 0 ' + (padFor(depth) - 2) + 'px'
           }, ctxFor('group', k, depth)));
-          if (!isC && newGroupIn === k) { /* shown after children below */ }
           if (!isC) walk(k, depth + 1);
           if (!isC && newGroupIn === k) rows.push(Object.assign({}, blank, { isEdit: true, role: 'treeitem', level: depth + 2, label: 'New group', guides: guidesFor(depth + 1), wrapStyle: 'position:relative', rowStyle: 'display:flex;align-items:center;gap:6px;height:30px;padding:0 6px 0 ' + (padFor(depth + 1) - 2) + 'px' }));
         } else {
@@ -251,8 +247,9 @@ class Component extends DCLogic {
       const isC = !!collapsed[e.id];
       rows.push(Object.assign({}, blank, {
         isEnv: true, role: 'treeitem', level: 1, expanded: !isC, label: e.label, kind: e.kind, metaShort: e.metaShort,
-        noClaude: !!e.noClaude, hasClaude: !e.noClaude,
-        healthDot: 'width:6px;height:6px;border-radius:50%;flex:none;background:' + e.health,
+        // Calm when fine: the dot shows only when something is wrong; the word only while folded (open, the note says it).
+        problem: !!e.noClaude, showNote: !!e.noClaude && !isC, word: e.noClaude && isC ? 'no claude' : '',
+        healthDot: 'width:6px;height:6px;border-radius:50%;flex:none;background:' + c.needs,
         toggle: toggle(e.id),
         chevStyle: 'transition:transform 120ms;transform:rotate(' + (isC ? '-90' : '0') + 'deg)',
         wrapStyle: 'position:relative;' + (ei === 0 ? 'margin-top:4px' : 'margin-top:10px'),
@@ -260,10 +257,6 @@ class Component extends DCLogic {
       }, ctxFor('env', e.id, 0)));
       if (!isC) walk(e.id, 1);
     });
-    const envs = ENVS.map((e, ei) => Object.assign({}, e, {
-      meta: e.kind + ' · ' + e.metaShort, noClaude: !!e.noClaude, hasClaude: !e.noClaude, isLocal: e.id === 'local', isSsh: e.id === 'build-box', isDocker: e.id === 'sandbox',
-      healthDot: 'width:6px;height:6px;border-radius:50%;flex:none;background:' + e.health
-    }));
     const cur = dec(byId[activeId] || byId['billing-fix']);
     const T = (t, col) => ({ isText: true, isBox: false, isPrompt: false, t: t, style: 'white-space:pre-wrap;color:' + (col || c.termText) });
     let lines;
@@ -288,8 +281,7 @@ class Component extends DCLogic {
       { isText: false, isBox: false, isPrompt: true }
     ];
     return {
-      c: c, isLeft: true,
-      envs: envs, rows: rows, cur: cur, lines: lines
+      c: c, rows: rows, cur: cur, lines: lines
     };
   }
 }
