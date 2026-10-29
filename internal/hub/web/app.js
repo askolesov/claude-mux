@@ -38,7 +38,7 @@ const KIND_TEXT = { local: "This machine", ssh: "SSH host", docker: "Docker cont
 // browser see the same; a copy in this browser paints the first frame.
 const PAGE_DEFAULTS = {
   confirmClose: true,
-  theme: "auto", termTheme: "auto", termSize: 13, termScrollbar: false, tabRows: "two",
+  theme: "auto", termTheme: "auto", termSize: 13, termScrollbar: false, tabRows: "one",
   notifyNeeds: true, notifyReady: true, notifyAway: true,
   // What New tab starts from: the options of the last tab started.
   lastTab: { startup: false, message: "", args: "", flags: [...FLAGS] },
@@ -60,6 +60,9 @@ const PAGE_STEPS = [
     if (p.termSize > 20) p.termSize = 20;
     for (const k of ["layout", "sort", "termFont", "newEnv", "newCwd", "newArgs", "newFlags", "notifyExited", "badge"]) delete p[k];
   },
+  // 1 → 2 (v0.7.12): compact tab rows by default. Every saved page carried
+  // the old default, so a page on Detailed is asked once (askCompact).
+  (p) => { if (p.tabRows === "two") p.askCompact = true; },
 ];
 function upgradePage(saved) {
   const p = { ...saved };
@@ -260,6 +263,8 @@ function envWord(e) {
 const CHEVRON = `<svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>`;
 const PLUG = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 2v5M15 2v5M6 7h12v4a6 6 0 0 1-12 0zM12 17v5"/></svg>`;
 // A tab with a startup message shows ↻.
+// The text a startup message starts with when it is switched on empty.
+const DEFAULT_STARTUP = "You were restarted, and whatever ran in the background (shells, watchers, servers) is gone. Continue the work, if any.";
 const hasStartup = (t) => t.resume === "custom" && t.resumeMessage;
 
 // ---------- the tree ----------
@@ -804,6 +809,8 @@ function streamHub() {
       store.set("mux.page", JSON.stringify(page));
       if (!hub.settings?.page || saved.version !== page.version) saveSettings({});
       applyPage();
+      if (page.askCompact && !askingCompact) askCompact();
+      else if (!page.askCompact && askingCompact) { askingCompact = false; $("msgDlg").close(); } // answered in another window
     }
     refresh();
     if ($("setDlg").open && !$("setDlg").contains(document.activeElement?.matches("input, select, textarea") ? document.activeElement : null)) renderSettings();
@@ -862,6 +869,8 @@ $("tChecks").addEventListener("change", (e) => {
 });
 $("tStartupBtn").onclick = () => {
   dlg.startup = !dlg.startup;
+  // The global message already says it; a tab's own would repeat it.
+  if (dlg.startup && !$("tStartup").value.trim() && !hubSettings?.startupMessage?.enabled) $("tStartup").value = DEFAULT_STARTUP;
   renderDlg();
   if (dlg.startup) $("tStartup").focus();
 };
@@ -1239,7 +1248,7 @@ $("sBody").addEventListener("click", async (e) => {
   if (t.closest("#sCheck")) { saveSettings({ checkUpdates: !hubSettings?.checkUpdates }); renderSettings(); return; }
   if (t.closest("#sStartup")) {
     const was = hubSettings?.startupMessage || { enabled: false, message: "" };
-    saveSettings({ startupMessage: { ...was, enabled: !was.enabled } });
+    saveSettings({ startupMessage: { enabled: !was.enabled, message: was.message || DEFAULT_STARTUP } });
     renderSettings();
     if (!was.enabled) $("sStartupText").focus();
     return;
@@ -1761,13 +1770,25 @@ function newWindow() {
   else window.open(location.href, "_blank");
 }
 
+// askCompact offers the compact tab rows once to a page that was on Detailed
+// when they became the default; closing the question keeps Detailed.
+let askingCompact = false;
+async function askCompact() {
+  askingCompact = true;
+  const yes = await sure("Compact tab rows", "Compact is now the recommended layout: each tab takes one row, with only its name. Switch to it? You can change this at any time in Settings › Appearance.", "Switch to Compact", "Keep Detailed");
+  if (!askingCompact) return;
+  askingCompact = false;
+  setPage({ askCompact: undefined, ...(yes ? { tabRows: "one" } : {}) });
+}
+
 // sure and say stand in for confirm and alert, which the app's own window
 // (a bare web view) answers without showing anything.
-function sure(title, text, ok = "OK") {
+function sure(title, text, ok = "OK", cancel = "Cancel") {
   $("mTitle").textContent = title;
   $("mTitle").parentElement.hidden = !title;
   $("mText").textContent = text;
   $("mOk").textContent = ok;
+  $("mCancel").textContent = cancel;
   $("mCancel").hidden = false;
   return new Promise((resolve) => {
     const done = (v) => { $("msgDlg").close(); resolve(v); };
