@@ -61,8 +61,8 @@ const PAGE_STEPS = [
     for (const k of ["layout", "sort", "termFont", "newEnv", "newCwd", "newArgs", "newFlags", "notifyExited", "badge"]) delete p[k];
   },
   // 1 → 2 (v0.7.12): compact tab rows by default. Every saved page carried
-  // the old default, so it moves too; Detailed is one click back.
-  (p) => { if (p.tabRows === "two") p.tabRows = "one"; },
+  // the old default, so a page on Detailed is asked once (askCompact).
+  (p) => { if (p.tabRows === "two") p.askCompact = true; },
 ];
 function upgradePage(saved) {
   const p = { ...saved };
@@ -809,6 +809,8 @@ function streamHub() {
       store.set("mux.page", JSON.stringify(page));
       if (!hub.settings?.page || saved.version !== page.version) saveSettings({});
       applyPage();
+      if (page.askCompact && !askingCompact) askCompact();
+      else if (!page.askCompact && askingCompact) { askingCompact = false; $("msgDlg").close(); } // answered in another window
     }
     refresh();
     if ($("setDlg").open && !$("setDlg").contains(document.activeElement?.matches("input, select, textarea") ? document.activeElement : null)) renderSettings();
@@ -1768,13 +1770,25 @@ function newWindow() {
   else window.open(location.href, "_blank");
 }
 
+// askCompact offers the compact tab rows once to a page that was on Detailed
+// when they became the default; closing the question keeps Detailed.
+let askingCompact = false;
+async function askCompact() {
+  askingCompact = true;
+  const yes = await sure("Compact tab rows", "Compact is now the recommended layout: each tab takes one row, with only its name. Switch to it? You can change this at any time in Settings › Appearance.", "Switch to Compact", "Keep Detailed");
+  if (!askingCompact) return;
+  askingCompact = false;
+  setPage({ askCompact: undefined, ...(yes ? { tabRows: "one" } : {}) });
+}
+
 // sure and say stand in for confirm and alert, which the app's own window
 // (a bare web view) answers without showing anything.
-function sure(title, text, ok = "OK") {
+function sure(title, text, ok = "OK", cancel = "Cancel") {
   $("mTitle").textContent = title;
   $("mTitle").parentElement.hidden = !title;
   $("mText").textContent = text;
   $("mOk").textContent = ok;
+  $("mCancel").textContent = cancel;
   $("mCancel").hidden = false;
   return new Promise((resolve) => {
     const done = (v) => { $("msgDlg").close(); resolve(v); };
