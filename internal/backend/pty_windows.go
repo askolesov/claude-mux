@@ -41,9 +41,12 @@ func startPty(name string, args, env []string, dir string, cols, rows uint16) (*
 	return p, nil
 }
 
-func (p *ptyProc) Read(b []byte) (int, error)     { return p.con.Read(b) }
-func (p *ptyProc) Write(b []byte) (int, error)    { return p.con.Write(b) }
-func (p *ptyProc) Pid() int                       { return p.cmd.Process.Pid }
+func (p *ptyProc) Read(b []byte) (int, error)  { return p.con.Read(b) }
+func (p *ptyProc) Write(b []byte) (int, error) { return p.con.Write(b) }
+func (p *ptyProc) Pid() int                    { return p.cmd.Process.Pid }
+
+// Foreground can't be read from a pseudo console.
+func (p *ptyProc) Foreground() (int, bool)        { return 0, false }
 func (p *ptyProc) Resize(cols, rows uint16) error { return p.con.Resize(int(cols), int(rows)) }
 func (p *ptyProc) closeCon()                      { p.close.Do(func() { _ = p.con.Close() }) }
 

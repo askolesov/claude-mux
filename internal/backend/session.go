@@ -45,7 +45,8 @@ type Session struct {
 	proc        *ptyProc // nil while claude isn't running
 	scrollback  []byte
 	lastOutput  time.Time
-	cols, rows  uint16 // the page's last terminal size; a resumed pty starts with it
+	cwdAt       time.Time // when a terminal's folder was last read (followCwd)
+	cols, rows  uint16    // the page's last terminal size; a resumed pty starts with it
 	clients     map[chan []byte]struct{}
 }
 

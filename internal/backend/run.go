@@ -49,6 +49,7 @@ func Run(stateDir, defaultCwd string, global, old StartupMessage) error {
 	go m.WatchStartup(ctx)
 	go m.WatchNames(ctx)
 	go m.WatchBranches(ctx)
+	go m.WatchTerminals(ctx)
 
 	hooks := &http.Server{Handler: NewHookHandler(m, hex.EncodeToString(token)), ReadHeaderTimeout: 10 * time.Second}
 	go func() { _ = hooks.Serve(hookLn) }()
