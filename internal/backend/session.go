@@ -10,6 +10,7 @@ type Status string
 
 const (
 	StatusStarting Status = "starting"
+	StatusIdle     Status = "idle" // a terminal at its prompt, or a codex before its first hook
 	StatusWorking  Status = "working"
 	StatusReady    Status = "ready"     // waiting for the next prompt
 	StatusNeedsYou Status = "needs-you" // a permission prompt or a question
@@ -20,18 +21,19 @@ const (
 // scrollbackLimit caps the output kept for replay when a terminal connects.
 const scrollbackLimit = 1 << 20
 
-// Session is a tab: one claude process in a pty. The fields above mu are
+// Session is a tab: one process in a pty, claude, codex or a shell (Kind). The fields above mu are
 // persisted in the state file.
 type Session struct {
-	ID              string     `json:"id"`
-	Name            string     `json:"name"`
-	Parent          string     `json:"parent,omitempty"` // the group it is in, "" for none (see tree.go)
-	Order           string     `json:"order"`
-	Cwd             string     `json:"cwd"`
-	Args            []string   `json:"args,omitempty"`
-	ClaudeSessionID string     `json:"claudeSessionId,omitempty"` // the conversation the tab continues
-	Resume          ResumeMode `json:"resume,omitempty"`          // the first prompt when its claude starts again
-	ResumeMessage   string     `json:"resumeMessage,omitempty"`
+	ID             string     `json:"id"`
+	Kind           Kind       `json:"kind"`
+	Name           string     `json:"name"`
+	Parent         string     `json:"parent,omitempty"` // the group it is in, "" for none (see tree.go)
+	Order          string     `json:"order"`
+	Cwd            string     `json:"cwd"`
+	Args           []string   `json:"args,omitempty"`
+	AgentSessionID string     `json:"agentSessionId,omitempty"` // the agent's conversation the tab continues
+	Resume         ResumeMode `json:"resume,omitempty"`         // the first prompt when its claude starts again
+	ResumeMessage  string     `json:"resumeMessage,omitempty"`
 
 	mu          sync.Mutex
 	status      Status
@@ -48,19 +50,20 @@ type Session struct {
 
 // SessionView is what the page sees of a session.
 type SessionView struct {
-	ID              string     `json:"id"`
-	Name            string     `json:"name"`
-	Parent          string     `json:"parent"`
-	Order           string     `json:"order"`
-	Cwd             string     `json:"cwd"`
-	Args            []string   `json:"args"`
-	ClaudeSessionID string     `json:"claudeSessionId"`
-	Resume          ResumeMode `json:"resume"`
-	ResumeMessage   string     `json:"resumeMessage"`
-	Status          Status     `json:"status"`
-	StatusSince     time.Time  `json:"statusSince"`
-	Unseen          bool       `json:"unseen"`
-	Branch          string     `json:"branch"`
+	ID             string     `json:"id"`
+	Kind           Kind       `json:"kind"`
+	Name           string     `json:"name"`
+	Parent         string     `json:"parent"`
+	Order          string     `json:"order"`
+	Cwd            string     `json:"cwd"`
+	Args           []string   `json:"args"`
+	AgentSessionID string     `json:"agentSessionId"`
+	Resume         ResumeMode `json:"resume"`
+	ResumeMessage  string     `json:"resumeMessage"`
+	Status         Status     `json:"status"`
+	StatusSince    time.Time  `json:"statusSince"`
+	Unseen         bool       `json:"unseen"`
+	Branch         string     `json:"branch"`
 }
 
 // View is the tab as the page sees it.
@@ -68,19 +71,20 @@ func (s *Session) View() SessionView {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return SessionView{
-		ID:              s.ID,
-		Name:            s.Name,
-		Parent:          s.Parent,
-		Order:           s.Order,
-		Cwd:             s.Cwd,
-		Args:            s.Args,
-		ClaudeSessionID: s.ClaudeSessionID,
-		Resume:          s.Resume,
-		ResumeMessage:   s.ResumeMessage,
-		Status:          s.status,
-		StatusSince:     s.statusSince,
-		Unseen:          s.unseen,
-		Branch:          s.branch,
+		ID:             s.ID,
+		Kind:           s.Kind,
+		Name:           s.Name,
+		Parent:         s.Parent,
+		Order:          s.Order,
+		Cwd:            s.Cwd,
+		Args:           s.Args,
+		AgentSessionID: s.AgentSessionID,
+		Resume:         s.Resume,
+		ResumeMessage:  s.ResumeMessage,
+		Status:         s.status,
+		StatusSince:    s.statusSince,
+		Unseen:         s.unseen,
+		Branch:         s.branch,
 	}
 }
 

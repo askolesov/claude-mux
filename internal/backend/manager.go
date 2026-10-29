@@ -156,10 +156,17 @@ func (m *Manager) Get(id string) (*Session, error) {
 	return nil, errNotFound
 }
 
-// Create opens a tab with a new claude in cwd ("~" for home, "" for the
-// default directory), in parent: after a child of it, or at its end. With no
-// name it is named after its directory.
-func (m *Manager) Create(name, parent, after, cwd string, resume ResumeMode, resumeMessage string, args []string) (*Session, error) {
+// Create opens a tab of a kind in cwd ("~" for home, "" for the default
+// directory), in parent: after a child of it, or at its end. With no name it
+// is named after its directory. A terminal has no startup message and no
+// arguments.
+func (m *Manager) Create(kind Kind, name, parent, after, cwd string, resume ResumeMode, resumeMessage string, args []string) (*Session, error) {
+	if err := kind.valid(); err != nil {
+		return nil, err
+	}
+	if !kind.agent() {
+		resume, resumeMessage, args = ResumeOff, "", nil
+	}
 	if err := resume.valid(); err != nil {
 		return nil, err
 	}
@@ -172,7 +179,7 @@ func (m *Manager) Create(name, parent, after, cwd string, resume ResumeMode, res
 	if name = strings.TrimSpace(name); name == "" {
 		name = filepath.Base(cwd)
 	}
-	s := &Session{ID: newID(), Name: name, Parent: parent, Cwd: cwd, Args: args, Resume: resume, ResumeMessage: strings.TrimSpace(resumeMessage)}
+	s := &Session{ID: newID(), Kind: kind, Name: name, Parent: parent, Cwd: cwd, Args: args, Resume: resume, ResumeMessage: strings.TrimSpace(resumeMessage)}
 	m.mu.Lock()
 	err := m.validParent(parent, "")
 	if err == nil {
@@ -209,7 +216,7 @@ func (m *Manager) Start(id string) error {
 		return errNoClaude
 	}
 	s.mu.Lock()
-	name, sid, resume, own := s.Name, s.ClaudeSessionID, s.Resume, s.ResumeMessage
+	name, sid, resume, own := s.Name, s.AgentSessionID, s.Resume, s.ResumeMessage
 	args := append([]string{"--settings", m.hooksFile, "--name", name}, s.Args...)
 	s.mu.Unlock()
 	// Starting again (claude-mux restarted, Restart, Resume) continues the

@@ -116,6 +116,7 @@ func (h *Handler) events(c *gin.Context) {
 
 func (h *Handler) create(c *gin.Context) {
 	var req struct {
+		Kind          Kind       `json:"kind" binding:"required"`
 		Name          string     `json:"name"`
 		Parent        string     `json:"parent"`
 		After         string     `json:"after"` // a child of parent to go after; "" for its end
@@ -127,7 +128,7 @@ func (h *Handler) create(c *gin.Context) {
 	if !bind(c, &req) {
 		return
 	}
-	s, err := h.m.Create(req.Name, req.Parent, req.After, req.Cwd, req.Resume, req.ResumeMessage, strings.Fields(req.Args))
+	s, err := h.m.Create(req.Kind, req.Name, req.Parent, req.After, req.Cwd, req.Resume, req.ResumeMessage, strings.Fields(req.Args))
 	if err != nil {
 		respond(c, nil, err)
 		return

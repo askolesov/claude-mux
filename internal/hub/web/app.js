@@ -962,7 +962,7 @@ function openTabSettings(key) {
   const startup = t.resume === "custom";
   dlg = { mode: "edit", key, env: t.env, startup, checked, argsOpen: true };
   $("tTitle").textContent = "Tab settings";
-  $("tMeta").textContent = [crumbOf(t), t.claudeSessionId && "session " + t.claudeSessionId.slice(0, 8)].filter(Boolean).join(" · ");
+  $("tMeta").textContent = [crumbOf(t), t.agentSessionId && "session " + t.agentSessionId.slice(0, 8)].filter(Boolean).join(" · ");
   $("tName").value = t.name;
   $("tName").readOnly = true;
   $("tName").title = "Type /rename <name> in the tab to rename it";
@@ -994,7 +994,7 @@ $("tabForm").addEventListener("submit", async (e) => {
       return;
     }
     const name = dlg.env;
-    const s = await api(name, "POST", "/api/sessions", { ...body, name: $("tName").value.trim(), parent: dlg.parent, after: dlg.after });
+    const s = await api(name, "POST", "/api/sessions", { ...body, kind: "claude", name: $("tName").value.trim(), parent: dlg.parent, after: dlg.after });
     store.set("mux.lastCwd." + name, body.cwd);
     setPage({ lastTab: { startup: dlg.startup, message: $("tStartup").value, args: $("tArgs").value.trim(), flags: FLAGS.filter((f) => dlg.checked.has(f)) } });
     $("tabDlg").close();
@@ -1017,7 +1017,7 @@ function added(name, s) {
 // duplicate starts a new tab like t, next to it: a new conversation.
 async function duplicate(t) {
   const s = await api(t.env, "POST", "/api/sessions", {
-    name: t.name + " copy", parent: t.parent || "", after: t.id, cwd: t.cwd,
+    kind: t.kind, name: t.name + " copy", parent: t.parent || "", after: t.id, cwd: t.cwd,
     args: (t.args || []).join(" "), resume: t.resume || "off", resumeMessage: t.resumeMessage || "",
   });
   added(t.env, s);

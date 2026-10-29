@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -148,4 +149,34 @@ func mustRead(t *testing.T, path string) string {
 		t.Fatal(err)
 	}
 	return string(data)
+}
+
+// v0.7: every tab runs claude, and its conversation is claudeSessionId.
+const stateV2 = `{"version":2,"sessions":[
+	{"id":"a","name":"ops","cwd":"/w","order":"V","resume":"off","claudeSessionId":"abc"},
+	{"id":"b","name":"notes","cwd":"/w","order":"k","resume":"off"}],"groups":[]}`
+
+func TestMigrateV2(t *testing.T) {
+	m, dir := loadState(t, map[string]string{"backend.json": stateV2})
+	a, b := m.sessions[0], m.sessions[1]
+	if a.Kind != KindClaude || b.Kind != KindClaude {
+		t.Errorf("kinds %q %q, want claude", a.Kind, b.Kind)
+	}
+	if a.AgentSessionID != "abc" || b.AgentSessionID != "" {
+		t.Errorf("session ids %q %q", a.AgentSessionID, b.AgentSessionID)
+	}
+	saved := mustRead(t, filepath.Join(dir, "backend.json"))
+	if !strings.Contains(saved, `"version": 3`) || strings.Contains(saved, "claudeSessionId") {
+		t.Errorf("saved %s", saved)
+	}
+}
+
+func TestCreateRejectsUnknownKind(t *testing.T) {
+	m := &Manager{defaultCwd: t.TempDir()}
+	if _, err := m.Create("shell", "x", "", "", "", ResumeOff, "", nil); err == nil {
+		t.Error("made a tab of an unknown kind")
+	}
+	if len(m.sessions) != 0 {
+		t.Errorf("sessions %+v", m.sessions)
+	}
 }

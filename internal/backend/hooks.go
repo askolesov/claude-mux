@@ -67,8 +67,8 @@ func (m *Manager) ApplyHook(id string, p HookPayload) error {
 	}
 	if p.SessionID != "" {
 		s.mu.Lock()
-		changedID := s.ClaudeSessionID != p.SessionID
-		s.ClaudeSessionID = p.SessionID
+		changedID := s.AgentSessionID != p.SessionID
+		s.AgentSessionID = p.SessionID
 		s.mu.Unlock()
 		if changedID { // a new session, or /clear started a fresh one
 			m.save()

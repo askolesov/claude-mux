@@ -63,5 +63,19 @@ func stateSteps(old StartupMessage) []migrate.Step {
 			migrate.SetList(doc, "sessions", sessions)
 			return nil
 		},
+		// 2 → 3: v0.8 tabs have a kind; every tab before ran claude, and its
+		// claudeSessionId becomes agentSessionId.
+		func(doc map[string]any) error {
+			sessions := migrate.List(doc, "sessions")
+			for _, s := range sessions {
+				s["kind"] = string(KindClaude)
+				if id, ok := s["claudeSessionId"]; ok {
+					s["agentSessionId"] = id
+					delete(s, "claudeSessionId")
+				}
+			}
+			migrate.SetList(doc, "sessions", sessions)
+			return nil
+		},
 	}
 }
