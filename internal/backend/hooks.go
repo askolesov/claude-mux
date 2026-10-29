@@ -96,6 +96,9 @@ func (m *Manager) ApplyHook(id string, p HookPayload) error {
 	if st != "" && s.setStatus(st) {
 		m.changes.Notify()
 	}
+	if st == StatusReady {
+		m.sendRename(s)
+	}
 	return nil
 }
 

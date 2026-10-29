@@ -35,6 +35,7 @@ func NewHandler(m *Manager) http.Handler {
 	api.GET("/events", h.events)
 	api.POST("/sessions", h.create)
 	api.PUT("/sessions/:id", h.configure)
+	api.PUT("/sessions/:id/name", h.rename)
 	api.DELETE("/sessions/:id", h.close)
 	api.POST("/sessions/:id/start", h.start)
 	api.POST("/sessions/:id/restart", h.restart)
@@ -149,6 +150,15 @@ func (h *Handler) configure(c *gin.Context) {
 		return
 	}
 	respond(c, nil, h.m.Configure(c.Param("id"), req.Cwd, req.Resume, req.ResumeMessage, strings.Fields(req.Args)))
+}
+
+func (h *Handler) rename(c *gin.Context) {
+	var req struct {
+		Name string `json:"name" binding:"required"`
+	}
+	if bind(c, &req) {
+		respond(c, nil, h.m.Rename(c.Param("id"), req.Name))
+	}
 }
 
 // saveFile keeps a file dropped or pasted into a tab, and answers its path

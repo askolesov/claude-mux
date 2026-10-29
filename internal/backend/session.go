@@ -46,6 +46,8 @@ type Session struct {
 	scrollback  []byte
 	lastOutput  time.Time
 	cwdAt       time.Time // when a terminal's folder was last read (followCwd)
+	pendingName string    // a Claude tab's new name, until claude reports it (rename.go)
+	renamedAt   time.Time // when its /rename was typed; zero while it waits
 	cols, rows  uint16    // the page's last terminal size; a resumed pty starts with it
 	clients     map[chan []byte]struct{}
 }

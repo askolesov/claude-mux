@@ -353,10 +353,10 @@ func (m *Manager) WatchStartup(ctx context.Context) {
 	})
 }
 
-// WatchNames follows, every 5 s, the names claude reports for the tabs'
-// processes in `claude agents --json`: claude owns the name, and /rename
-// typed in a tab is the only way to rename it. The name is passed back as
-// --name on the next start.
+// WatchNames follows, every 5 s, the names claude reports for the Claude
+// tabs' processes in `claude agents --json`: a name set with /rename, in the
+// tab or by Rename, comes back here. The name is passed back as --name on
+// the next start.
 func (m *Manager) WatchNames(ctx context.Context) {
 	every(ctx, 5*time.Second, func() { m.followNames(ctx) })
 }
@@ -387,6 +387,12 @@ func (m *Manager) followName(pid int, name string) {
 	for _, s := range sessions {
 		s.mu.Lock()
 		changed := s.proc != nil && s.proc.Pid() == pid && name != "" && name != s.Name
+		if s.pendingName != "" && (name == s.pendingName || !s.renamedAt.IsZero() && time.Since(s.renamedAt) > renameWait) {
+			s.pendingName, s.renamedAt = "", time.Time{}
+		}
+		if s.pendingName != "" {
+			changed = false // claude hasn't taken the new name yet
+		}
 		if changed {
 			s.Name = name
 		}
