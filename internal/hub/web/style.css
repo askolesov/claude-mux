@@ -191,7 +191,7 @@ dialog {
   padding: 0; width: min(440px, calc(100vw - 32px)); margin: min(140px, 12vh) auto auto; box-shadow: var(--shadow);
   max-height: calc(100vh - min(140px, 12vh) - 20px); overflow: auto;
 }
-dialog.tall { margin-top: min(90px, 8vh); max-height: min(680px, calc(100vh - min(90px, 8vh) - 20px)); overflow: hidden; }
+dialog.tall { margin-top: min(90px, 8vh); max-height: calc(100vh - min(90px, 8vh) - 20px); overflow: hidden; }
 dialog.tall[open] { display: flex; flex-direction: column; }
 dialog::backdrop { background: var(--shade); }
 dialog h3 { margin: 0; font-size: 15px; font-weight: 600; }
@@ -259,7 +259,7 @@ dialog pre { margin: 0; font: 11.5px/1.4 var(--mono); background: var(--term); b
 .ssec { font-size: 11px; font-weight: 600; color: var(--muted); padding: 14px 0 2px; margin-top: 10px; border-top: 1px solid var(--line); }
 .ssec:first-child { padding-top: 10px; margin-top: 0; border-top: 0; }
 .srow {
-  display: flex; align-items: center; gap: 12px; width: 100%; min-height: 36px; padding: 0;
+  display: flex; align-items: center; gap: 12px; width: 100%; min-height: 32px; padding: 0;
   border: 0; background: transparent; color: var(--text); text-align: left;
 }
 .srow > :first-child { flex: 1; }
