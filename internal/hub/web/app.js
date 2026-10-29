@@ -27,10 +27,15 @@ let pendingSelect = selection.get() || store.get("mux.selected"); // until its t
 const terms = new Map();         // tab key -> {key, term, fit, ws, el, closed, retry}
 const lastStatus = new Map();    // tab key -> status, for notifications
 
-const STATUS_TEXT = { starting: "Starting", working: "Working", ready: "Ready", "needs-you": "Needs you", exited: "Exited", stopped: "Stopped" };
-// The frequent flags, offered as checkboxes under the arguments.
-const FLAGS = ["--dangerously-skip-permissions", "--chrome"];
-const FLAG_SHORT = { "--dangerously-skip-permissions": "skip permissions", "--chrome": "chrome" };
+const STATUS_TEXT = { starting: "Starting", working: "Working", ready: "Ready", idle: "Idle", "needs-you": "Needs you", exited: "Exited", stopped: "Stopped" };
+// What a tab runs, as New tab and the menus name it.
+const TAB_KINDS = ["claude", "codex", "terminal"];
+const TAB_KIND_TEXT = { claude: "Claude", codex: "Codex", terminal: "Terminal" };
+const newLabel = (kind) => "New " + (kind === "terminal" ? "terminal" : TAB_KIND_TEXT[kind]);
+// Each agent's frequent flags, offered as checkboxes under the arguments.
+const FLAGS_BY_KIND = { claude: ["--dangerously-skip-permissions", "--chrome"], codex: ["--approve-for-me", "--search"], terminal: [] };
+const FLAGS = FLAGS_BY_KIND.claude; // the ones before v0.8, which only ran claude
+const FLAG_SHORT = { "--dangerously-skip-permissions": "skip permissions", "--chrome": "chrome", "--approve-for-me": "approve for me", "--search": "search" };
 const KIND_TEXT = { local: "This machine", ssh: "SSH host", docker: "Docker container", wsl: "WSL distro" };
 
 // ---------- page settings ----------
@@ -40,8 +45,13 @@ const PAGE_DEFAULTS = {
   confirmClose: true,
   theme: "auto", termTheme: "auto", termSize: 13, termScrollbar: false, tabRows: "one",
   notifyNeeds: true, notifyReady: true, notifyAway: true,
-  // What New tab starts from: the options of the last tab started.
-  lastTab: { startup: false, message: "", args: "", flags: [...FLAGS] },
+  // What New tab starts from: the options of the last tab of each agent
+  // started, and the kind ⌥N makes.
+  lastTabs: {
+    claude: { startup: false, message: "", args: "", flags: [...FLAGS_BY_KIND.claude] },
+    codex: { startup: false, message: "", args: "", flags: [...FLAGS_BY_KIND.codex] },
+  },
+  lastKind: "claude",
 };
 // PAGE_STEPS upgrade the page's settings, one version each, like the
 // hub's and the backends' files. Never remove one.
@@ -63,6 +73,12 @@ const PAGE_STEPS = [
   // 1 → 2 (v0.7.12): compact tab rows by default. Every saved page carried
   // the old default, so a page on Detailed is asked once (askCompact).
   (p) => { if (p.tabRows === "two") p.askCompact = true; },
+  // 2 → 3 (v0.8): tabs run Claude, Codex or a terminal; New tab repeats the
+  // last tab of its kind.
+  (p) => {
+    if (p.lastTab) p.lastTabs = { ...PAGE_DEFAULTS.lastTabs, claude: p.lastTab };
+    delete p.lastTab;
+  },
 ];
 function upgradePage(saved) {
   const p = { ...saved };
@@ -221,7 +237,9 @@ function dayAndTime(ts) {
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const home = (p) => String(p || "").replace(/^\/(Users|home)\/[^/]+/, "~");
 const base = (p) => String(p || "").replace(/[/\\]+$/, "").split(/[/\\]/).pop();
-const waiting = (t) => t.status === "needs-you" || (t.status === "ready" && t.unseen);
+// waiting: the tab waits for you. A terminal never does: its finished
+// commands show in the tree only.
+const waiting = (t) => t.kind !== "terminal" && (t.status === "needs-you" || (t.status === "ready" && t.unseen));
 const tab = (key) => tabs.find((t) => t.key === key);
 const env = (name) => envs.find((e) => e.name === name);
 const dead = (t) => t.status === "exited" || t.status === "stopped";
@@ -230,12 +248,11 @@ const backendOf = (name) => env(name)?.backend;
 const sessionsOf = (name) => backendOf(name)?.sessions || [];
 const groupsIn = (name) => backendOf(name)?.groups || [];
 const groupOf = (name, id) => groupsIn(name).find((g) => g.id === id);
-// dotClass is a tab's dot: its status, and the ring of "look at me" when it
-// finished and hasn't been seen (needs-you has its ring by status).
-const dotClass = (t) => (t.status === "ready" && t.unseen ? "ready unseen" : t.status);
 const rank = (t) => (t.status === "needs-you" ? 0 : t.status === "ready" && t.unseen ? 1 : 2);
-const hasClaude = (name) => !!backendOf(name)?.agents?.claude?.path;
-const canStart = (name) => env(name)?.state === "connected" && hasClaude(name);
+const hasAgent = (name, kind) => !!backendOf(name)?.agents?.[kind]?.path;
+const hasClaude = (name) => hasAgent(name, "claude");
+// canStart: the environment can start a tab of kind; a terminal needs no agent.
+const canStart = (name, kind = "claude") => env(name)?.state === "connected" && (kind === "terminal" || hasAgent(name, kind));
 // health: ok (connected, with claude), problem (failed, or no claude) or connecting.
 function health(e) {
   if (e.state === "connected") return backendOf(e.name) && !hasClaude(e.name) ? "problem" : "ok";
@@ -320,6 +337,37 @@ $("mark1").innerHTML = markSvg(20);
 function favicon(dot) {
   const href = "data:image/svg+xml," + encodeURIComponent(markSvg(64, dot));
   if ($("favicon").href !== href) $("favicon").href = href;
+}
+
+// ---------- glyphs ----------
+// A tab's glyph: its shape is what it runs, its colour how it is, and a halo
+// of the same shape means "look at me" (docs/redesign, Glyphs.dc.html).
+const SHAPES = {
+  claude: "M3.9 3.6h6.2a1.7 1.7 0 0 1 1.7 1.7v3.4a1.7 1.7 0 0 1-1.7 1.7H3.9a1.7 1.7 0 0 1-1.7-1.7V5.3a1.7 1.7 0 0 1 1.7-1.7zM4.3 6.6a1 1 0 1 0 2 0 1 1 0 1 0-2 0zM7.7 6.6a1 1 0 1 0 2 0 1 1 0 1 0-2 0z",
+  claudeExited: "M3.9 3.6h6.2a1.7 1.7 0 0 1 1.7 1.7v3.4a1.7 1.7 0 0 1-1.7 1.7H3.9a1.7 1.7 0 0 1-1.7-1.7V5.3a1.7 1.7 0 0 1 1.7-1.7z",
+  codex: "M7 2.2a4.8 4.8 0 1 1 0 9.6 4.8 4.8 0 1 1 0-9.6z",
+  terminal: "M4.6 2.7 11.7 7l-7.1 4.3z",
+};
+// glyphLook is a tab's glyph colour (a token) and halo; a terminal at its
+// prompt, and a codex before its first prompt, are grey.
+function glyphLook(t) {
+  if (dead(t)) return { color: "exited" };
+  if (t.status === "needs-you") return { color: "needs", halo: "halo" };
+  if (t.status === "ready" && t.unseen) return { color: "ready", halo: "ready-halo" };
+  if (t.status === "working") return { color: "working" };
+  if (t.status === "starting") return { color: "working", dim: true };
+  if (t.status === "idle" || t.kind === "terminal") return { color: "muted" };
+  return { color: "ready" };
+}
+// glyph draws a kind's glyph, for a tab t, or plain (a menu's) without one.
+function glyph(kind, t = null) {
+  const look = t ? glyphLook(t) : { color: "text2" };
+  const exited = t && dead(t);
+  const d = (exited && SHAPES[kind + "Exited"]) || SHAPES[kind] || SHAPES.claude;
+  const c = `var(--${look.color})`;
+  const halo = look.halo ? `<path d="${d}" fill="var(--${look.halo})" stroke="var(--${look.halo})" stroke-width="7" stroke-linejoin="round"/>` : "";
+  return `<svg class="glyph${look.dim ? " dim" : ""}" width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">${halo}` +
+    `<path fill-rule="evenodd" d="${d}" fill="${exited ? "none" : c}" stroke="${c}" stroke-width="${exited ? 1.5 : kind === "terminal" ? 0.8 : 0}" stroke-linejoin="round"/></svg>`;
 }
 
 // ---------- rendering ----------
@@ -419,7 +467,7 @@ function tabRow(t, depth, path) {
   const name = `<span class="name">${esc(t.name)}</span>${mark}`;
   return `<div class="${cls}" role="treeitem" aria-level="${depth + 1}" aria-selected="${selected === t.key}" tabindex="-1" data-fid="${esc(fid)}" data-kind="tab" data-key="${esc(t.key)}" data-env="${esc(t.env)}" data-node="${esc(t.id)}" data-parent="${esc(t.parent || "")}" data-depth="${depth}" data-path="${esc(path.join("/"))}"
     style="padding-left:${pad(depth) + 4}px" title="${esc(STATUS_TEXT[t.status] || t.status)} for ${ago(t.statusSince)} · ${esc(home(t.cwd))}" draggable="true">${guides(depth)}
-    <span class="dot ${dotClass(t)}"></span><span class="lines"><span class="line1">${name}</span>
+    ${glyph(t.kind, t)}<span class="lines"><span class="line1">${name}</span>
     ${page.tabRows === "one" ? "" : `<span class="cwd">${esc(home(t.cwd))}</span>`}</span></div>`;
 }
 
@@ -663,7 +711,8 @@ function connect(t) {
 }
 
 function exitedLine(t) {
-  setTimeout(() => t.term.write("\r\n\x1b[33mclaude exited. Press Enter to resume.\x1b[0m\r\n"), 50);
+  const text = { codex: "codex exited. Press Enter to resume.", terminal: "The shell exited. Press Enter for a new one." }[tab(t.key)?.kind] || "claude exited. Press Enter to resume.";
+  setTimeout(() => t.term.write(`\r\n\x1b[33m${text}\x1b[0m\r\n`), 50);
 }
 
 function dropTerm(key) {
@@ -750,6 +799,7 @@ function notifyTransitions() {
       if (term && term.ws?.readyState !== WebSocket.OPEN) { term.retry = 0; connect(term); }
     }
     if (t.status === "exited" && term) exitedLine(term);
+    if (t.kind === "terminal") continue; // a terminal never notifies
     const wanted = { "needs-you": page.notifyNeeds, ready: page.notifyReady }[t.status];
     if (!wanted) continue;
     // Every window sees the change; the first to get here tells.
@@ -823,25 +873,33 @@ function streamHub() {
 // One form for both. The arguments are one text, the single truth; the
 // frequent flags are checkboxes, each hidden once the text has that flag.
 // New tab asks for a name and a directory; the rest repeats the last tab.
-let dlg = null; // {mode: "new"|"edit", key?, env, parent, after, startup, message, checked: Set, argsOpen, orig?}
+let dlg = null; // {mode: "new"|"edit", kind, key?, env, parent, after, startup, message, checked: Set, argsOpen, orig?}
 
 const words = (s) => s.trim().split(/\s+/).filter(Boolean);
 const typed = (flag) => words($("tArgs").value).includes(flag);
 // splitArgs takes the frequent flags out of a tab's args: checked, the rest.
-function splitArgs(args) {
+function splitArgs(args, kind) {
   const rest = [...(args || [])];
   const checked = new Set();
-  for (const f of FLAGS) {
+  for (const f of FLAGS_BY_KIND[kind] || []) {
     const i = rest.indexOf(f);
     if (i >= 0) { checked.add(f); rest.splice(i, 1); }
   }
   return { checked, rest: rest.join(" ") };
 }
-const dlgFlags = () => FLAGS.filter((f) => dlg.checked.has(f) && !typed(f));
+const dlgFlags = () => FLAGS_BY_KIND[dlg.kind].filter((f) => dlg.checked.has(f) && !typed(f));
 const dlgArgs = () => [...dlgFlags(), ...words($("tArgs").value)].join(" ");
 
 function renderDlg() {
-  $("tChecks").innerHTML = FLAGS.filter((f) => !typed(f))
+  const agent = dlg.kind !== "terminal";
+  $("tKinds").hidden = dlg.mode !== "new";
+  $("tKinds").innerHTML = TAB_KINDS.map((k) => `<button type="button" role="radio" data-kind="${k}" aria-checked="${dlg.kind === k}">${glyph(k)}${TAB_KIND_TEXT[k]}</button>`).join("");
+  for (const id of ["tStartupFold", "tArgsFold"]) $(id).hidden = !agent;
+  if (dlg.mode === "new") {
+    $("tTitle").textContent = newLabel(dlg.kind);
+    $("tFootNote").textContent = agent ? `Same options as your last ${TAB_KIND_TEXT[dlg.kind]} tab` : "Opens your default shell";
+  }
+  $("tChecks").innerHTML = FLAGS_BY_KIND[dlg.kind].filter((f) => !typed(f))
     .map((f) => `<label><input type="checkbox" data-flag="${esc(f)}" ${dlg.checked.has(f) ? "checked" : ""}>${esc(f)}</label>`).join("");
   $("tArgsSum").hidden = dlg.argsOpen;
   $("tArgsSum").textContent = [...dlgFlags().map((f) => FLAG_SHORT[f]), ...($("tArgs").value.trim() ? [$("tArgs").value.trim()] : [])].join(" · ") || "none";
@@ -927,40 +985,49 @@ function showDlg() {
   $("tabDlg").showModal();
 }
 
-// openNew opens New tab in an environment and container (parent), after a
-// tab there (after); by default next to the selected tab.
-function openNew(at = {}) {
+// openNew opens New tab for a kind (by default the last one made) in an
+// environment and container (parent), after a tab there (after); by default
+// next to the selected tab.
+function openNew(at = {}, kind = page.lastKind || "claude") {
   const sel = tab(selected);
   let where = at.env ? at : sel ? { env: sel.env, parent: sel.parent || "", after: sel.id } : null;
-  if (!where || !canStart(where.env)) {
-    const e = envs.find((x) => canStart(x.name));
+  if (!where || !canStart(where.env, "terminal")) {
+    const e = envs.find((x) => canStart(x.name, "terminal"));
     if (at.env || !e) { say(at.env ? `${at.env} can't start a tab: ${envWord(env(at.env)) || "it isn't connected yet"}.` : "No environment can start a tab yet."); return; }
     where = { env: e.name, parent: "", after: "" };
   }
-  const last = page.lastTab || PAGE_DEFAULTS.lastTab;
-  dlg = { mode: "new", env: where.env, parent: where.parent || "", after: where.after || "", startup: !!last.startup, checked: new Set(last.flags || []), argsOpen: false };
-  $("tTitle").textContent = "New tab";
+  dlg = { mode: "new", kind, env: where.env, parent: where.parent || "", after: where.after || "", argsOpen: false };
+  pickKind(kind);
   $("tMeta").textContent = "in " + placeOf(where.env, dlg.parent);
   $("tName").value = "";
-  $("tName").readOnly = false;
-  $("tName").title = "";
   $("tCwd").value = store.get("mux.lastCwd." + where.env) || home(backendOf(where.env)?.defaultCwd || "");
-  $("tStartup").value = last.message || "";
-  $("tArgs").value = last.args || "";
   $("tClose").hidden = true;
   $("tNotice").hidden = true;
-  $("tFootNote").textContent = "Same options as your last tab";
   $("tOk").textContent = "Start";
   showDlg();
   $("tName").focus();
 }
 
+// pickKind sets New tab to a kind, with the options of its last tab.
+function pickKind(kind) {
+  const last = page.lastTabs?.[kind] || PAGE_DEFAULTS.lastTabs[kind] || { flags: [] };
+  Object.assign(dlg, { kind, startup: !!last.startup, checked: new Set(last.flags || []) });
+  $("tStartup").value = last.message || "";
+  $("tArgs").value = last.args || "";
+}
+$("tKinds").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-kind]");
+  if (!b || b.dataset.kind === dlg.kind) return;
+  pickKind(b.dataset.kind);
+  renderDlg();
+});
+
 function openTabSettings(key) {
   const t = tab(key);
   if (!t) return;
-  const { checked, rest } = splitArgs(t.args);
+  const { checked, rest } = splitArgs(t.args, t.kind);
   const startup = t.resume === "custom";
-  dlg = { mode: "edit", key, env: t.env, startup, checked, argsOpen: true };
+  dlg = { mode: "edit", kind: t.kind, key, env: t.env, startup, checked, argsOpen: true };
   $("tTitle").textContent = "Tab settings";
   $("tMeta").textContent = [crumbOf(t), t.agentSessionId && "session " + t.agentSessionId.slice(0, 8)].filter(Boolean).join(" · ");
   $("tName").value = t.name;
@@ -994,9 +1061,11 @@ $("tabForm").addEventListener("submit", async (e) => {
       return;
     }
     const name = dlg.env;
-    const s = await api(name, "POST", "/api/sessions", { ...body, kind: "claude", name: $("tName").value.trim(), parent: dlg.parent, after: dlg.after });
+    const s = await api(name, "POST", "/api/sessions", { ...body, kind: dlg.kind, name: $("tName").value.trim(), parent: dlg.parent, after: dlg.after });
     store.set("mux.lastCwd." + name, body.cwd);
-    setPage({ lastTab: { startup: dlg.startup, message: $("tStartup").value, args: $("tArgs").value.trim(), flags: FLAGS.filter((f) => dlg.checked.has(f)) } });
+    const lastTabs = { ...page.lastTabs };
+    if (dlg.kind !== "terminal") lastTabs[dlg.kind] = { startup: dlg.startup, message: $("tStartup").value, args: $("tArgs").value.trim(), flags: FLAGS_BY_KIND[dlg.kind].filter((f) => dlg.checked.has(f)) };
+    setPage({ lastTabs, lastKind: dlg.kind });
     $("tabDlg").close();
     added(name, s);
   } catch (err) {
@@ -1316,15 +1385,17 @@ function fuzzy(s, q) {
   for (const c of q.toLowerCase()) { i = s.indexOf(c, i); if (i < 0) return false; i++; }
   return true;
 }
-// statusWord is how Jump says a tab's state, in its dot's colour.
+// statusWord is how Jump says a tab's state, in its glyph's colour.
 function statusWord(t) {
   if (t.status === "needs-you") return ["Needs you", "var(--needs)"];
   if (t.status === "ready" && t.unseen) return ["Done, unseen", "var(--ready)"];
-  if (t.status === "ready") return ["Ready", "var(--ready)"];
   if (dead(t)) return ["Exited", "var(--muted)"];
+  if (t.status === "working") return [t.kind === "terminal" ? "Running" : "Working", "var(--working)"];
+  if (t.status === "idle" || t.kind === "terminal") return ["Idle", "var(--muted)"];
+  if (t.status === "ready") return ["Ready", "var(--ready)"];
   return [STATUS_TEXT[t.status] || t.status, "var(--working)"];
 }
-const ACTIONS = [["new", "New tab", "⌥N"], ["new-group", "New group", "⇧⌥N"], ["new-window", "New window", MOD + "N"], ["tab-settings", "Tab settings", MOD + "I"], ["settings", "Settings", MOD + ","]];
+const ACTIONS = [["new-claude", "New Claude", "⌥N"], ["new-codex", "New Codex", ""], ["new-terminal", "New terminal", ""], ["new-group", "New group", "⇧⌥N"], ["new-window", "New window", MOD + "N"], ["tab-settings", "Tab settings", MOD + "I"], ["settings", "Settings", MOD + ","]];
 function renderPalette() {
   if (!$("palette").classList.contains("open")) return;
   const raw = $("pIn").value;
@@ -1356,7 +1427,7 @@ function renderPalette() {
     for (const t of found) {
       const n = vis.indexOf(t);
       const [word, colour] = statusWord(t);
-      html += item(`<span class="dot ${dotClass(t)}"></span><span class="name">${esc(t.name)}</span><span class="where">${esc(crumbOf(t))}</span>
+      html += item(`${glyph(t.kind, t)}<span class="name">${esc(t.name)}</span><span class="where">${esc(crumbOf(t))}</span>
         <span class="st" style="color:${colour}">${word}</span><kbd>${n < 9 ? "⌥" + (n + 1) : ""}</kbd>`);
     }
     if (actions.length) html += `<div class="sec">Actions</div>`;
@@ -1376,7 +1447,7 @@ function runPalette(i) {
     return;
   }
   if (it.tab) { select(it.tab.key); return; }
-  if (it.action === "new") openNew();
+  if (it.action.startsWith("new-") && TAB_KINDS.includes(it.action.slice(4))) openNew({}, it.action.slice(4));
   if (it.action === "new-group") newGroupNear();
   if (it.action === "new-window") newWindow();
   if (it.action === "tab-settings") openTabSettings(selected);
@@ -1408,7 +1479,12 @@ $("jumpKey").textContent = MOD + "K";
 $("settings").title = `Settings (${MOD},)`;
 
 // ---------- the sidebar ----------
-$("new2").onclick = $("newTab").onclick = () => openNew();
+$("new2").onclick = () => openNew();
+// + opens a small menu of the kinds; ⌥N makes the last kind without it.
+$("newTab").onclick = () => {
+  const r = $("newTab").getBoundingClientRect();
+  openMenu({ x: r.left, y: r.bottom + 4 }, { kind: "plus" });
+};
 $("settings").onclick = () => openSettings();
 $("head").addEventListener("click", (e) => { if (e.target.closest("#tabMore")) openTabSettings(selected); });
 
@@ -1665,6 +1741,7 @@ $("list").addEventListener("keydown", (e) => {
 // key or a visible place.
 const targetOf = (row) => ({ kind: row.dataset.kind, key: row.dataset.key, env: row.dataset.env, id: row.dataset.node, fid: row.dataset.fid, row });
 function menuItems(target) {
+  if (target.kind === "plus") return TAB_KINDS.map((k) => ["new-" + k, newLabel(k), k === page.lastKind ? "⌥N" : "", "", k]);
   if (target.kind === "env") {
     const e = env(target.env);
     const can = canStart(target.env);
@@ -1695,7 +1772,8 @@ function openMenu(at, target) {
   menuFrom = document.activeElement;
   // A menu never starts or ends with a line, nor has two in a row.
   const items = menuItems(target).filter((it, i, all) => it || (i > 0 && all[i - 1] && i < all.length - 1));
-  menu.innerHTML = items.map((it) => it ? `<button role="menuitem" tabindex="-1" data-act="${it[0]}" class="${it[3] || ""}"><span>${esc(it[1])}</span><kbd>${esc(it[2])}</kbd></button>` : `<hr role="separator">`).join("");
+  // An item is [action, label, key, class, glyph kind]; null is a line.
+  menu.innerHTML = items.map((it) => it ? `<button role="menuitem" tabindex="-1" data-act="${it[0]}" class="${it[3] || ""}">${it[4] ? glyph(it[4]) : ""}<span>${esc(it[1])}</span><kbd>${esc(it[2])}</kbd></button>` : `<hr role="separator">`).join("");
   menu.onclick = (ev) => {
     const b = ev.target.closest("button[data-act]");
     if (!b) return;
@@ -1766,6 +1844,9 @@ async function act(what, target) {
       await api(name, "DELETE", `/api/groups/${target.id}`); // what it held moves up; no tab closes
     } else if (what === "new-tab") {
       openNew({ env: name, parent, after: "" });
+    } else if (what.startsWith("new-") && TAB_KINDS.includes(what.slice(4))) {
+      const at = target.kind === "plus" ? {} : t ? { env: name, parent: t.parent || "", after: t.id } : { env: name, parent, after: "" };
+      openNew(at, what.slice(4));
     } else if (what === "new-group") {
       await newGroup(name, parent);
     } else if (what.startsWith("env-")) {

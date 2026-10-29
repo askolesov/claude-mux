@@ -55,17 +55,18 @@
   <form method="dialog" id="tabForm">
     <div class="dhead"><h3 id="tTitle"></h3><div class="dmeta" id="tMeta"></div></div>
     <div class="dbody">
+      <div class="seg kinds" id="tKinds" role="radiogroup" aria-label="Runs" hidden></div>
       <label class="field">Name<input id="tName" autocomplete="off" spellcheck="false"></label>
       <label class="field">Directory
         <span class="withbtn"><input id="tCwd" class="mono-in" list="dirs" autocomplete="off" spellcheck="false">
           <button type="button" class="sqbtn" id="tPick" title="Choose folder" aria-label="Choose folder"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 6.5h6l2 2h10V19H3z"/></svg></button></span>
       </label>
     </div>
-    <div class="fold first">
+    <div class="fold first" id="tStartupFold">
       <button type="button" class="foldhead" id="tStartupBtn" aria-expanded="false"><span>Startup message</span><span class="switch" role="switch" aria-checked="false" id="tStartupSw" aria-label="Startup message"></span></button>
       <textarea id="tStartup" rows="2" aria-label="Startup message text" placeholder="Sent as its first prompt whenever claude starts again in this tab, after the global one in Settings, if that's on" hidden></textarea>
     </div>
-    <div class="fold">
+    <div class="fold" id="tArgsFold">
       <button type="button" class="foldhead" id="tArgsBtn" aria-expanded="false"><span>Arguments</span><span class="sum" id="tArgsSum"></span><svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
       <div class="foldbody" id="tArgsBody" hidden>
         <input id="tArgs" class="input mono-in" aria-label="Extra arguments" placeholder="e.g. --model opus" autocomplete="off" spellcheck="false">

@@ -73,6 +73,9 @@ svg { flex: none; }
 .dot.ready.unseen { box-shadow: 0 0 0 3px var(--ready-halo); }
 .dot.needs-you { background: var(--needs); box-shadow: 0 0 0 3px var(--halo); }
 .dot.exited, .dot.stopped { background: transparent; border: 1.5px solid var(--exited); }
+/* tab glyphs: the shape is the kind, the colour the state (app.js glyph) */
+.glyph { flex: none; overflow: visible; }
+.glyph.dim { opacity: .55; }
 .hdot { width: 6px; height: 6px; border-radius: 50%; flex: none; background: var(--muted); }
 .hdot.problem { background: var(--needs); }
 .hdot.connecting { animation: pulse 1.2s ease-in-out infinite; }
@@ -178,7 +181,7 @@ body:not(.term-scrollbar) .term .xterm-viewport { scrollbar-width: none; }
   display: flex; align-items: center; gap: 10px; width: 100%; height: 28px; padding: 0 10px;
   text-align: left; border: 0; background: none; border-radius: 5px; outline: none;
 }
-.menu button span:first-child { flex: 1; }
+.menu button span:first-of-type { flex: 1; }
 .menu button kbd { font: 11px Inter, system-ui, sans-serif; color: var(--muted); }
 .menu button:hover, .menu button:focus { background: var(--sel); }
 .menu button.danger { color: var(--danger); }
@@ -205,7 +208,8 @@ dialog h3 { margin: 0; font-size: 15px; font-weight: 600; }
   background: var(--bg); color: var(--text); font-size: 13px; outline: none;
 }
 .field > input:focus, .field > select:focus, .input:focus, .withbtn input:focus, dialog textarea:focus { border-color: var(--in-focus); }
-.field .seg { align-self: flex-start; }
+.field .seg, .seg.kinds { align-self: flex-start; }
+.seg.kinds button { display: flex; align-items: center; gap: 6px; height: 26px; }
 .field .seg button { height: 26px; padding: 0 12px; }
 .field .hint { color: var(--muted); }
 .field > input:disabled, .field > input:read-only { color: var(--muted); }
