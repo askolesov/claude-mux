@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>claude-mux jump</title>
+<title>agent-mux jump</title>
 <script src="./support.js"></script>
 </head>
 <body>
@@ -27,7 +27,7 @@ body{margin:0}
 <div style="font-size: 11px; font-weight: 600; color: #8A92A2; padding: 6px 10px">Tabs</div>
 <sc-for list="{{tabs}}" as="t" hint-placeholder-count="4">
 <button type="button" onMouseEnter="{{t.hover}}" style="{{t.rowStyle}}">
-<span style="{{t.dot}}"></span>
+<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" style="flex: none; overflow: visible"><path d="{{t.d}}" fill="{{t.halo}}" stroke="{{t.halo}}" stroke-width="7" stroke-linejoin="round"></path><path fill-rule="evenodd" d="{{t.d}}" fill="{{t.fill}}" stroke="{{t.stroke}}" stroke-width="{{t.sw}}" stroke-linejoin="round"></path></svg>
 <span style="font-weight: 600; flex: none">{{t.name}}</span>
 <span style="font-size: 12px; color: #9098A8; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{t.where}}</span>
 <span style="{{t.statusStyle}}">{{t.status}}</span>
@@ -37,7 +37,7 @@ body{margin:0}
 <div style="font-size: 11px; font-weight: 600; color: #8A92A2; padding: 12px 10px 6px">Actions</div>
 <sc-for list="{{actions}}" as="a" hint-placeholder-count="5">
 <button type="button" onMouseEnter="{{a.hover}}" style="{{a.rowStyle}}">
-<span style="width: 8px; flex: none"></span>
+<span style="flex: none; width: 14px; display: grid; place-items: center"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" style="overflow: visible; {{a.iconShow}}"><path d="{{a.d}}" fill="{{a.halo}}" stroke="{{a.halo}}" stroke-width="7" stroke-linejoin="round"></path><path fill-rule="evenodd" d="{{a.d}}" fill="{{a.fill}}" stroke="{{a.stroke}}" stroke-width="{{a.sw}}" stroke-linejoin="round"></path></svg></span>
 <span style="flex: 1; text-align: left">{{a.label}}</span>
 <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #8A92A2">{{a.key}}</span>
 </button>
@@ -61,31 +61,43 @@ class Component extends DCLogic {
     const q = s.q !== undefined ? s.q : '';
     const ql = q.toLowerCase();
     const sel = s.sel || 'billing-fix';
-    const COL = { working: '#7AA2F7', ready: '#4FD18B', needs: '#F5B14C', exited: '#8A92A2' };
+    const COL = { working: '#7AA2F7', ready: '#4FD18B', idle: '#8A92A2', needs: '#F5B14C', exited: '#6B7383' };
+    const HALO = { ready: 'rgba(79,209,139,0.25)', needs: 'rgba(245,177,76,0.25)' };
+    // The same shapes as the sidebar: Claude a rectangle with eyes, Codex a circle, a terminal a triangle.
+    const SHAPES = {
+      claude: 'M3.9 3.6h6.2a1.7 1.7 0 0 1 1.7 1.7v3.4a1.7 1.7 0 0 1-1.7 1.7H3.9a1.7 1.7 0 0 1-1.7-1.7V5.3a1.7 1.7 0 0 1 1.7-1.7zM4.3 6.6a1 1 0 1 0 2 0 1 1 0 1 0-2 0zM7.7 6.6a1 1 0 1 0 2 0 1 1 0 1 0-2 0z',
+      claudeExited: 'M3.9 3.6h6.2a1.7 1.7 0 0 1 1.7 1.7v3.4a1.7 1.7 0 0 1-1.7 1.7H3.9a1.7 1.7 0 0 1-1.7-1.7V5.3a1.7 1.7 0 0 1 1.7-1.7z',
+      codex: 'M7 2.2a4.8 4.8 0 1 1 0 9.6 4.8 4.8 0 1 1 0-9.6z',
+      term: 'M4.6 2.7 11.7 7l-7.1 4.3z'
+    };
+    const shape = (kind, st, unread) => {
+      const color = st ? COL[st] : '#C4C9D3';
+      const exited = st === 'exited';
+      return { d: SHAPES[kind + (exited && SHAPES[kind + 'Exited'] ? 'Exited' : '')], halo: st === 'needs' ? HALO.needs : unread ? HALO.ready : 'none',
+        fill: exited ? 'none' : color, stroke: color, sw: exited ? 1.5 : kind === 'term' ? 0.8 : 0 };
+    };
+    // name, where, kind, state, words, unread. Waiting tabs first.
     const TABS = [
-      ['billing-fix', 'local / api', 'needs', 'Needs you', ''],
-      ['invoice-export', 'local / api / payments', 'ready', 'Done, unseen', ''],
-      ['rpc-gateway', 'local / api', 'working', 'Working', ''],
-      ['ledger-sync', 'local / api / payments', 'working', 'Working', ''],
-      ['k8s-watch', 'local / infra', 'working', 'Working', ''],
-      ['release-v0.9', 'build-box', 'working', 'Working', ''],
-      ['docs-site', 'local', 'ready', 'Ready', ''],
-      ['terraform-plan', 'local / infra', 'ready', 'Ready', ''],
-      ['flaky-tests', 'build-box', 'exited', 'Exited', '']
+      ['billing-fix', 'local / api', 'claude', 'needs', 'Needs you'],
+      ['release-v0.9', 'build-box', 'codex', 'needs', 'Needs you'],
+      ['invoice-export', 'local / api / payments', 'codex', 'ready', 'Done, unseen', true],
+      ['terraform-plan', 'local / infra', 'term', 'ready', 'Done, unseen', true],
+      ['rpc-gateway', 'local / api', 'claude', 'working', 'Working'],
+      ['ledger-sync', 'local / api / payments', 'codex', 'working', 'Working'],
+      ['k8s-watch', 'local / infra', 'term', 'working', 'Running'],
+      ['docs-site', 'local', 'term', 'idle', 'Idle'],
+      ['flaky-tests', 'build-box', 'term', 'exited', 'Exited']
     ];
     const row = (id) => 'display:flex;align-items:center;gap:10px;width:100%;height:38px;padding:0 10px;border:0;border-radius:6px;cursor:pointer;font:inherit;font-size:13px;color:#E6E8EC;text-align:left;background:' + (sel === id ? '#232B3D' : 'transparent');
-    const tabs = TABS.filter((t) => !ql || t[0].indexOf(ql) >= 0 || t[1].indexOf(ql) >= 0).map((t) => ({
-      name: t[0], where: t[1], status: t[3], key: t[4],
-      // The same dots as the sidebar: a ring means "look at me".
-      dot: t[2] === 'exited' ? 'width:8px;height:8px;border-radius:50%;border:1.5px solid #6B7383;box-sizing:border-box;flex:none'
-        : 'width:8px;height:8px;border-radius:50%;flex:none;background:' + COL[t[2]] + (t[2] === 'needs' ? ';box-shadow:0 0 0 3px rgba(245,177,76,0.25)' : t[3] === 'Done, unseen' ? ';box-shadow:0 0 0 3px rgba(79,209,139,0.25)' : ''),
-      statusStyle: 'font-size:11px;font-weight:600;color:' + COL[t[2]],
+    const tabs = TABS.filter((t) => !ql || t[0].indexOf(ql) >= 0 || t[1].indexOf(ql) >= 0 || t[2].indexOf(ql) === 0).map((t) => Object.assign({
+      name: t[0], where: t[1], status: t[4], key: '',
+      statusStyle: 'font-size:11px;font-weight:600;color:' + (t[3] === 'exited' ? '#8A92A2' : COL[t[3]]),
       rowStyle: row(t[0]), hover: () => this.setState({ sel: t[0] })
-    }));
-    const ACT = [['New tab', '⌥N'], ['New group', '⇧⌥N'], ['New window', '⌘N'], ['Tab settings', '⌘I'], ['Settings', '⌘,']];
-    const actions = ACT.filter((a) => !ql || a[0].toLowerCase().indexOf(ql) >= 0).map((a) => ({
-      label: a[0], key: a[1], rowStyle: row('a:' + a[0]), hover: () => this.setState({ sel: 'a:' + a[0] })
-    }));
+    }, shape(t[2], t[3], t[5])));
+    const ACT = [['New Claude', '⌥N', 'claude'], ['New Codex', '', 'codex'], ['New terminal', '', 'term'], ['New group', '⇧⌥N'], ['New window', '⌘N'], ['Tab settings', '⌘I'], ['Settings', '⌘,']];
+    const actions = ACT.filter((a) => !ql || a[0].toLowerCase().indexOf(ql) >= 0).map((a) => Object.assign({
+      label: a[0], key: a[1], rowStyle: row('a:' + a[0]), hover: () => this.setState({ sel: 'a:' + a[0] }), iconShow: a[2] ? '' : 'display:none'
+    }, shape(a[2] || 'codex')));
     return { q: q, onQ: (e) => this.setState({ q: e.target.value }), tabs: tabs, actions: actions };
   }
 }

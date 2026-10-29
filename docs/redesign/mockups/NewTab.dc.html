@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>claude-mux new tab</title>
+<title>agent-mux new tab</title>
 <script src="./support.js"></script>
 </head>
 <body>
@@ -17,14 +17,17 @@ body{margin:0}
 <div style="position: relative; min-height: 900px; background: #0F1115; font-family: Inter, system-ui, sans-serif; font-size: 13px; color: #E6E8EC; line-height: 1.4">
 <dc-import name="Main" active-tab="ledger-sync" hint-size="100%,900px"></dc-import>
 <div style="position: absolute; inset: 0; background: rgba(6,7,9,0.55); display: flex; justify-content: center; align-items: flex-start; padding: 140px 16px 16px">
-<form role="dialog" aria-label="New tab" onSubmit="{{noop}}" style="width: 440px; max-width: 100%; background: #171A20; border: 1px solid #2E3440; border-radius: 12px; box-shadow: 0 24px 60px rgba(0,0,0,0.5)">
+<form role="dialog" aria-label="{{title}}" onSubmit="{{noop}}" style="width: 440px; max-width: 100%; background: #171A20; border: 1px solid #2E3440; border-radius: 12px; box-shadow: 0 24px 60px rgba(0,0,0,0.5)">
 
 <div style="padding: 18px 20px 4px">
-<div style="font-size: 15px; font-weight: 600">New tab</div>
+<div style="font-size: 15px; font-weight: 600">{{title}}</div>
 <div style="font-size: 12px; color: #8A92A2; margin-top: 2px">in local / api / payments</div>
 </div>
 
 <div style="padding: 14px 20px 6px; display: flex; flex-direction: column; gap: 12px">
+<div role="radiogroup" aria-label="Runs" style="display: flex; align-self: flex-start; padding: 2px; border-radius: 7px; background: #0F1115; border: 1px solid #2B313C">
+<sc-for list="{{kinds}}" as="k" hint-placeholder-count="3"><button type="button" role="radio" aria-checked="{{k.on}}" onClick="{{k.pick}}" style="{{k.style}}"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path fill-rule="evenodd" d="{{k.d}}" fill="currentColor" stroke="currentColor" stroke-width="{{k.sw}}" stroke-linejoin="round"></path></svg>{{k.label}}</button></sc-for>
+</div>
 <label style="display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: #C4C9D3">Name
 <input placeholder="{{namePh}}" style="height: 34px; padding: 0 10px; border: 1px solid #3A4A6B; border-radius: 6px; background: #0F1115; color: #E6E8EC; font: inherit; font-size: 13px; outline: none">
 </label>
@@ -36,6 +39,7 @@ body{margin:0}
 </label>
 </div>
 
+<sc-if value="{{isAgent}}" hint-placeholder-val="{{ true }}">
 <div style="margin: 8px 20px 0; border-top: 1px solid #252A33">
 <button type="button" onClick="{{toggleStartup}}" aria-expanded="{{startup}}" style="display: flex; align-items: center; gap: 10px; width: 100%; height: 40px; padding: 0; border: 0; background: transparent; color: #E6E8EC; font: inherit; font-size: 13px; text-align: left; cursor: pointer">
 <span style="flex: 1">Startup message</span>
@@ -61,9 +65,10 @@ body{margin:0}
 </div>
 </sc-if>
 </div>
+</sc-if>
 
 <div style="display: flex; align-items: center; gap: 8px; padding: 16px 20px; border-top: 1px solid #252A33; margin-top: 4px">
-<span style="flex: 1; font-size: 12px; color: #8A92A2">Same options as your last tab</span>
+<span style="flex: 1; font-size: 12px; color: #8A92A2">{{footNote}}</span>
 <a href="Main.dc.html" style="display: grid; place-items: center; height: 32px; padding: 0 14px; border-radius: 6px; border: 1px solid #2B313C; color: #E6E8EC; text-decoration: none; box-sizing: border-box">Cancel</a>
 <a href="Main.dc.html" style="display: grid; place-items: center; height: 32px; padding: 0 16px; border-radius: 6px; background: #7AA2F7; color: #0F1115; font-weight: 600; text-decoration: none">Start</a>
 </div>
@@ -75,11 +80,20 @@ body{margin:0}
 class Component extends DCLogic {
   renderVals() {
     const s = this.state || {};
-    const FLAGS = ['--dangerously-skip-permissions', '--chrome'];
-    const SHORT = { '--dangerously-skip-permissions': 'skip permissions', '--chrome': 'chrome' };
+    // What runs in the tab. The menu that opened this picks it; it can still be changed here.
+    const kind = s.kind || 'claude';
+    const KINDS = [
+      ['claude', 'Claude', 'M3.9 3.6h6.2a1.7 1.7 0 0 1 1.7 1.7v3.4a1.7 1.7 0 0 1-1.7 1.7H3.9a1.7 1.7 0 0 1-1.7-1.7V5.3a1.7 1.7 0 0 1 1.7-1.7zM4.3 6.6a1 1 0 1 0 2 0 1 1 0 1 0-2 0zM7.7 6.6a1 1 0 1 0 2 0 1 1 0 1 0-2 0z', 0],
+      ['codex', 'Codex', 'M7 2.2a4.8 4.8 0 1 1 0 9.6 4.8 4.8 0 1 1 0-9.6z', 0],
+      ['term', 'Terminal', 'M4.6 2.7 11.7 7l-7.1 4.3z', 0.8]
+    ];
+    const label = KINDS.filter((k) => k[0] === kind)[0][1];
+    // Each agent offers its own two common flags; a terminal has no options.
+    const FLAGS = kind === 'codex' ? ['--full-auto', '--search'] : ['--dangerously-skip-permissions', '--chrome'];
+    const SHORT = { '--dangerously-skip-permissions': 'skip permissions', '--chrome': 'chrome', '--full-auto': 'full auto', '--search': 'web search' };
     const dir = s.dir !== undefined ? s.dir : '~/src/ledger';
     const args = s.args !== undefined ? s.args : '';
-    const ck = s.ck || { '--dangerously-skip-permissions': true, '--chrome': true };
+    const ck = s.ck || { '--dangerously-skip-permissions': true, '--chrome': true, '--full-auto': true, '--search': false };
     const startup = !!s.startup;
     const argsOpen = !!s.argsOpen;
     const words = args.trim().split(/\s+/);
@@ -92,6 +106,10 @@ class Component extends DCLogic {
     });
     const base = dir.replace(/\/+$/, '').split('/').pop() || 'new-tab';
     return {
+      title: 'New ' + (kind === 'term' ? 'terminal' : label), isAgent: kind !== 'term',
+      footNote: kind === 'term' ? 'Opens your default shell' : 'Same options as your last ' + label + ' tab',
+      kinds: KINDS.map((k) => ({ label: k[1], d: k[2], sw: k[3], on: kind === k[0], pick: () => this.setState({ kind: k[0] }),
+        style: 'display:flex;align-items:center;gap:6px;height:26px;padding:0 10px;border:0;border-radius:5px;font:inherit;font-size:12px;cursor:pointer;background:' + (kind === k[0] ? '#2B3242' : 'transparent') + ';color:' + (kind === k[0] ? '#E6E8EC' : '#9098A8') })),
       dir: dir, onDir: (e) => this.setState({ dir: e.target.value }),
       namePh: base,
       startup: startup, sw: { startup: sw(startup) },

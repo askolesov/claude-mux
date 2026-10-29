@@ -1,8 +1,9 @@
 # claude-mux
 
-One window for all your Claude Code sessions. Tabs on the left, the live
-terminal on the right, and a dot on every tab that tells you whether that
-claude is working, done, or waiting for you.
+One window for all your Claude Code sessions, and Codex's, and a terminal
+or two. Tabs on the left, the live terminal on the right, and a glyph on
+every tab that tells you what runs there and whether it is working, done,
+or waiting for you.
 
 The tabs can run on this machine, on SSH hosts, in Docker containers and in
 WSL, all in the same window. A tab stays until you close it: quit the app,
@@ -19,8 +20,8 @@ claude-mux is two programs.
 
 - The **hub** is the app you start. It shows the window and remembers your
   environments and settings.
-- A **backend** runs your tabs: one `claude` per tab, each in its own
-  terminal. There is one backend per environment, and the hub starts it
+- A **backend** runs your tabs: one `claude`, `codex` or shell per tab,
+  each in its own terminal. There is one backend per environment, and the hub starts it
   there: as its own child on this machine, or through `ssh`, `docker exec`
   or `wsl.exe` elsewhere. It talks to it over that one connection, with no
   ports opened anywhere.
@@ -44,7 +45,11 @@ there if it is missing.
 [hooks](https://docs.claude.com/en/docs/claude-code/hooks). Claude Code runs
 them on every event: a prompt sent, a tool used, a permission asked, a turn
 finished. Each hook tells the backend, the backend tells the page, and the
-dot changes.
+glyph changes. Codex gets the same kind of
+[hooks](https://learn.chatgpt.com/docs/hooks), for its session only; Codex
+asks you once, on the first Codex tab on a machine, to trust them (choose
+*Trust all and continue*). A terminal needs no hooks: whatever runs in its
+foreground is running.
 
 ```mermaid
 flowchart LR
@@ -54,8 +59,9 @@ flowchart LR
 **How tabs come back.** A backend lives only as long as its connection.
 When the hub quits, or an SSH connection drops, the backend hangs up its
 claudes, the way closing a terminal window does. It keeps the list of tabs.
-On the next start it opens each tab again with `claude --resume`, so the
-conversation continues. What was running inside the old process
+On the next start it opens each tab again with `claude --resume` (or
+`codex resume`), so the conversation continues; a terminal gets a new
+shell, in the folder the old one was in. What was running inside the old process
 (background tasks, watchers, dev servers) is gone. A startup message,
 sent as the first prompt each time a claude starts again, can say so or
 restart a watcher: one for every tab (Settings › Tabs), and each tab's own
@@ -85,29 +91,40 @@ back.
 
 ## Using it
 
-- **New tab**: the **+** at the top of the sidebar (⌥N) makes one next to
-  the selected tab; right-click an environment or a group for one inside
-  it. It asks for a name and a directory (Tab completes it, from that
-  environment). The startup message and the `claude` arguments repeat your
-  last tab; `--dangerously-skip-permissions` and `--chrome` are checkboxes.
-- **The dot**:
-  - blue: working
+- **New tab**: the **+** at the top of the sidebar offers New Claude, New
+  Codex and New terminal, next to the selected tab; ⌥N makes the kind you
+  made last. Right-click an environment or a group for one inside it. It
+  asks for a name and a directory (Tab completes it, from that
+  environment). An agent's startup message and arguments repeat your last
+  tab of that kind; the frequent flags are checkboxes
+  (`--dangerously-skip-permissions`, `--chrome` for Claude;
+  `--approve-for-me`, `--search` for Codex). Starting an agent that isn't
+  installed there offers its official installer.
+- **The glyph**: its shape is what runs (Claude a rounded rectangle with
+  eyes, Codex a circle, a terminal a triangle), its colour how it is:
+  - blue: working (a terminal: a command is running)
   - green: ready for your next prompt
-  - green with a ring: finished while you weren't looking, until you open it
-  - amber with a ring: needs you (a permission prompt or a question)
-  - hollow: exited, and Enter in its terminal resumes it
+  - grey: a terminal at its prompt, or a Codex tab before its first prompt
+  - a halo: look at me. Green: finished while you weren't looking, until
+    you open it; amber: needs you (a permission prompt or a question)
+  - an outline: exited, and Enter in its terminal starts it again
 
-  A ring means "look at me". A folded group shows its most urgent tab's
-  dot. The window title and the Dock icon count the tabs that wait.
+  A folded group shows its most urgent tab's state as a dot. The window
+  title and the Dock icon count the agent tabs that wait; terminals never
+  notify.
 - **Tab settings** (… above the terminal, ⌘I, or right-click a tab): its
   directory, startup message and arguments. Saving a new directory or
   arguments restarts its claude, and the conversation continues; a new
-  startup message waits for the tab's next start. A tab's name is claude's: type
-  `/rename <name>` in the tab to change it.
+  startup message waits for the tab's next start. A terminal has only its
+  directory.
+- **Renaming** a tab: F2, a double-click, Rename, or its name in Tab
+  settings. A Claude tab's new name goes to claude as `/rename` once it is
+  ready for a prompt (anything half-typed in its prompt is cleared).
 - **Right-click** any row for what it can do. A tab: Tab settings,
-  Duplicate, Move to…, Restart, Close. A group: New tab, New group,
-  Rename, Collapse, Delete. An environment: New tab, New group,
-  Reconnect, Environment settings, Remove. The Menu key or ⇧F10 opens it
+  Rename, Duplicate, Move to…, Restart, Close. A group: New Claude, Codex
+  or terminal, New group, Rename, Collapse, Delete. An environment: New
+  Claude, Codex or terminal, New group, Reconnect, Environment settings,
+  Remove. The Menu key or ⇧F10 opens it
   from the keyboard.
 - **Groups** hold tabs and other groups, as deep as you like. Make one
   with ⇧⌥N (next to the selected tab) or from a right-click; it starts
@@ -141,7 +158,7 @@ back.
   | ⌥1–9 | go to tab 1–9 |
   | ⌥↑ / ⌥↓ | previous / next tab |
   | ⌥J | next tab that waits for you |
-  | ⌥N | new tab next to this one |
+  | ⌥N | new tab of the kind you made last, next to this one |
   | ⇧⌥N | new group next to this one |
   | ⌘I | Tab settings |
   | ⌘W | close the tab (asks first, unless Settings say not to) |

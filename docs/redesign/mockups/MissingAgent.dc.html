@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>agent-mux agent not installed</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="position: relative; min-height: 900px; background: #0F1115; font-family: Inter, system-ui, sans-serif; font-size: 13px; color: #E6E8EC; line-height: 1.4">
+<dc-import name="Main" active-tab="release-v0.9" hint-size="100%,900px"></dc-import>
+<div style="position: absolute; inset: 0; background: rgba(6,7,9,0.55); display: flex; justify-content: center; align-items: flex-start; padding: 140px 16px 16px">
+<form role="dialog" aria-label="Codex isn't installed on build-box" onSubmit="{{noop}}" style="width: 440px; max-width: 100%; background: #171A20; border: 1px solid #2E3440; border-radius: 12px; box-shadow: 0 24px 60px rgba(0,0,0,0.5)">
+<div style="padding: 18px 20px 4px">
+<div style="font-size: 15px; font-weight: 600">Codex isn't installed on build-box</div>
+<div style="font-size: 12px; color: #8A92A2; margin-top: 2px">SSH host build-box · linux/amd64</div>
+</div>
+<div style="padding: 14px 20px 6px; display: flex; flex-direction: column; gap: 10px">
+<div style="color: #C4C9D3">Install it there to start a Codex tab. This runs the official installer:</div>
+<code style="display: block; padding: 7px 9px; border: 1px solid #252A33; border-radius: 6px; background: #0B0D10; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #E6E8EC">npm install -g @openai/codex</code>
+<div style="font-size: 12px; color: #8A92A2">Installed it yourself just now? Check again.</div>
+</div>
+<div style="display: flex; align-items: center; gap: 8px; padding: 16px 20px; border-top: 1px solid #252A33; margin-top: 12px">
+<button type="button" style="height: 32px; padding: 0 4px; border: 0; background: transparent; color: #AFC6FA; font: inherit; cursor: pointer">Check again</button>
+<span style="flex: 1"></span>
+<a href="Main.dc.html" style="display: grid; place-items: center; height: 32px; padding: 0 14px; border-radius: 6px; border: 1px solid #2B313C; color: #E6E8EC; text-decoration: none; box-sizing: border-box">Cancel</a>
+<a href="NewTab.dc.html" style="display: grid; place-items: center; height: 32px; padding: 0 16px; border-radius: 6px; background: #7AA2F7; color: #0F1115; font-weight: 600; text-decoration: none">Install</a>
+</div>
+</form>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { noop: (e) => { if (e && e.preventDefault) e.preventDefault(); } };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>agent-mux tab glyphs</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 1440px; box-sizing: border-box; padding: 40px 48px 48px; background: #0F1115; color: #E6E8EC; font-family: Inter, system-ui, sans-serif; font-size: 13px; line-height: 1.4; display: grid; grid-template-columns: 1fr 380px; gap: 32px">
+<div style="display: flex; flex-direction: column; gap: 10px">
+<div style="display: grid; grid-template-columns: 150px repeat(5, 1fr); align-items: end; gap: 8px; padding: 0 0 6px; font-size: 12px; color: #8A92A2">
+<span></span>
+<sc-for list="{{heads}}" as="h" hint-placeholder-count="5"><span style="text-align: center">{{h}}</span></sc-for>
+</div>
+<sc-for list="{{kinds}}" as="k" hint-placeholder-count="3">
+<div style="display: grid; grid-template-columns: 150px repeat(5, 1fr); align-items: center; gap: 8px; padding: 14px 0; border-top: 1px solid #252A33">
+<div style="display: flex; flex-direction: column; gap: 2px"><span style="font-weight: 600">{{k.name}}</span><span style="font-size: 12px; color: #8A92A2">{{k.note}}</span></div>
+<sc-for list="{{k.cells}}" as="g" hint-placeholder-count="5">
+<div style="display: flex; align-items: center; justify-content: center; gap: 22px; min-height: 76px">
+<sc-if value="{{g.on}}" hint-placeholder-val="{{ true }}">
+<svg width="14" height="14" viewBox="0 0 14 14" role="img" aria-label="{{g.label}}" style="overflow: visible"><path d="{{g.d}}" fill="{{g.halo}}" stroke="{{g.halo}}" stroke-width="7" stroke-linejoin="round"></path><path fill-rule="evenodd" d="{{g.d}}" fill="{{g.fill}}" stroke="{{g.stroke}}" stroke-width="{{g.sw}}" stroke-linejoin="round"></path></svg>
+<svg width="56" height="56" viewBox="0 0 14 14" aria-hidden="true" style="overflow: visible"><path d="{{g.d}}" fill="{{g.halo}}" stroke="{{g.halo}}" stroke-width="7" stroke-linejoin="round"></path><path fill-rule="evenodd" d="{{g.d}}" fill="{{g.fill}}" stroke="{{g.stroke}}" stroke-width="{{g.sw}}" stroke-linejoin="round"></path></svg>
+</sc-if>
+<sc-if value="{{g.off}}" hint-placeholder-val="{{ false }}"><span style="font-size: 12px; color: #4A5160">n/a</span></sc-if>
+</div>
+</sc-for>
+</div>
+</sc-for>
+<div style="font-size: 12px; color: #8A92A2; padding-top: 8px">Each cell: real size (in a 14 px slot), then 4×. Colour is the state; the soft halo of the same shape means "look at me"; exited is an outline.</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 12px">
+<div style="font-weight: 600">All three together, at real size</div>
+<div style="padding: 6px 8px; border-radius: 8px; background: #14171C; border: 1px solid #252A33">
+<sc-for list="{{rows}}" as="rw" hint-placeholder-count="8">
+<div style="{{rw.style}}">
+<sc-if value="{{rw.isGroup}}" hint-placeholder-val="{{ false }}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#8A92A2" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="{{rw.chev}}"><path d="m6 9 6 6 6-6"></path></svg></sc-if>
+<sc-if value="{{rw.isTab}}" hint-placeholder-val="{{ true }}"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" style="overflow: visible; flex: none"><path d="{{rw.d}}" fill="{{rw.halo}}" stroke="{{rw.halo}}" stroke-width="7" stroke-linejoin="round"></path><path fill-rule="evenodd" d="{{rw.d}}" fill="{{rw.fill}}" stroke="{{rw.stroke}}" stroke-width="{{rw.sw}}" stroke-linejoin="round"></path></svg></sc-if>
+<span style="{{rw.nameStyle}}">{{rw.name}}</span>
+</div>
+</sc-for>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":500}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const C = { working: '#7AA2F7', ready: '#4FD18B', idle: '#8A92A2', needs: '#F5B14C', exited: '#6B7383' };
+    const H = { ready: 'rgba(79,209,139,0.25)', needs: 'rgba(245,177,76,0.25)' };
+    const S = {
+      claude: 'M3.9 3.6h6.2a1.7 1.7 0 0 1 1.7 1.7v3.4a1.7 1.7 0 0 1-1.7 1.7H3.9a1.7 1.7 0 0 1-1.7-1.7V5.3a1.7 1.7 0 0 1 1.7-1.7zM4.3 6.6a1 1 0 1 0 2 0 1 1 0 1 0-2 0zM7.7 6.6a1 1 0 1 0 2 0 1 1 0 1 0-2 0z',
+      codex: 'M7 2.2a4.8 4.8 0 1 1 0 9.6 4.8 4.8 0 1 1 0-9.6z',
+      codexExited: 'M7 2.2a4.8 4.8 0 1 1 0 9.6 4.8 4.8 0 1 1 0-9.6z',
+      claudeExited: 'M3.9 3.6h6.2a1.7 1.7 0 0 1 1.7 1.7v3.4a1.7 1.7 0 0 1-1.7 1.7H3.9a1.7 1.7 0 0 1-1.7-1.7V5.3a1.7 1.7 0 0 1 1.7-1.7z',
+      term: 'M4.6 2.7 11.7 7l-7.1 4.3z'
+    };
+    const cell = (kind, state, unread) => {
+      if (!state) return { on: false, off: true };
+      const color = C[state];
+      const exited = state === 'exited';
+      return { on: true, off: false, label: kind + ' ' + state, d: S[kind + (exited && S[kind + 'Exited'] ? 'Exited' : '')],
+        halo: state === 'needs' ? H.needs : unread ? H.ready : 'none',
+        fill: exited ? 'none' : color, stroke: color, sw: exited ? 1.5 : kind === 'term' ? 0.8 : 0 };
+    };
+    const agent = [['working'], ['ready'], ['ready', true], ['needs'], ['exited']];
+    const term = [['working'], ['idle'], ['ready', true], null, ['exited']];
+    const tab = (kind, state, unread, name, depth) => Object.assign({ isTab: true, isGroup: false, name: name,
+      style: 'display:flex;align-items:center;gap:8px;height:26px;padding-left:' + (4 + depth * 16) + 'px',
+      nameStyle: 'font-size:13px;color:' + (state === 'exited' ? '#8A92A2' : '#E6E8EC') }, cell(kind, state, unread));
+    const group = (name, depth, open) => ({ isTab: false, isGroup: true, name: name, chev: 'flex:none;transform:rotate(' + (open ? '0' : '-90') + 'deg)',
+      style: 'display:flex;align-items:center;gap:8px;height:26px;padding-left:' + (4 + depth * 16) + 'px',
+      nameStyle: 'font-size:12px;font-weight:600;color:#C4C9D3' });
+    return {
+      heads: ['Working', 'Ready / idle', 'Not seen', 'Needs you', 'Exited'],
+      kinds: [
+        { name: 'Claude', note: 'wide rounded rectangle', cells: agent.map((a) => cell('claude', a[0], a[1])) },
+        { name: 'Codex', note: 'circle', cells: agent.map((a) => cell('codex', a[0], a[1])) },
+        { name: 'Terminal', note: 'triangle, pointing right; idle is grey', cells: term.map((a) => a ? cell('term', a[0], a[1]) : cell()) }
+      ],
+      rows: [group('api', 0, true), tab('claude', 'working', false, 'rpc-gateway', 1), tab('claude', 'needs', false, 'billing-fix', 1),
+        tab('codex', 'working', false, 'ledger-sync', 1), tab('codex', 'ready', true, 'invoice-export', 1), group('infra', 0, false),
+        tab('term', 'working', false, 'dev-server', 0), tab('term', 'idle', false, 'shell', 0), tab('term', 'exited', false, 'flaky-tests', 0)]
+    };
+  }
+}
+</script>
+</body>
+</html>
