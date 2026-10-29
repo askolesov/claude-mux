@@ -65,7 +65,9 @@ type HookPayload struct {
 // is inherited, so an agent the tab's own agent runs (a codex in a claude
 // tab) posts here too: once the tab has its session, events of another one
 // are ignored. The first SessionStart after a start names the session (a
-// resumed one may come back under a new id), and so does one from /clear.
+// resumed one may come back under a new id), and so does a later one that
+// isn't a fresh start: /clear, /resume or a fork inside the tab. A nested
+// agent starts fresh ("startup").
 func (m *Manager) ApplyHook(id string, p HookPayload) error {
 	s, err := m.Get(id)
 	if err != nil {
@@ -78,7 +80,7 @@ func (m *Manager) ApplyHook(id string, p HookPayload) error {
 		return nil
 	}
 	changedID := false
-	if p.Event == "SessionStart" && (!s.started || p.Source == "clear") {
+	if p.Event == "SessionStart" && (!s.started || p.Source != "startup") {
 		s.started = true
 		changedID = p.SessionID != "" && s.AgentSessionID != p.SessionID
 		if changedID {

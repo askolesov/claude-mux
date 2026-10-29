@@ -70,11 +70,7 @@ func NewManager(stateDir, hookURL, exe, defaultCwd string, global, old StartupMe
 	if err := writeHookSettings(m.hooksFile, exe); err != nil {
 		return nil, err
 	}
-	link, err := linkHook(stateDir, exe)
-	if err != nil {
-		return nil, err
-	}
-	m.codexHook = hookCommand(link)
+	m.codexHook = codexHookCommand(stateDir, exe)
 	if err := m.load(stateDir, stateSteps(old)); err != nil {
 		return nil, err
 	}
@@ -222,6 +218,13 @@ func (m *Manager) Start(id string) error {
 	if err != nil {
 		return err
 	}
+	// A terminal follows its shell, which may have been in a folder since
+	// deleted (a temporary one): start in the default folder then.
+	s.mu.Lock()
+	if st, err := os.Stat(s.Cwd); s.Kind == KindTerminal && (err != nil || !st.IsDir()) {
+		s.Cwd = m.defaultCwd
+	}
+	s.mu.Unlock()
 	// FORCE_HYPERLINK: claude marks its links as terminal hyperlinks (OSC 8),
 	// which stay one link when claude breaks them over several lines.
 	env := append(childEnv(), "TERM=xterm-256color", "COLORTERM=truecolor", "FORCE_HYPERLINK=1")
@@ -274,6 +277,9 @@ func (m *Manager) command(s *Session) (string, []string, error) {
 		return agent, codexArgs(m.codexHook, sid, tabArgs, prompt), nil
 	}
 	args := append([]string{"--settings", m.hooksFile, "--name", name}, tabArgs...)
+	s.mu.Lock()
+	s.pendingName, s.renamedAt = "", time.Time{} // --name carries it
+	s.mu.Unlock()
 	if !hasConversation(sid) {
 		// Nothing to continue: the session claude starts now is the tab's.
 		s.mu.Lock()
@@ -421,6 +427,7 @@ func (m *Manager) Configure(id, cwd string, resume ResumeMode, resumeMessage str
 	}
 	s.mu.Lock()
 	s.Cwd, s.Resume, s.ResumeMessage, s.Args = cwd, resume, strings.TrimSpace(resumeMessage), args
+	s.cwdAt = time.Now() // the old shell's folder doesn't undo this before the restart
 	s.mu.Unlock()
 	m.save()
 	m.changes.Notify()

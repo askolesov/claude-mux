@@ -31,10 +31,11 @@ func (m *Manager) checkTerminals() {
 			continue
 		}
 		pgid, ok := proc.Foreground()
-		if !ok {
+		fg := foregroundState(pgid, proc.Pid())
+		if !ok || fg == fgUnknown {
 			continue
 		}
-		atPrompt := pgid == proc.Pid()
+		atPrompt := fg == fgPrompt
 		changed := false
 		switch {
 		case !atPrompt:
@@ -48,6 +49,28 @@ func (m *Manager) checkTerminals() {
 		if changed {
 			m.changes.Notify()
 		}
+	}
+}
+
+// fgState is what a terminal's foreground says.
+type fgState int
+
+const (
+	fgUnknown fgState = iota // no foreground group: no session on the terminal
+	fgPrompt                 // the shell itself
+	fgRunning                // a command
+)
+
+// foregroundState reads a terminal's foreground group, pgid, against its
+// shell's pid.
+func foregroundState(pgid, shell int) fgState {
+	switch {
+	case pgid <= 0:
+		return fgUnknown
+	case pgid == shell:
+		return fgPrompt
+	default:
+		return fgRunning
 	}
 }
 

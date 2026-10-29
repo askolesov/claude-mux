@@ -3,6 +3,7 @@
 package backend
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -93,4 +94,21 @@ func TestRenameEnterComesAfterTheText(t *testing.T) {
 		t.Fatalf("Enter came with the text: %d copies", n)
 	}
 	waitFor(t, "Enter", func() bool { return strings.Count(typed(s), "/rename new name") == 2 })
+}
+
+// A rename made while claude isn't running goes as --name: nothing is typed
+// when it starts.
+func TestRenameWhileStoppedGoesAsName(t *testing.T) {
+	m := newTestManager(t)
+	s := &Session{ID: "t", Kind: KindClaude, Name: "old", Cwd: t.TempDir()}
+	m.sessions = []*Session{s}
+	m.agents[KindClaude] = Agent{Path: "/bin/cat"}
+	_ = m.Rename("t", "new name")
+	_, args, err := m.command(s)
+	if err != nil || !slices.Contains(args, "new name") {
+		t.Fatalf("%v %q", err, args)
+	}
+	if s.pendingName != "" {
+		t.Errorf("still pending: %q", s.pendingName)
+	}
 }

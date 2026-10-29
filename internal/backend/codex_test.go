@@ -54,3 +54,30 @@ func TestCodexArgs(t *testing.T) {
 		t.Errorf("not a TOML basic string: %q", odd)
 	}
 }
+
+// A hook link that can't be replaced (Windows: the old copy in use) keeps
+// the old one: the text is the same.
+func TestLinkHookKeepsOldOnFailure(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix links")
+	}
+	dir := t.TempDir()
+	exe := filepath.Join(dir, "v1")
+	if err := os.WriteFile(exe, nil, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := linkHook(dir, exe); err != nil {
+		t.Fatal(err)
+	}
+	// A directory where the temp link goes makes the next link fail.
+	if err := os.Mkdir(filepath.Join(dir, "codex-hook.new"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "codex-hook.new", "x"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := codexHookCommand(dir, filepath.Join(dir, "v2"))
+	if cmd != hookCommand(filepath.Join(dir, "codex-hook")) {
+		t.Errorf("hook %q", cmd)
+	}
+}

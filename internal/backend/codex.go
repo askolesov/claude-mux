@@ -40,6 +40,24 @@ func linkHook(stateDir, exe string) (string, error) {
 	return link, os.Rename(tmp, link)
 }
 
+// codexHookCommand is the hook command codex sessions get: the stable link
+// to exe, made now. If it can't be (on Windows, the old copy may be in use
+// or being scanned), the old link serves, with the same text; with none,
+// codex runs without hooks this time.
+func codexHookCommand(stateDir, exe string) string {
+	link, err := linkHook(stateDir, exe)
+	if err == nil {
+		return hookCommand(link)
+	}
+	fmt.Fprintln(os.Stderr, "linking the codex hook:", err)
+	for _, old := range []string{filepath.Join(stateDir, "codex-hook"), filepath.Join(stateDir, "codex-hook.exe")} {
+		if _, err := os.Lstat(old); err == nil {
+			return hookCommand(old)
+		}
+	}
+	return ""
+}
+
 // same reports whether two files hold the same bytes.
 func same(a, b string) bool {
 	x, err := os.ReadFile(a)
@@ -66,6 +84,9 @@ func codexArgs(hookCmd, sessionID string, args []string, prompt string) []string
 		argv = append(argv, "resume", sessionID)
 	}
 	for _, e := range codexHookEvents {
+		if hookCmd == "" {
+			break
+		}
 		argv = append(argv, "-c", fmt.Sprintf(`hooks.%s=[{hooks=[{type="command",command=%s}]}]`, e, tomlString(hookCmd)))
 	}
 	argv = append(argv, args...)

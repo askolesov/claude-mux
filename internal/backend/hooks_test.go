@@ -66,3 +66,15 @@ func TestApplyHookTerminalIgnored(t *testing.T) {
 		t.Errorf("a terminal took a hook: %+v", s.View())
 	}
 }
+
+// /resume inside a running tab switches it to another conversation: the tab
+// follows it.
+func TestApplyHookFollowsInSessionResume(t *testing.T) {
+	m, s := hookTab(KindClaude, StatusStarting, "")
+	_ = m.ApplyHook("t", HookPayload{Event: "SessionStart", SessionID: "a", Source: "startup"})
+	_ = m.ApplyHook("t", HookPayload{Event: "SessionStart", SessionID: "b", Source: "resume"})
+	_ = m.ApplyHook("t", HookPayload{Event: "UserPromptSubmit", SessionID: "b"})
+	if s.AgentSessionID != "b" || s.View().Status != StatusWorking {
+		t.Errorf("after /resume: id %q, %s", s.AgentSessionID, s.View().Status)
+	}
+}
