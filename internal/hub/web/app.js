@@ -234,7 +234,7 @@ const groupOf = (name, id) => groupsIn(name).find((g) => g.id === id);
 // finished and hasn't been seen (needs-you has its ring by status).
 const dotClass = (t) => (t.status === "ready" && t.unseen ? "ready unseen" : t.status);
 const rank = (t) => (t.status === "needs-you" ? 0 : t.status === "ready" && t.unseen ? 1 : 2);
-const hasClaude = (name) => !!backendOf(name)?.claude?.path;
+const hasClaude = (name) => !!backendOf(name)?.agents?.claude?.path;
 const canStart = (name) => env(name)?.state === "connected" && hasClaude(name);
 // health: ok (connected, with claude), problem (failed, or no claude) or connecting.
 function health(e) {
@@ -1086,7 +1086,7 @@ function openEnvSettings(name) {
 function renderEnvFacts() {
   const e = env(envDlgName);
   if (!e) { $("envDlg").close(); return; }
-  const c = backendOf(e.name)?.claude;
+  const c = backendOf(e.name)?.agents?.claude;
   const n = tabs.filter((t) => t.env === e.name).length;
   const status = e.state === "connected" ? (e.kind === "local" ? "connected" : `connected · ${e.latency || "<1"} ms`)
     : e.state === "failed" ? `disconnected: ${e.error}` : e.step ? e.step + "…" : "connecting…";
@@ -1118,7 +1118,7 @@ async function renameEnv(from, to) {
 
 // Install, look for claude again, reconnect, remove.
 async function envAct(what, name) {
-  if (what === "retry") { await api(name, "POST", "/api/claude/check").catch((err) => say(err.message)); return; }
+  if (what === "retry") { await api(name, "POST", "/api/agents/claude/check").catch((err) => say(err.message)); return; }
   if (what === "reconnect") {
     const n = tabs.filter((t) => t.env === name).length;
     if (n && !(await sure(`Reconnect ${name}?`, `Its backend starts again: its ${n} tab${n > 1 ? "s are" : " is"} hung up and resumed.`, "Reconnect"))) return;
@@ -1133,7 +1133,7 @@ async function envAct(what, name) {
   }
   if (what === "settings") { openEnvSettings(name); return; }
   $("iTitle").textContent = `Install claude on ${name}`;
-  $("iCmd").textContent = backendOf(name)?.claude?.installer || "";
+  $("iCmd").textContent = backendOf(name)?.agents?.claude?.installer || "";
   $("iOut").textContent = "";
   $("iOut").hidden = true;
   $("iRun").hidden = false;
@@ -1151,7 +1151,7 @@ async function envAct(what, name) {
     let result = { error: "the connection to the installer broke" };
     try {
       // The installer's output comes as JSON lines while it runs.
-      await streamLines(`/env/${encodeURIComponent(name)}/api/claude/install`, (msg) => {
+      await streamLines(`/env/${encodeURIComponent(name)}/api/agents/claude/install`, (msg) => {
         if (msg.out === undefined) { result = msg; return; }
         const out = $("iOut");
         // eslint-disable-next-line no-control-regex -- the terminal escapes are what it strips
@@ -1164,7 +1164,7 @@ async function envAct(what, name) {
     clearInterval(timer);
     const secs = Math.round((Date.now() - started) / 1000);
     if (result.done) {
-      const c = backendOf(name)?.claude;
+      const c = backendOf(name)?.agents?.claude;
       $("iState").textContent = `Done in ${secs} s${c?.version ? ": " + c.version : ""}. In a new tab there, claude asks you to log in the first time.`;
     } else {
       $("iState").textContent = `The installer failed after ${secs} s: ${result.error}`;

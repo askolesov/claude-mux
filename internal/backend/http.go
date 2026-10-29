@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -46,8 +47,8 @@ func NewHandler(m *Manager) http.Handler {
 	api.PUT("/nodes/:id/place", h.move)
 	api.GET("/dirs", h.dirs)
 	api.PUT("/global-message", h.setGlobalMessage)
-	api.POST("/claude/check", h.checkClaude)
-	api.POST("/claude/install", h.installClaude)
+	api.POST("/agents/:kind/check", h.checkAgent)
+	api.POST("/agents/:kind/install", h.installAgent)
 	return r
 }
 
@@ -97,14 +98,14 @@ func respond(c *gin.Context, v any, err error) {
 
 // StateView is the backend's whole state, as the page gets it.
 type StateView struct {
-	Claude     Claude        `json:"claude"`
-	Sessions   []SessionView `json:"sessions"`
-	Groups     []Group       `json:"groups"`
-	DefaultCwd string        `json:"defaultCwd"`
+	Agents     map[Kind]Agent `json:"agents"`
+	Sessions   []SessionView  `json:"sessions"`
+	Groups     []Group        `json:"groups"`
+	DefaultCwd string         `json:"defaultCwd"`
 }
 
 func (h *Handler) snapshot() StateView {
-	return StateView{Claude: h.m.Claude(), Sessions: h.m.List(), Groups: h.m.Groups(), DefaultCwd: h.m.defaultCwd}
+	return StateView{Agents: h.m.Agents(), Sessions: h.m.List(), Groups: h.m.Groups(), DefaultCwd: h.m.defaultCwd}
 }
 
 func (h *Handler) state(c *gin.Context) { c.JSON(http.StatusOK, h.snapshot()) }
@@ -220,13 +221,31 @@ func (h *Handler) setGlobalMessage(c *gin.Context) {
 	}
 }
 
-func (h *Handler) checkClaude(c *gin.Context) { respond(c, h.m.CheckClaude(), nil) }
+// agentKind is the :kind of an agents route, or an answered 400.
+func agentKind(c *gin.Context) (Kind, bool) {
+	k := Kind(c.Param("kind"))
+	if !k.agent() {
+		respond(c, nil, fmt.Errorf("%q isn't an agent", k))
+		return "", false
+	}
+	return k, true
+}
 
-// installClaude runs the official installer, which takes a while, and
+func (h *Handler) checkAgent(c *gin.Context) {
+	if k, ok := agentKind(c); ok {
+		respond(c, h.m.CheckAgent(k), nil)
+	}
+}
+
+// installAgent runs an agent's official installer, which takes a while, and
 // streams its output as it comes. The install goes on if the page goes away.
-func (h *Handler) installClaude(c *gin.Context) {
+func (h *Handler) installAgent(c *gin.Context) {
+	k, ok := agentKind(c)
+	if !ok {
+		return
+	}
 	out := stream.NewLines(c)
-	out.End(h.m.InstallClaude(context.WithoutCancel(c.Request.Context()), out))
+	out.End(h.m.InstallAgent(context.WithoutCancel(c.Request.Context()), k, out))
 }
 
 func (h *Handler) close(c *gin.Context)   { respond(c, nil, h.m.Close(c.Param("id"))) }

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -38,7 +39,7 @@ type Manager struct {
 
 	mu       sync.Mutex
 	global   StartupMessage // before every tab's own message (startupPrompt)
-	claude   Claude
+	agents   map[Kind]Agent
 	sessions []*Session
 	groups   []*Group
 	version  int // backend.json's
@@ -71,7 +72,7 @@ func NewManager(stateDir, hookURL, exe, defaultCwd string, global, old StartupMe
 	if err := m.load(stateDir, stateSteps(old)); err != nil {
 		return nil, err
 	}
-	m.claude = findClaude()
+	m.agents = findAgents()
 	for _, s := range m.List() {
 		if err := m.Start(s.ID); err != nil {
 			fmt.Fprintf(os.Stderr, "start %s: %v\n", s.Name, err)
@@ -211,9 +212,9 @@ func (m *Manager) Start(id string) error {
 	if s.running() {
 		return errRunning
 	}
-	claude := m.Claude().Path
+	claude := m.Agent(KindClaude).Path
 	if claude == "" {
-		return errNoClaude
+		return errNoAgent(KindClaude)
 	}
 	s.mu.Lock()
 	name, sid, resume, own := s.Name, s.AgentSessionID, s.Resume, s.ResumeMessage
@@ -320,7 +321,7 @@ func (m *Manager) WatchNames(ctx context.Context) {
 }
 
 func (m *Manager) followNames(ctx context.Context) {
-	claude := m.Claude().Path
+	claude := m.Agent(KindClaude).Path
 	if claude == "" {
 		return
 	}
@@ -472,11 +473,18 @@ func (m *Manager) globalMessage() StartupMessage {
 	return m.global
 }
 
-// Claude is what the backend last found of claude here.
-func (m *Manager) Claude() Claude {
+// Agent is what the backend last found of an agent here.
+func (m *Manager) Agent(k Kind) Agent {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.claude
+	return m.agents[k]
+}
+
+// Agents is every agent the backend last found here.
+func (m *Manager) Agents() map[Kind]Agent {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return maps.Clone(m.agents)
 }
 
 // Shutdown hangs up every session and waits for them to exit: the next
