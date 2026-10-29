@@ -59,7 +59,8 @@ conversation continues. What was running inside the old process
 (background tasks, watchers, dev servers) is gone. A startup message,
 sent as the first prompt each time a claude starts again, can say so or
 restart a watcher: one for every tab (Settings › Tabs), and each tab's own
-(New tab and Tab settings), which comes after it.
+(New tab and Tab settings), which comes after it. Switched on empty, it
+starts with a message saying claude was restarted, which you can change.
 
 The details are in [docs/how-it-works.md](docs/how-it-works.md).
 
@@ -122,8 +123,8 @@ back.
   app that is the file's own path; elsewhere the file is copied to the
   tab's environment first, so this works on SSH hosts and in containers
   too.
-- **Tab rows** (Settings › Appearance): Detailed shows each tab's
-  directory under its name, Compact only the name.
+- **Tab rows** (Settings › Appearance): Compact, the default, shows only
+  each tab's name; Detailed adds its directory under it.
 - **Environments**: **Connect environment**, under the last one, adds one.
   You can add:
   - an SSH host (it must accept your key without a password prompt)
