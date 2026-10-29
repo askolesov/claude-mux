@@ -1,4 +1,4 @@
-# UI redesign (v4)
+# UI design
 
 The page stays a simple tool: tabs, the live terminal, and nothing that
 says the same thing twice. This is the concept behind the mockups in
@@ -32,12 +32,14 @@ accent outline. Files in [`assets/icon/svg/`](../../assets/icon/svg/):
 - `icon-small.svg`: 16–24 px (favicon, sidebar mark, window title): two
   layers and heavier strokes so it stays readable.
 
-The favicon keeps the waiting count the page already draws on it.
+The favicon gets a dot when something waits: amber when a tab needs you,
+green when one finished unseen (the same rule as the tab dots). Mockup
+`Icon.dc.html`.
 
 ## Themes
 
-The same names in both; mockup `V4Main.dc.html` takes `theme`
-(`dark` / `light`), `V4Light.dc.html` shows light.
+The same names in both; mockup `Main.dc.html` takes `theme`
+(`dark` / `light`), `Light.dc.html` shows light.
 
 | Token | Dark | Light | Used for |
 |---|---|---|---|
@@ -53,7 +55,7 @@ The same names in both; mockup `V4Main.dc.html` takes `theme`
 | `accent` | `#7AA2F7` | `#2F5FD0` | links, primary button, focus |
 | `accentSoft` | `#1B2233` | `#E8EEFB` | update notice |
 | `working` | `#7AA2F7` | `#2F5FD0` | status dot |
-| `ready` | `#4FD18B` | `#1F9D5C` | status dot, healthy env |
+| `ready` | `#4FD18B` | `#1F9D5C` | status dot |
 | `needs` | `#F5B14C` | `#B86F0A` | status dot, env problem |
 | `exited` | `#6B7383` | `#9AA1AD` | hollow ring |
 
@@ -63,8 +65,8 @@ the page.
 
 ## Main window
 
-Mockups: `V4Main.dc.html` (detailed rows), `V4Compact.dc.html` (compact
-rows), `V4Light.dc.html` (light theme).
+Mockups: `Main.dc.html` (compact rows, the default), `Detailed.dc.html`
+(detailed rows), `Light.dc.html` (light theme).
 
 Tabs live in the left sidebar only. There is no tabs-on-top layout: a
 terminal for claude rarely needs the full width, the height matters more,
@@ -73,31 +75,34 @@ horizontal strip. One layout, done well, instead of two.
 
 **Sidebar**
 
-- Top row: logo mark, `claude-mux`, **+** (new tab, ⌥N), settings. The
+- Top row: logo mark, `claude-mux` (with `2/3` when several windows are
+  open), **+** (new tab, ⌥N), settings. The
   sidebar can be dragged wider or narrower; it never collapses to icons,
   because without names you can't tell the sessions apart.
 - **Jump to tab ⌘K**: the only search; opens the switcher.
 - **Environment header**: a collapse chevron, the name (semibold, main
-  text colour), the kind in muted text (`this Mac`, `ssh`, `docker`), then
-  on the right the health dot (green connected, amber problem; latency and
-  details on hover). A state word appears only when something is
-  wrong (`no claude`, `disconnected`); an environment without claude says
-  *No claude here · Install*.
+  text colour; details and latency on hover), the kind in muted text
+  (`this Mac`, `ssh`, `docker`). **Calm when fine**: nothing else while it
+  is connected and has claude. Only when something is wrong an amber dot
+  appears on the right, and a line under the header says what and what to
+  do: *No claude · Install · Look again*, or the error · *Reconnect*.
+  Folded, the line is hidden, so the header shows the state word instead
+  (`no claude`, `disconnected`). Connecting: a grey dot that pulses.
 - **The tree** (see *Tab tree* below): environments at the top, then
   groups and tabs, groups nesting to any depth. Groups show a chevron and
   their name; tabs a status dot.
-- **Tab row**: the status dot, then two lines: the name (plus ↻ when it has
-  a startup message) and the directory in small mono. Nothing else.
-  Settings › Appearance › *Tab rows* switches between **Detailed** (two
-  lines, the default) and **Compact** (name only, one line); mockup
-  `V4Compact.dc.html`.
+- **Tab row**: the status dot and the name (plus ↻ when it has a startup
+  message). Nothing else. Settings › Appearance › *Tab rows* switches
+  between **Compact** (one line, the default) and **Detailed** (a second
+  line with the directory in small mono); mockup `Detailed.dc.html`.
 - **Connect environment** is a plain muted row (plug icon) after the last
   environment: adding an environment extends the list it belongs to.
 - At the bottom, only when a release is out: *0.9.3 is out · Update and
   restart*.
 
-
-**Above the terminal**: the tab's name, then
+**Above the terminal**: one compact line, 36 px (the sidebar's top row
+keeps its own, roomier height; the two don't need to line up): the tab's
+name, then
 `env / group / subgroup · directory · branch` in mono, and **…**, which opens Tab
 settings. No status pill: the dot already says it.
 
@@ -106,8 +111,8 @@ settings. No status pill: the dot already says it.
 
 ## Tab tree
 
-Mockups: `V4Main.dc.html`, `V4Tree.dc.html` (right-click menu on a group)
-and `V4NewGroup.dc.html` (a new group being named).
+Mockups: `Main.dc.html`, `ContextMenu.dc.html` (right-click menu on a
+group) and `NewGroup.dc.html` (a new group being named).
 
 **Model.** Three kinds of node:
 
@@ -127,7 +132,7 @@ once, on upgrade.
 
 **Rows.** One shape per kind, the same at every depth:
 
-- Environment: chevron · name · kind · health dot (a state word only when
+- Environment: chevron · name · kind (an amber dot and a state only when
   something is wrong)
 - Group: chevron · name (collapsed: also the most urgent dot inside and
   the tab count)
@@ -145,10 +150,13 @@ from the same three places desktop trees use (Finder, VS Code, Xcode):
   create somewhere else, right-click that environment or group.
 - **Right-click** (or the Menu key / ⇧F10) on any row opens a context menu:
   - environment: *New tab, New group* · *Reconnect, Environment settings…*
-    · *Remove environment*
-  - group: *New tab, New group* · *Rename (F2), Collapse* · *Delete group*
-  - tab: *Tab settings… (⌘I), Rename, Duplicate, Move to…* · *Restart,
-    Close tab (⌘W)*
+    (and *Install claude…* when it has none) · *Remove environment* (not
+    for this machine)
+  - group: *New tab, New group* · *Rename (F2), Collapse / Expand* ·
+    *Delete group (⌫)*
+  - tab: *Tab settings… (⌘I), Duplicate, Move to…* · *Restart* (*Resume*
+    once it has exited), *Close tab (⌘W)*. A tab has no Rename: its
+    name is claude's, and `/rename` typed in the tab is the only way.
 
   *New tab* and *New group* there create inside the row you clicked (for a
   tab: next to it, in its group). ⇧⌥N is *New group* next to the selection.
@@ -159,8 +167,8 @@ from the same three places desktop trees use (Finder, VS Code, Xcode):
 - **New group** doesn't open a dialog: a group with only a name is named in
   place, like a new folder in Finder or VS Code. The row appears at the end
   of that container with *New group* selected in an inline field; Enter
-  keeps it, Esc removes it. Mockup `V4NewGroup.dc.html`; the context menu
-  is in `V4Tree.dc.html`.
+  keeps it, Esc removes it. Mockup `NewGroup.dc.html`; the context menu
+  is in `ContextMenu.dc.html`.
 
 **Collapsing.** The chevron (or ←/→) collapses a container. A collapsed
 group keeps one summary: the most urgent status inside (needs you >
@@ -174,11 +182,11 @@ so nothing waiting gets hidden. Collapse state is kept per browser.
   depth it lands at (drag left or right to go up or down a level);
 - a group can't go into itself or its own descendants.
 
-Without a mouse: Tab settings › Group (pick any container), and ⌘⇧↑/↓ to
-move within the parent.
+Without a mouse: *Move to…* (pick any group in the tab's environment, the
+Jump list's way), and ⌘⇧↑/↓ to move within the parent.
 
 **Other actions** (right-click, or the same keys in the tree):
-rename (F2, or double-click a group), delete group (its contents move up to
+rename a group or an environment (F2, or double-click), delete group (its contents move up to
 the parent; no tab is ever closed by deleting a group), close tab (⌘W,
 asks first).
 
@@ -187,7 +195,7 @@ asks first).
 move, → expands or steps into, ← collapses or steps out to the parent,
 Enter opens a tab, Home/End jump, typing a name jumps to it.
 
-**Depth.** Any depth is allowed; past three group levels the indent stops
+**Depth.** Any depth is allowed; past four levels the indent stops
 growing and only the guides show the depth, so names keep their width.
 
 ## Status
@@ -211,14 +219,20 @@ what waits: `(2) claude-mux`.
 
 ## Dialogs
 
-New tab, Tab settings and Settings are one family: a modal over the
-window with the same header (title, muted subtitle), the same field style
-and the same footer. No boxes around groups and no lines between rows;
-nothing that isn't needed is shown by default. No separate screens.
+New tab, Tab settings, Environment settings, Connect environment and
+Settings are one family: a 440 px modal over the window with the same
+header (title, muted subtitle), the same fields, and a footer that has, on
+the left, context or a quiet red action, and on the right *Cancel* and the
+one primary button (Settings applies each change at once, so it has only
+×). Folded rows inside a form are split by thin lines; nothing that isn't
+needed is shown by default. No separate screens.
+
+The title names the dialog, not the thing: a tab's or an environment's name
+is the first field, so it isn't said twice.
 
 ### New tab
 
-Mockup: `V4NewTab.dc.html`. From the sidebar's + (⌥N) or *New tab* in a
+Mockup: `NewTab.dc.html`. From the sidebar's + (⌥N) or *New tab* in a
 context menu. It asks for two things:
 
 - **Name**, first and focused; empty, with the folder name as placeholder;
@@ -237,11 +251,14 @@ current tab, in the same environment and group.
 
 Below, two folded rows, both closed by default:
 
-- **Startup message**, a switch; on, a text box appears.
+- **Startup message**, a switch (the switch alone says off; no "none"
+  beside it); on, a text box appears, sent after the global one from
+  Settings.
 - **Arguments**, a disclosure whose summary shows what will be used
-  (`skip permissions · chrome`). Open: one text field for anything extra,
-  and under it two checkboxes, `--dangerously-skip-permissions` and
-  `--chrome`. A checkbox disappears if its flag is typed in the field.
+  (`skip permissions · chrome`) while it's closed; open, the summary hides
+  and the fields say it: one text field for anything extra, and under it
+  two checkboxes, `--dangerously-skip-permissions` and `--chrome`. A
+  checkbox disappears if its flag is typed in the field.
 
 **Everything below Name repeats the last tab you started**: same switches,
 same text, same checkboxes, custom or not. The very first time: no startup
@@ -250,28 +267,34 @@ tab*; *Cancel*, *Start* (Enter).
 
 ### Tab settings
 
-Mockup: `V4TabSettings.dc.html`. From **…** in the header, *Tab settings…*
+Mockup: `TabSettings.dc.html`. From **…** in the header, *Tab settings…*
 in the context menu, or ⌘I. The same form with the tab's values; header:
-the name, then `env / group · session id`.
+*Tab settings*, then `env / group · session id`.
 
-Name changes apply at once. Directory, startup message and arguments only
-take effect when claude restarts, so changing any of them shows a notice
-(*Saving restarts claude in this tab. The conversation continues where it
-was.*) and the button becomes *Save and restart*. *Close tab* sits on the
+The name is claude's and read-only here: `/rename` typed in the tab is
+the only way to rename it. Directory and arguments only take effect when
+claude restarts, so changing either shows a notice (*Saving restarts
+claude in this tab. The conversation continues where it was.*) and the
+button becomes *Save and restart*. The startup message is read each time
+claude starts, so changing it just saves: it is sent at the next start,
+with no restart now. *Close tab* sits on the
 left, in red. Moving to another group is done in the tree (drag, or *Move
 to…*), not here.
 
 ### Settings
 
-Mockup: `V4Settings.dc.html`. The gear in the sidebar, or ⌘,. A modal
+Mockup: `Settings.dc.html`. The gear in the sidebar, or ⌘,. A modal
 with short sections: a small heading each and a thin line between
 sections, none between rows. One row per setting:
 
 - **Appearance**: Theme (Auto / Light / Dark), Terminal colours, Terminal
-  font size, Tab rows (Detailed / Compact).
-- **Tabs**: Ask before closing a tab.
+  scroll bar (off by default), Terminal font size, Tab rows (Detailed /
+  Compact).
+- **Tabs**: Ask before closing a tab; Startup message for every tab (a
+  switch; on, a text box, sent before each tab's own).
 - **Notifications**: When a tab needs me, When a tab finishes, Only while I
-  am in another window.
+  am in another window. If the browser hasn't been asked yet: *This browser
+  asks first · Allow*.
 - **Updates**, two rows: *Check every [N] days* with the on/off switch at
   the end (the field greys out when off); then the current version, *checked
   today at 14:20* and a small refresh icon to check now, with *Update to
@@ -282,11 +305,29 @@ Environments are managed in the tree (right-click an environment; *Connect
 environment* under the last one), not here. New-tab defaults aren't here
 either: new tabs repeat the last one.
 
+### Connect environment
+
+Mockup: `ConnectEnv.dc.html`. *Connect environment* under the last
+environment. Kind as a segmented control (*SSH host*, *Docker container*,
+and *WSL distro* on Windows), then the target with a short label and its
+hint under it (for SSH: *host, user@host or an alias from ~/.ssh/config; it
+must take your key without a password prompt*), suggestions from the
+system, and Name (defaults to the target). *Cancel*, *Connect*.
+
+### Environment settings
+
+Mockup: `EnvSettings.dc.html`. *Environment settings…* in an environment's
+menu. Name (this machine keeps its own), then facts: Status (with latency),
+Platform, Claude (version and path, or *not installed · Install*), Tabs.
+*Remove* on the left in red (not for this machine), *Cancel*, *Save*.
+
 ## Jump (⌘K)
 
-Mockup: `V4Jump.dc.html`. Fuzzy search over tabs, waiting tabs first,
-then a few actions (New tab, New group, Tab settings, Settings). ↑↓ move,
-↵ open, esc closes.
+Mockup: `Jump.dc.html`. Fuzzy search over tabs, waiting tabs first, with
+the same dots as the sidebar and the state in words; then a few actions
+(New tab, New group, New window, Tab settings, Settings). ↑↓ move, ↵ open,
+⌘⌫ closes the tab, esc closes the list. *Move to…* uses the same list to
+pick a group.
 
 ## Not now
 
@@ -297,13 +338,31 @@ then a few actions (New tab, New group, Tab settings, Settings). ↑↓ move,
 - Details side panel, filter chips, per-row branch lines, ⌥ number hints and
   the bottom status bar were tried and dropped as noise.
 - Versions 2 (Photoshop-style) and 3 (VS Code-style) were tried and
-  dropped; v4 is v1 with the noise taken out.
+  dropped; this design is v1 with the noise taken out.
+- For unread, a bold name, dimmed read tabs, a faded dot, a blue marker, a
+  strip, a square, a new colour, a check mark and a count were tried; the
+  ring won.
 
 ## The mockup files
 
 `mockups/*.dc.html` are artboards of the design canvas; they need the
 canvas runtime (`support.js`), so open them on the canvas
 (https://claude.ai/artifact/6b129ec8-cb4b-4863-8820-b70f02942f5a) rather than
-in a browser. `V4Main` is the window; the others import it with props
+in a browser. `Main` is the window; the others import it with props
 (`theme`, `rows`, `contextMenu`, `newGroupIn`, `activeTab`) or draw a dialog
-over it. The icon files are in `assets/icon/svg/`.
+over it. `Icon` shows the icon files in `assets/icon/svg/`.
+
+| File | Shows |
+|---|---|
+| `Main.dc.html` | the window, dark, compact rows |
+| `Detailed.dc.html` | detailed rows |
+| `Light.dc.html` | light theme |
+| `ContextMenu.dc.html` | right-click on a group |
+| `NewGroup.dc.html` | a new group named in place |
+| `NewTab.dc.html` | New tab |
+| `TabSettings.dc.html` | Tab settings, edited, with the restart notice |
+| `Settings.dc.html` | Settings |
+| `Jump.dc.html` | Jump (⌘K) |
+| `ConnectEnv.dc.html` | Connect environment |
+| `EnvSettings.dc.html` | Environment settings |
+| `Icon.dc.html` | the icon, small sizes, favicon dots |

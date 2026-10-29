@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>claude-mux v4 jump</title>
+<title>claude-mux jump</title>
 <script src="./support.js"></script>
 </head>
 <body>
@@ -15,7 +15,7 @@ body{margin:0}
 </style>
 </helmet>
 <div style="position: relative; min-height: 900px; background: #0F1115; font-family: Inter, system-ui, sans-serif; color: #E6E8EC; font-size: 13px">
-<dc-import name="V4Main" active-tab="billing-fix" hint-size="100%,900px"></dc-import>
+<dc-import name="Main" active-tab="billing-fix" hint-size="100%,900px"></dc-import>
 <div style="position: absolute; inset: 0; background: rgba(6,7,9,0.62); display: flex; justify-content: center; align-items: flex-start; padding: 110px 16px 16px">
 <div role="dialog" aria-label="Quick switcher" style="width: 640px; max-width: 100%; background: #171A20; border: 1px solid #2E3440; border-radius: 12px; box-shadow: 0 24px 60px rgba(0,0,0,0.5); overflow: hidden">
 <label style="display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid #252A33">
@@ -35,7 +35,7 @@ body{margin:0}
 </button>
 </sc-for>
 <div style="font-size: 11px; font-weight: 600; color: #8A92A2; padding: 12px 10px 6px">Actions</div>
-<sc-for list="{{actions}}" as="a" hint-placeholder-count="4">
+<sc-for list="{{actions}}" as="a" hint-placeholder-count="5">
 <button type="button" onMouseEnter="{{a.hover}}" style="{{a.rowStyle}}">
 <span style="width: 8px; flex: none"></span>
 <span style="flex: 1; text-align: left">{{a.label}}</span>
@@ -76,11 +76,13 @@ class Component extends DCLogic {
     const row = (id) => 'display:flex;align-items:center;gap:10px;width:100%;height:38px;padding:0 10px;border:0;border-radius:6px;cursor:pointer;font:inherit;font-size:13px;color:#E6E8EC;text-align:left;background:' + (sel === id ? '#232B3D' : 'transparent');
     const tabs = TABS.filter((t) => !ql || t[0].indexOf(ql) >= 0 || t[1].indexOf(ql) >= 0).map((t) => ({
       name: t[0], where: t[1], status: t[3], key: t[4],
-      dot: t[2] === 'exited' ? 'width:8px;height:8px;border-radius:50%;border:1.5px solid #6B7383;box-sizing:border-box;flex:none' : 'width:8px;height:8px;border-radius:50%;flex:none;background:' + COL[t[2]],
+      // The same dots as the sidebar: a ring means "look at me".
+      dot: t[2] === 'exited' ? 'width:8px;height:8px;border-radius:50%;border:1.5px solid #6B7383;box-sizing:border-box;flex:none'
+        : 'width:8px;height:8px;border-radius:50%;flex:none;background:' + COL[t[2]] + (t[2] === 'needs' ? ';box-shadow:0 0 0 3px rgba(245,177,76,0.25)' : t[3] === 'Done, unseen' ? ';box-shadow:0 0 0 3px rgba(79,209,139,0.25)' : ''),
       statusStyle: 'font-size:11px;font-weight:600;color:' + COL[t[2]],
       rowStyle: row(t[0]), hover: () => this.setState({ sel: t[0] })
     }));
-    const ACT = [['New tab', '⌥N'], ['New group', '⇧⌥N'], ['Tab settings', '⌘I'], ['Settings', '⌘,']];
+    const ACT = [['New tab', '⌥N'], ['New group', '⇧⌥N'], ['New window', '⌘N'], ['Tab settings', '⌘I'], ['Settings', '⌘,']];
     const actions = ACT.filter((a) => !ql || a[0].toLowerCase().indexOf(ql) >= 0).map((a) => ({
       label: a[0], key: a[1], rowStyle: row('a:' + a[0]), hover: () => this.setState({ sel: 'a:' + a[0] })
     }));

@@ -74,7 +74,6 @@ svg { flex: none; }
 .dot.needs-you { background: var(--needs); box-shadow: 0 0 0 3px var(--halo); }
 .dot.exited, .dot.stopped { background: transparent; border: 1.5px solid var(--exited); }
 .hdot { width: 6px; height: 6px; border-radius: 50%; flex: none; background: var(--muted); }
-.hdot.ok { background: var(--ready); }
 .hdot.problem { background: var(--needs); }
 .hdot.connecting { animation: pulse 1.2s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: .3; } }
@@ -153,9 +152,9 @@ body.compact .tab { padding-top: 5px; padding-bottom: 5px; }
 
 /* main */
 main { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--bg); }
-.head { display: flex; align-items: center; gap: 10px; padding: 10px 12px 10px 18px; border-bottom: 1px solid var(--line); min-height: 53px; }
-.head .tname { font-weight: 600; font-size: 14px; white-space: nowrap; }
-.head .icon-btn { width: 32px; height: 32px; }
+.head { display: flex; align-items: center; gap: 10px; height: 36px; flex: none; padding: 0 6px 0 16px; border-bottom: 1px solid var(--line); }
+.head .tname { font-weight: 600; font-size: 13px; white-space: nowrap; }
+.head .icon-btn { flex: none; }
 .head .crumb { font: 12px var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1 1 200px; }
 .stage { flex: 1 1 auto; position: relative; min-height: 0; }
 .term { position: absolute; inset: 0; display: none; padding: 8px 4px 4px 12px; overflow: hidden; }
@@ -206,6 +205,9 @@ dialog h3 { margin: 0; font-size: 15px; font-weight: 600; }
   background: var(--bg); color: var(--text); font-size: 13px; outline: none;
 }
 .field > input:focus, .field > select:focus, .input:focus, .withbtn input:focus, dialog textarea:focus { border-color: var(--in-focus); }
+.field .seg { align-self: flex-start; }
+.field .seg button { height: 26px; padding: 0 12px; }
+.field .hint { color: var(--muted); }
 .field > input:disabled, .field > input:read-only { color: var(--muted); }
 dialog textarea { height: auto; padding: 8px 10px; resize: vertical; line-height: 1.45; }
 .mono-in { font-family: var(--mono) !important; font-size: 12px !important; }
@@ -283,8 +285,8 @@ dialog pre { margin: 0; font: 11.5px/1.4 var(--mono); background: var(--term); b
 .sfoot .mono { font-size: 11px; }
 .seg { display: flex; padding: 2px; border-radius: 7px; background: var(--bg); border: 1px solid var(--in-line); }
 .seg button { height: 24px; padding: 0 10px; border: 0; border-radius: 5px; background: transparent; color: var(--muted); font-size: 12px; }
-.seg button[aria-pressed="true"] { background: var(--seg-on); color: var(--text); }
-:root[data-theme="light"] .seg button[aria-pressed="true"] { box-shadow: 0 1px 2px rgba(20, 24, 32, .12); }
+.seg button[aria-pressed="true"], .seg button[aria-checked="true"] { background: var(--seg-on); color: var(--text); }
+:root[data-theme="light"] .seg button:is([aria-pressed="true"], [aria-checked="true"]) { box-shadow: 0 1px 2px rgba(20, 24, 32, .12); }
 .stepper { display: flex; align-items: center; border: 1px solid var(--in-line); border-radius: 6px; background: var(--bg); }
 .stepper button { width: 28px; height: 26px; border: 0; background: transparent; color: var(--text2); font-size: 15px; }
 .stepper span { min-width: 28px; text-align: center; font: 12px var(--mono); }

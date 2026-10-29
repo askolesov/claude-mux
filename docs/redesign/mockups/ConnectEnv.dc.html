@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>claude-mux connect environment</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="position: relative; min-height: 900px; background: #0F1115; font-family: Inter, system-ui, sans-serif; font-size: 13px; color: #E6E8EC; line-height: 1.4">
+<dc-import name="Main" active-tab="billing-fix" hint-size="100%,900px"></dc-import>
+<div style="position: absolute; inset: 0; background: rgba(6,7,9,0.55); display: flex; justify-content: center; align-items: flex-start; padding: 140px 16px 16px">
+<form role="dialog" aria-label="Connect environment" onSubmit="{{noop}}" style="width: 440px; max-width: 100%; background: #171A20; border: 1px solid #2E3440; border-radius: 12px; box-shadow: 0 24px 60px rgba(0,0,0,0.5)">
+<div style="padding: 18px 20px 4px">
+<div style="font-size: 15px; font-weight: 600">Connect environment</div>
+<div style="font-size: 12px; color: #8A92A2; margin-top: 2px">An SSH host or a Docker container</div>
+</div>
+<div style="padding: 14px 20px 6px; display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: #C4C9D3">Kind
+<div role="radiogroup" aria-label="Kind" style="display: flex; align-self: flex-start; padding: 2px; border-radius: 7px; background: #0F1115; border: 1px solid #2B313C">
+<sc-for list="{{kinds}}" as="k" hint-placeholder-count="2"><button type="button" role="radio" onClick="{{k.pick}}" aria-checked="{{k.on}}" style="{{k.style}}">{{k.label}}</button></sc-for>
+</div>
+</div>
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: #C4C9D3">{{targetLabel}}
+<input placeholder="{{targetPh}}" style="height: 34px; padding: 0 10px; border: 1px solid #2B313C; border-radius: 6px; background: #0F1115; color: #E6E8EC; outline: none; font-family: 'JetBrains Mono', monospace; font-size: 12px; border-color: #3A4A6B">
+<span style="color: #8A92A2">{{hint}}</span>
+</label>
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: #C4C9D3">Name
+<input placeholder="defaults to the {{targetWord}}" style="height: 34px; padding: 0 10px; border: 1px solid #2B313C; border-radius: 6px; background: #0F1115; color: #E6E8EC; outline: none; font: inherit; font-size: 13px">
+</label>
+</div>
+<div style="display: flex; align-items: center; gap: 8px; padding: 16px 20px; border-top: 1px solid #252A33; margin-top: 12px">
+<span style="flex: 1"></span>
+<a href="Main.dc.html" style="display: grid; place-items: center; height: 32px; padding: 0 14px; border-radius: 6px; border: 1px solid #2B313C; color: #E6E8EC; text-decoration: none; box-sizing: border-box">Cancel</a>
+<a href="Main.dc.html" style="display: grid; place-items: center; height: 32px; padding: 0 16px; border-radius: 6px; background: #7AA2F7; color: #0F1115; font-weight: 600; text-decoration: none">Connect</a>
+</div>
+</form>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const s = this.state || {};
+    const kind = s.kind || 'ssh';
+    const K = {
+      ssh: ['SSH host', 'Host', 'host', 'devbox', 'host, user@host or an alias from ~/.ssh/config. It must take your key without a password prompt.'],
+      docker: ['Docker container', 'Container', 'container', 'my-container', 'A running container with sh in it. Its tabs live as long as the container.']
+    };
+    const k = K[kind];
+    return {
+      kinds: Object.keys(K).map((id) => ({ label: K[id][0], on: kind === id, pick: () => this.setState({ kind: id }),
+        style: 'height:26px;padding:0 12px;border:0;border-radius:5px;font:inherit;font-size:12px;cursor:pointer;background:' + (kind === id ? '#2B3242' : 'transparent') + ';color:' + (kind === id ? '#E6E8EC' : '#9098A8') })),
+      targetLabel: k[1], targetWord: k[2], targetPh: k[3], hint: k[4],
+      noop: (e) => { if (e && e.preventDefault) e.preventDefault(); }
+    };
+  }
+}
+</script>
+</body>
+</html>
