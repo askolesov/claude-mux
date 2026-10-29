@@ -144,7 +144,7 @@ back.
   | ⌥N | new tab next to this one |
   | ⇧⌥N | new group next to this one |
   | ⌘I | Tab settings |
-  | ⌘W | close the tab (asks first) |
+  | ⌘W | close the tab (asks first, unless Settings say not to) |
   | ⌘⇧↑ / ⌘⇧↓ | move a row up / down in its group |
   | ↑↓←→, Enter, F2, ⌫ | in the sidebar: move, fold, open, rename or delete a group |
   | Menu key, ⇧F10 | in the sidebar: the row's menu |
