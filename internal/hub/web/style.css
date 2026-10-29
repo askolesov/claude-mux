@@ -152,9 +152,9 @@ body.compact .tab { padding-top: 5px; padding-bottom: 5px; }
 
 /* main */
 main { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--bg); }
-.head { display: flex; align-items: center; gap: 10px; padding: 10px 12px 10px 18px; border-bottom: 1px solid var(--line); min-height: 53px; }
-.head .tname { font-weight: 600; font-size: 14px; white-space: nowrap; }
-.head .icon-btn { width: 32px; height: 32px; }
+.head { display: flex; align-items: center; gap: 10px; height: 36px; flex: none; padding: 0 6px 0 16px; border-bottom: 1px solid var(--line); }
+.head .tname { font-weight: 600; font-size: 13px; white-space: nowrap; }
+.head .icon-btn { flex: none; }
 .head .crumb { font: 12px var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1 1 200px; }
 .stage { flex: 1 1 auto; position: relative; min-height: 0; }
 .term { position: absolute; inset: 0; display: none; padding: 8px 4px 4px 12px; overflow: hidden; }

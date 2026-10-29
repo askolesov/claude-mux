@@ -92,10 +92,10 @@ body{margin:0}
 </div>
 </aside>
 <main style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; background: {{c.bg}}">
-<div style="display: flex; align-items: center; gap: 10px; padding: 10px 12px 10px 18px; border-bottom: 1px solid {{c.line}}; flex-wrap: wrap">
-<span style="font-weight: 600; font-size: 14px">{{cur.name}}</span>
+<div style="display: flex; align-items: center; gap: 10px; height: 36px; box-sizing: border-box; padding: 0 6px 0 16px; border-bottom: 1px solid {{c.line}}">
+<span style="font-weight: 600; font-size: 13px; white-space: nowrap">{{cur.name}}</span>
 <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: {{c.muted}}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1 1 200px">{{cur.crumb}}</span>
-<a href="TabSettings.dc.html" aria-label="Tab settings" title="Tab settings" style="width: 32px; height: 32px; display: grid; place-items: center; border-radius: 6px; color: {{c.muted}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"></circle><circle cx="12" cy="12" r="1.8"></circle><circle cx="19" cy="12" r="1.8"></circle></svg></a>
+<a href="TabSettings.dc.html" aria-label="Tab settings" title="Tab settings (⌘I)" style="width: 28px; height: 28px; flex: none; display: grid; place-items: center; border-radius: 6px; color: {{c.muted}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"></circle><circle cx="12" cy="12" r="1.8"></circle><circle cx="19" cy="12" r="1.8"></circle></svg></a>
 </div>
 <div style="flex: 1 1 auto; display: flex; min-height: 0">
 <section aria-label="{{cur.name}}" style="flex: 1; min-width: 0; background: {{c.term}}; padding: 14px 18px; font-family: 'JetBrains Mono', monospace; font-size: 13px; line-height: 1.65; overflow: hidden">

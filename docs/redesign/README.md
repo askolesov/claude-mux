@@ -100,7 +100,9 @@ horizontal strip. One layout, done well, instead of two.
 - At the bottom, only when a release is out: *0.9.3 is out · Update and
   restart*.
 
-**Above the terminal**: the tab's name, then
+**Above the terminal**: one compact line, 36 px (the sidebar's top row
+keeps its own, roomier height; the two don't need to line up): the tab's
+name, then
 `env / group / subgroup · directory · branch` in mono, and **…**, which opens Tab
 settings. No status pill: the dot already says it.
 
