@@ -32,6 +32,7 @@ var (
 type Manager struct {
 	stateFile  string
 	hooksFile  string
+	codexHook  string // the hook command codex sessions get (codex.go)
 	hookURL    string // the hook port's base, ".../hook/<token>"; a session adds its id
 	defaultCwd string // where a new tab starts when New tab names no directory
 
@@ -69,6 +70,11 @@ func NewManager(stateDir, hookURL, exe, defaultCwd string, global, old StartupMe
 	if err := writeHookSettings(m.hooksFile, exe); err != nil {
 		return nil, err
 	}
+	link, err := linkHook(stateDir, exe)
+	if err != nil {
+		return nil, err
+	}
+	m.codexHook = hookCommand(link)
 	if err := m.load(stateDir, stateSteps(old)); err != nil {
 		return nil, err
 	}
@@ -201,9 +207,9 @@ func (m *Manager) Create(kind Kind, name, parent, after, cwd string, resume Resu
 	return s, nil
 }
 
-// Start runs the tab's claude: it continues the tab's conversation, if it
-// has one yet, and sends its startup prompt (the global message, then its
-// own) as the first prompt then.
+// Start runs the tab's process: its agent, continuing the tab's
+// conversation if it has one yet and sending its startup prompt (the global
+// message, then its own) as the first prompt then; or a terminal's shell.
 func (m *Manager) Start(id string) error {
 	s, err := m.Get(id)
 	if err != nil {
@@ -212,28 +218,17 @@ func (m *Manager) Start(id string) error {
 	if s.running() {
 		return errRunning
 	}
-	claude := m.Agent(KindClaude).Path
-	if claude == "" {
-		return errNoAgent(KindClaude)
-	}
-	s.mu.Lock()
-	name, sid, resume, own := s.Name, s.AgentSessionID, s.Resume, s.ResumeMessage
-	args := append([]string{"--settings", m.hooksFile, "--name", name}, s.Args...)
-	s.mu.Unlock()
-	// Starting again (claude-mux restarted, Restart, Resume) continues the
-	// conversation, and tells claude so: what ran in the old process,
-	// background tasks and watchers, is gone.
-	if hasConversation(sid) {
-		args = append([]string{"--resume", sid}, args...)
-		if msg := startupPrompt(m.globalMessage(), resume, own); msg != "" {
-			args = append(args, "--", msg) // after "--", a message starting with "-" stays a prompt
-		}
+	path, args, err := m.command(s)
+	if err != nil {
+		return err
 	}
 	// FORCE_HYPERLINK: claude marks its links as terminal hyperlinks (OSC 8),
 	// which stay one link when claude breaks them over several lines.
-	env := append(childEnv(), "CLAUDE_MUX_ID="+s.ID, "CLAUDE_MUX_HOOK="+m.hookURL+"/"+s.ID,
-		"TERM=xterm-256color", "COLORTERM=truecolor", "FORCE_HYPERLINK=1")
-	if err := s.start(claude, args, env, func() {
+	env := append(childEnv(), "TERM=xterm-256color", "COLORTERM=truecolor", "FORCE_HYPERLINK=1")
+	if s.Kind.agent() {
+		env = append(env, "CLAUDE_MUX_ID="+s.ID, "CLAUDE_MUX_HOOK="+m.hookURL+"/"+s.ID)
+	}
+	if err := s.start(path, args, env, func() {
 		s.mu.Lock()
 		again := s.restarting
 		s.restarting = false
@@ -246,8 +241,51 @@ func (m *Manager) Start(id string) error {
 	}); err != nil {
 		return err
 	}
+	// Codex says nothing until the first prompt, and a shell has no hooks:
+	// both are idle until they say otherwise.
+	if s.Kind != KindClaude {
+		s.setStatus(StatusIdle)
+	}
 	m.changes.Notify()
 	return nil
+}
+
+// command is what Start runs for a tab: the program and its arguments.
+// Starting again (claude-mux restarted, Restart, Resume) continues an
+// agent's conversation, and tells the agent so: what ran in the old process,
+// background tasks and watchers, is gone.
+func (m *Manager) command(s *Session) (string, []string, error) {
+	s.mu.Lock()
+	kind, name, sid, resume, own, tabArgs := s.Kind, s.Name, s.AgentSessionID, s.Resume, s.ResumeMessage, s.Args
+	s.mu.Unlock()
+	if kind == KindTerminal {
+		path, args := shellCommand()
+		return path, args, nil
+	}
+	agent := m.Agent(kind).Path
+	if agent == "" {
+		return "", nil, errNoAgent(kind)
+	}
+	prompt := ""
+	if kind == KindCodex {
+		if sid != "" {
+			prompt = startupPrompt(m.globalMessage(), resume, own)
+		}
+		return agent, codexArgs(m.codexHook, sid, tabArgs, prompt), nil
+	}
+	args := append([]string{"--settings", m.hooksFile, "--name", name}, tabArgs...)
+	if !hasConversation(sid) {
+		// Nothing to continue: the session claude starts now is the tab's.
+		s.mu.Lock()
+		s.AgentSessionID = ""
+		s.mu.Unlock()
+		return agent, args, nil
+	}
+	args = append([]string{"--resume", sid}, args...)
+	if msg := startupPrompt(m.globalMessage(), resume, own); msg != "" {
+		args = append(args, "--", msg) // after "--", a message starting with "-" stays a prompt
+	}
+	return agent, args, nil
 }
 
 // hasConversation reports whether claude has a transcript for the session:
@@ -269,6 +307,9 @@ var sessionMarkers = map[string]bool{
 	"CLAUDE_CODE_ENTRYPOINT": true, "CLAUDE_CODE_EXECPATH": true,
 	"CLAUDE_CODE_SESSION_ID": true, "CLAUDE_CODE_CHILD_SESSION": true, "CLAUDE_CODE_SESSION_ATTENDED": true,
 	"CLAUDE_CODE_MESSAGING_SOCKET": true, "CLAUDE_CODE_MESSAGING_TOKEN": true,
+	// A backend started from a claude-mux tab carries that tab's address:
+	// only an agent tab gets an address, its own (Start).
+	"CLAUDE_MUX_ID": true, "CLAUDE_MUX_HOOK": true,
 }
 
 func childEnv() []string {
@@ -303,7 +344,7 @@ func (m *Manager) WatchStartup(ctx context.Context) {
 	every(ctx, time.Second, func() {
 		for _, s := range m.all() {
 			s.mu.Lock()
-			stuck := s.status == StatusStarting && s.proc != nil && time.Since(s.lastOutput) > 2*time.Second
+			stuck := s.Kind == KindClaude && s.status == StatusStarting && s.proc != nil && time.Since(s.lastOutput) > 2*time.Second
 			s.mu.Unlock()
 			if stuck && s.setStatus(StatusNeedsYou) {
 				m.changes.Notify()
