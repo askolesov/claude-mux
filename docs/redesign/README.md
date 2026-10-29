@@ -187,8 +187,9 @@ Jump list's way), and ⌘⇧↑/↓ to move within the parent.
 
 **Other actions** (right-click, or the same keys in the tree):
 rename a group or an environment (F2, or double-click), delete group (its contents move up to
-the parent; no tab is ever closed by deleting a group), close tab (⌘W,
-asks first).
+the parent; no tab is ever closed by deleting a group), close tab (⌘W;
+asks first while Settings › *Ask before closing a tab* is on, and always
+when the tab is working).
 
 **Keyboard and accessibility.** The sidebar is an ARIA `tree`; rows are
 `treeitem`s with `aria-level` and, for containers, `aria-expanded`. ↑/↓

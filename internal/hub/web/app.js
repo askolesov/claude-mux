@@ -1004,7 +1004,7 @@ $("tabForm").addEventListener("submit", async (e) => {
   }
 });
 $("tCancel").onclick = () => $("tabDlg").close();
-$("tClose").onclick = async () => { const key = dlg.key; $("tabDlg").close(); await closeTab(key, false); };
+$("tClose").onclick = async () => { const key = dlg.key; $("tabDlg").close(); await closeTab(key); };
 
 // added shows a tab the backend just made, before its state comes round.
 function added(name, s) {
@@ -1389,7 +1389,7 @@ $("pIn").addEventListener("keydown", (e) => {
   if (e.key === "ArrowUp") { pal.on = Math.max(pal.on - 1, 0); renderPalette(); e.preventDefault(); }
   if (e.key === "Enter") { runPalette(pal.on); e.preventDefault(); }
   if (e.key === "Escape") { closePalette(); e.preventDefault(); }
-  // ⌘⌫ closes the highlighted tab, asking first.
+  // ⌘⌫ closes the highlighted tab, asking first if Settings say so.
   if (mod && e.key === "Backspace" && pal.items[pal.on]?.tab) {
     e.preventDefault();
     const key = pal.items[pal.on].tab.key;
@@ -1729,13 +1729,13 @@ $("list").addEventListener("contextmenu", (e) => {
 window.addEventListener("pointerdown", (e) => { if (!e.target.closest("#menu")) closeMenu(); }, true);
 window.addEventListener("blur", closeMenu);
 
-// closeTab closes a tab, asking first when Settings say so, when it is
-// working, or always (⌘W).
-async function closeTab(key, always = true) {
+// closeTab closes a tab, asking first when Settings say so, or when it is
+// working: its turn would be cut off.
+async function closeTab(key) {
   const t = tab(key);
   if (!t) return;
   const why = t.status === "working" ? "It is working: the turn in progress is cut off. " : "";
-  if ((always || page.confirmClose || why) && !(await sure(`Close ${t.name}?`, `${why}Its claude ends and the tab is removed for good.`, "Close tab"))) return;
+  if ((page.confirmClose || why) && !(await sure(`Close ${t.name}?`, `${why}Its claude ends and the tab is removed for good.`, "Close tab"))) return;
   await api(t.env, "DELETE", `/api/sessions/${t.id}`).catch((err) => say(err.message));
 }
 
@@ -1757,7 +1757,7 @@ async function act(what, target) {
     } else if (what === "move") {
       openPalette("move", t);
     } else if (what === "close") {
-      await closeTab(t.key, false);
+      await closeTab(t.key);
     } else if (what === "rename") {
       startRename(target.fid);
     } else if (what === "fold") {
@@ -1826,7 +1826,7 @@ window.addEventListener("keydown", (e) => {
   if (mod && !e.altKey && e.code === "KeyK") { e.preventDefault(); e.stopPropagation(); $("palette").classList.contains("open") ? closePalette() : openPalette(); return; }
   if (mod && !e.altKey && !e.shiftKey && e.code === "KeyN") { e.preventDefault(); e.stopPropagation(); newWindow(); return; }
   if (mod && !e.altKey && e.code === "Comma") { e.preventDefault(); e.stopPropagation(); if (!dialog) openSettings(); return; }
-  // ⌘W closes the selected tab, asking first.
+  // ⌘W closes the selected tab, asking first if Settings say so.
   if (mod && !e.altKey && !e.shiftKey && e.code === "KeyW") {
     e.preventDefault(); e.stopPropagation();
     if (selected && !dialog) closeTab(selected);
