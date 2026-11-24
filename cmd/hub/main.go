@@ -33,9 +33,9 @@ var version = "dev"
 func main() {
 	home, _ := os.UserHomeDir()
 	cwd, _ := os.Getwd()
-	// Started from Finder or Explorer rather than a terminal: no terminal
-	// environment, and the directory is / or the program's own.
-	gui := os.Getenv("TERM") == ""
+	// Started from Finder or Explorer rather than a terminal, the directory
+	// is / or the program's own.
+	gui := startedByOS(os.Getenv("TERM"), os.Getppid())
 	if gui {
 		cwd = home
 	}
@@ -171,4 +171,12 @@ func loginShellEnv() {
 			_ = os.Setenv(k, v)
 		}
 	}
+}
+
+// startedByOS tells whether the hub was started from Finder, Explorer or the
+// Dock rather than run in a terminal. Without a terminal there is no TERM;
+// but `open claude-mux.app` in a terminal passes the terminal's environment,
+// TERM included, to the app, which launchd (pid 1) still starts.
+func startedByOS(term string, ppid int) bool {
+	return term == "" || ppid == 1
 }
