@@ -42,6 +42,8 @@ const PAGE_DEFAULTS = {
   notifyNeeds: true, notifyReady: true, notifyAway: true,
   // What New tab starts from: the options of the last tab started.
   lastTab: { startup: false, message: "", args: "", flags: [...FLAGS] },
+  // The directory of the last tab started, by environment name.
+  lastCwd: {},
 };
 // PAGE_STEPS upgrade the page's settings, one version each, like the
 // hub's and the backends' files. Never remove one.
@@ -63,6 +65,18 @@ const PAGE_STEPS = [
   // 1 → 2 (v0.7.12): compact tab rows by default. Every saved page carried
   // the old default, so a page on Detailed is asked once (askCompact).
   (p) => { if (p.tabRows === "two") p.askCompact = true; },
+  // 2 → 3 (v0.7.16): the last directory moves from this browser's storage,
+  // which an OS reinstall or another browser doesn't have, to the hub.
+  (p) => {
+    p.lastCwd = { ...p.lastCwd };
+    try {
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i);
+        if (!k?.startsWith("mux.lastCwd.")) continue;
+        p.lastCwd[k.slice("mux.lastCwd.".length)] ??= localStorage.getItem(k);
+      }
+    } catch { /* storage blocked: nothing to move */ }
+  },
 ];
 function upgradePage(saved) {
   const p = { ...saved };
@@ -944,7 +958,7 @@ function openNew(at = {}) {
   $("tName").value = "";
   $("tName").readOnly = false;
   $("tName").title = "";
-  $("tCwd").value = store.get("mux.lastCwd." + where.env) || home(backendOf(where.env)?.defaultCwd || "");
+  $("tCwd").value = page.lastCwd[where.env] || home(backendOf(where.env)?.defaultCwd || "");
   $("tStartup").value = last.message || "";
   $("tArgs").value = last.args || "";
   $("tClose").hidden = true;
@@ -995,8 +1009,7 @@ $("tabForm").addEventListener("submit", async (e) => {
     }
     const name = dlg.env;
     const s = await api(name, "POST", "/api/sessions", { ...body, name: $("tName").value.trim(), parent: dlg.parent, after: dlg.after });
-    store.set("mux.lastCwd." + name, body.cwd);
-    setPage({ lastTab: { startup: dlg.startup, message: $("tStartup").value, args: $("tArgs").value.trim(), flags: FLAGS.filter((f) => dlg.checked.has(f)) } });
+    setPage({ lastCwd: { ...page.lastCwd, [name]: body.cwd }, lastTab: { startup: dlg.startup, message: $("tStartup").value, args: $("tArgs").value.trim(), flags: FLAGS.filter((f) => dlg.checked.has(f)) } });
     $("tabDlg").close();
     added(name, s);
   } catch (err) {
@@ -1501,8 +1514,10 @@ function renameEnvKeys(from, to) {
     if (k === "env:" + from) { setCollapsed(k, false); setCollapsed("env:" + to, true); }
     if (k.startsWith("g:" + from + "/")) { setCollapsed(k, false); setCollapsed("g:" + to + k.slice(2 + from.length), true); }
   }
-  const cwd = store.get("mux.lastCwd." + from);
-  if (cwd) { store.set("mux.lastCwd." + to, cwd); store.remove("mux.lastCwd." + from); }
+  if (page.lastCwd[from]) {
+    const { [from]: cwd, ...rest } = page.lastCwd;
+    setPage({ lastCwd: { ...rest, [to]: cwd } });
+  }
   const moved = (key) => (key.startsWith(from + "/") ? to + key.slice(from.length) : key);
   for (const map of [terms, lastStatus]) {
     for (const [k, v] of [...map]) if (moved(k) !== k) { map.delete(k); map.set(moved(k), v); }
