@@ -141,7 +141,7 @@ back.
   | ⌥1–9 | go to tab 1–9 |
   | ⌥↑ / ⌥↓ | previous / next tab |
   | ⌥J | next tab that waits for you |
-  | ⌥N | new tab next to this one |
+  | ⌘T, ⌥N | new tab next to this one (Ctrl+T only in the app's window: a browser keeps it) |
   | ⇧⌥N | new group next to this one |
   | ⌘I | Tab settings |
   | ⌘W | close the tab (asks first, unless Settings say not to) |

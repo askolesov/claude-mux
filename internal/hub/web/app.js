@@ -1840,6 +1840,8 @@ window.addEventListener("keydown", (e) => {
   const dialog = document.querySelector("dialog[open]");
   if (mod && !e.altKey && e.code === "KeyK") { e.preventDefault(); e.stopPropagation(); $("palette").classList.contains("open") ? closePalette() : openPalette(); return; }
   if (mod && !e.altKey && !e.shiftKey && e.code === "KeyN") { e.preventDefault(); e.stopPropagation(); newWindow(); return; }
+  // ⌘T: a new tab next to this one, as ⌥N. A browser keeps Ctrl+T for itself.
+  if (mod && !e.altKey && !e.shiftKey && e.code === "KeyT") { e.preventDefault(); e.stopPropagation(); if (!dialog) openNew(); return; }
   if (mod && !e.altKey && e.code === "Comma") { e.preventDefault(); e.stopPropagation(); if (!dialog) openSettings(); return; }
   // ⌘W closes the selected tab, asking first if Settings say so.
   if (mod && !e.altKey && !e.shiftKey && e.code === "KeyW") {
