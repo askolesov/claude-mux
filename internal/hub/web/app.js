@@ -736,15 +736,6 @@ function step(dir) {
   select(list[(i + dir + list.length) % list.length].key);
 }
 
-// ⌥J: the next tab that waits for you, permission prompts first.
-function jumpWaiting() {
-  const list = visual();
-  const start = Math.max(0, list.findIndex((t) => t.key === selected));
-  const rot = [...list.slice(start + 1), ...list.slice(0, start + 1)];
-  const next = rot.find((t) => t.status === "needs-you") || rot.find((t) => t.status === "ready" && t.unseen);
-  if (next) select(next.key);
-}
-
 // ---------- notifications ----------
 function notify(title, body, onClick) {
   // In claude-mux's own window the hub posts the notification.
@@ -1337,7 +1328,7 @@ function statusWord(t) {
   if (dead(t)) return ["Exited", "var(--muted)"];
   return [STATUS_TEXT[t.status] || t.status, "var(--working)"];
 }
-const ACTIONS = [["new", "New tab", "⌥N"], ["new-group", "New group", "⇧⌥N"], ["new-window", "New window", MOD + "N"], ["tab-settings", "Tab settings", MOD + "I"], ["settings", "Settings", MOD + ","]];
+const ACTIONS = [["new", "New tab", MOD + "T"], ["new-group", "New group", ""], ["new-window", "New window", MOD + "N"], ["tab-settings", "Tab settings", ""], ["settings", "Settings", MOD + ","]];
 function renderPalette() {
   if (!$("palette").classList.contains("open")) return;
   const raw = $("pIn").value;
@@ -1370,7 +1361,7 @@ function renderPalette() {
       const n = vis.indexOf(t);
       const [word, colour] = statusWord(t);
       html += item(`<span class="dot ${dotClass(t)}"></span><span class="name">${esc(t.name)}</span><span class="where">${esc(crumbOf(t))}</span>
-        <span class="st" style="color:${colour}">${word}</span><kbd>${n < 9 ? "⌥" + (n + 1) : ""}</kbd>`);
+        <span class="st" style="color:${colour}">${word}</span><kbd>${n < 8 ? MOD + (n + 1) : ""}</kbd>`);
     }
     if (actions.length) html += `<div class="sec">Actions</div>`;
     for (const [, l, k] of actions) html += item(`<span class="pad"></span><span class="label">${esc(l)}</span><kbd>${k}</kbd>`);
@@ -1418,6 +1409,7 @@ $("pItems").addEventListener("mousemove", (e) => {
 $("palette").addEventListener("pointerdown", (e) => { if (e.target === $("palette")) closePalette(); });
 $("jump").onclick = () => openPalette();
 $("jumpKey").textContent = MOD + "K";
+$("newTab").title = `New tab (${MOD}T), next to the selected tab`;
 $("settings").title = `Settings (${MOD},)`;
 
 // ---------- the sidebar ----------
@@ -1459,7 +1451,7 @@ async function newGroup(name, parent, after = "") {
     say(err.message);
   }
 }
-// newGroupNear (⇧⌥N) makes a group next to the focused row in the tree, or
+// newGroupNear makes a group next to the focused row in the tree, or
 // else the selected tab.
 function newGroupNear() {
   const row = document.activeElement?.closest?.("#list .trow");
@@ -1629,16 +1621,6 @@ $("list").addEventListener("dragend", () => {
 async function place(name, id, where) {
   await api(name, "PUT", `/api/nodes/${id}/place`, where).catch((err) => say(err.message));
 }
-// shift moves a tab or a group one place up or down among its siblings.
-function shift(name, id, dir) {
-  const node = groupOf(name, id) || tabs.find((t) => t.env === name && t.id === id);
-  if (!node) return;
-  const sib = kids(name, node.parent || "").map((k) => (k.group || k.tab).id);
-  const i = sib.indexOf(id);
-  const other = sib[i + dir];
-  if (other) place(name, id, { parent: node.parent || "", before: dir < 0 ? other : "", after: dir > 0 ? other : "" });
-}
-
 // ---------- the tree by keyboard ----------
 // ↑/↓ move, → unfolds or steps in, ← folds or steps out, Enter opens a tab
 // or folds, Home/End, F2 renames, ⌫ deletes a group, the Menu key or ⇧F10
@@ -1683,20 +1665,20 @@ function menuItems(target) {
   if (target.kind === "env") {
     const e = env(target.env);
     const can = canStart(target.env);
-    return [can && ["new-tab", "New tab", "⌥N"], backendOf(target.env) && ["new-group", "New group", "⇧⌥N"], null,
+    return [can && ["new-tab", "New tab", MOD + "T"], backendOf(target.env) && ["new-group", "New group", ""], null,
       ["env-reconnect", "Reconnect"], ["env-settings", "Environment settings…"],
       e?.state === "connected" && backendOf(e.name) && !hasClaude(e.name) && ["env-install", "Install claude…"],
       e?.kind !== "local" && null, e?.kind !== "local" && ["env-remove", "Remove environment", "", "danger"]].filter((x) => x !== false && x !== undefined);
   }
   if (target.kind === "group") {
     const shut = collapsed.has(target.fid);
-    return [canStart(target.env) && ["new-tab", "New tab", "⌥N"], ["new-group", "New group", "⇧⌥N"], null,
+    return [canStart(target.env) && ["new-tab", "New tab", MOD + "T"], ["new-group", "New group", ""], null,
       ["rename", "Rename", "F2"], ["fold", shut ? "Expand" : "Collapse", shut ? "→" : "←"], null,
       ["delete-group", "Delete group", "⌫", "danger"]].filter((x) => x !== false);
   }
   const t = tab(target.key);
   if (!t) return [];
-  return [["tab-settings", "Tab settings…", MOD + "I"], ["duplicate", "Duplicate", ""], ["move", "Move to…", ""], null,
+  return [["tab-settings", "Tab settings…", ""], ["duplicate", "Duplicate", ""], ["move", "Move to…", ""], null,
     dead(t) ? ["start", "Resume", "↵"] : ["restart", "Restart", ""], ["close", "Close tab", MOD + "W", "danger"]];
 }
 
@@ -1840,7 +1822,7 @@ window.addEventListener("keydown", (e) => {
   const dialog = document.querySelector("dialog[open]");
   if (mod && !e.altKey && e.code === "KeyK") { e.preventDefault(); e.stopPropagation(); $("palette").classList.contains("open") ? closePalette() : openPalette(); return; }
   if (mod && !e.altKey && !e.shiftKey && e.code === "KeyN") { e.preventDefault(); e.stopPropagation(); newWindow(); return; }
-  // ⌘T: a new tab next to this one, as ⌥N. A browser keeps Ctrl+T for itself.
+  // ⌘T: a new tab next to this one. A browser keeps Ctrl+T for itself.
   if (mod && !e.altKey && !e.shiftKey && e.code === "KeyT") { e.preventDefault(); e.stopPropagation(); if (!dialog) openNew(); return; }
   if (mod && !e.altKey && e.code === "Comma") { e.preventDefault(); e.stopPropagation(); if (!dialog) openSettings(); return; }
   // ⌘W closes the selected tab, asking first if Settings say so.
@@ -1849,32 +1831,21 @@ window.addEventListener("keydown", (e) => {
     if (selected && !dialog) closeTab(selected);
     return;
   }
-  if (mod && !e.altKey && !e.shiftKey && e.code === "KeyI") {
+  // ⌘1–8 go to that tab and ⌘9 to the last, as in a browser.
+  if (mod && !e.altKey && !e.shiftKey && /^Digit[1-9]$/.test(e.code)) {
     e.preventDefault(); e.stopPropagation();
-    if (selected && !dialog) openTabSettings(selected);
+    const list = visual();
+    const t = e.code === "Digit9" ? list.at(-1) : list[Number(e.code.slice(5)) - 1];
+    if (t && !dialog) select(t.key);
     return;
   }
-  // ⌘⇧↑/↓ moves the focused row (or the selected tab) within its container.
-  if (mod && e.shiftKey && !e.altKey && (e.code === "ArrowUp" || e.code === "ArrowDown")) {
-    const row = document.activeElement?.closest?.(".trow");
-    const t = tab(selected);
-    const name = row && row.dataset.kind !== "env" ? row.dataset.env : t?.env;
-    const id = row && row.dataset.kind !== "env" ? row.dataset.node : t?.id;
-    if (name && id) { e.preventDefault(); e.stopPropagation(); shift(name, id, e.code === "ArrowUp" ? -1 : 1); }
+  // ⌃Tab / ⌃⇧Tab: the next / previous tab.
+  if (e.ctrlKey && !e.metaKey && !e.altKey && e.code === "Tab") {
+    e.preventDefault(); e.stopPropagation();
+    if (!dialog) step(e.shiftKey ? -1 : 1);
     return;
   }
-  if (e.key === "Escape") { closeMenu(); return; }
-  if (!e.altKey || e.metaKey || e.ctrlKey || dialog) return;
-  let handled = true;
-  if (/^Digit[1-9]$/.test(e.code)) {
-    const t = visual()[Number(e.code.slice(5)) - 1];
-    if (t) select(t.key);
-  } else if (e.code === "KeyN") e.shiftKey ? newGroupNear() : openNew();
-  else if (e.code === "KeyJ") jumpWaiting();
-  else if (e.code === "ArrowUp") step(-1);
-  else if (e.code === "ArrowDown") step(1);
-  else handled = false;
-  if (handled) { e.preventDefault(); e.stopPropagation(); }
+  if (e.key === "Escape") closeMenu();
 }, true);
 
 // The sidebar's right edge drags to resize it; the width is kept per browser.

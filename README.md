@@ -85,7 +85,7 @@ back.
 
 ## Using it
 
-- **New tab**: the **+** at the top of the sidebar (⌥N) makes one next to
+- **New tab**: the **+** at the top of the sidebar (⌘T) makes one next to
   the selected tab; right-click an environment or a group for one inside
   it. It asks for a name and a directory (Tab completes it, from that
   environment). The startup message and the `claude` arguments repeat your
@@ -99,7 +99,7 @@ back.
 
   A ring means "look at me". A folded group shows its most urgent tab's
   dot. The window title and the Dock icon count the tabs that wait.
-- **Tab settings** (… above the terminal, ⌘I, or right-click a tab): its
+- **Tab settings** (… above the terminal, or right-click a tab): its
   directory, startup message and arguments. Saving a new directory or
   arguments restarts its claude, and the conversation continues; a new
   startup message waits for the tab's next start. A tab's name is claude's: type
@@ -110,15 +110,15 @@ back.
   Reconnect, Environment settings, Remove. The Menu key or ⇧F10 opens it
   from the keyboard.
 - **Groups** hold tabs and other groups, as deep as you like. Make one
-  with ⇧⌥N (next to the selected tab) or from a right-click; it starts
+  from a right-click or Jump; it starts
   named "New group" for you to type over, and Esc takes it back. Fold
   groups and environments by their chevrons. Rename them with F2 or a
   double-click. Deleting a group moves what it held up a level; no tab is
   closed.
 - **Moving**: drag a tab or a group onto a group to put it inside, or
   between rows. The line shows where it lands, and its left edge the
-  level: drag left or right to change it. ⌘⇧↑/↓ moves the selected row
-  within its group, and Move to… puts a tab in any group.
+  level: drag left or right to change it. Move to… puts a tab in any
+  group.
 - **Files**: drop a file on the terminal, or paste one or a screenshot,
   and its path is typed in for claude to attach. On a local tab in the Mac
   app that is the file's own path; elsewhere the file is copied to the
@@ -133,23 +133,21 @@ back.
   - a WSL distro
 
   Drag their headers in the sidebar to reorder them.
-- **Keys**:
+- **Keys** (Ctrl for ⌘ on Windows and Linux; in a browser, rather than
+  the app's window, the browser keeps ⌘T, ⌘W, ⌘N, ⌘1–9 and ⌃Tab):
 
   | Key | Does |
   |---|---|
-  | ⌘K (Ctrl+K) | jump to a tab |
-  | ⌥1–9 | go to tab 1–9 |
-  | ⌥↑ / ⌥↓ | previous / next tab |
-  | ⌥J | next tab that waits for you |
-  | ⌘T, ⌥N | new tab next to this one (Ctrl+T only in the app's window: a browser keeps it) |
-  | ⇧⌥N | new group next to this one |
-  | ⌘I | Tab settings |
+  | ⌘T | new tab next to this one |
   | ⌘W | close the tab (asks first, unless Settings say not to) |
-  | ⌘⇧↑ / ⌘⇧↓ | move a row up / down in its group |
+  | ⌘1–8, ⌘9 | go to tab 1–8, the last tab |
+  | ⌃Tab / ⌃⇧Tab | next / previous tab |
+  | ⌘K | jump to a tab, or an action |
   | ↑↓←→, Enter, F2, ⌫ | in the sidebar: move, fold, open, rename or delete a group |
   | Menu key, ⇧F10 | in the sidebar: the row's menu |
   | ⌘N | a new window: another tab on another screen |
   | ⌘, | Settings |
+  | ⌘Q | quit (Mac) |
   | ⇧↵ | newline in the prompt |
   | Ctrl+C with a selection, Ctrl+Shift+C | Windows, Linux: copy (⌘C on a Mac) |
   | Ctrl+V, Ctrl+Shift+V | Windows, Linux: paste (⌘V on a Mac) |
